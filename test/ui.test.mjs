@@ -469,10 +469,16 @@ test('the diff tab renders unified diff hunks from the Host', async () => {
   await harness.dispose()
 })
 
-/** Resolve the shared context-menu actions for a target captured by the mock. */
+/** Resolve the shared context-menu actions for a target captured by the mock.
+ *
+ * Mirrors the shipped registry, which calls a contribution with the captured
+ * target's value rather than the `{ kind, value }` wrapper the trigger received.
+ * Calling the contribution directly with the wrapper would hide the contract
+ * mismatch that opened empty menus in the real page.
+ */
 function menuActions(components, target) {
   assert.equal(typeof components.contribution?.resolve, 'function', 'no context-menu contribution was registered')
-  return components.contribution.resolve(target, new AbortController().signal)
+  return components.contribution.resolve(target.value, new AbortController().signal)
 }
 
 /** Resolve and run one action id from a captured menu target. */
@@ -499,6 +505,26 @@ test('right-clicking a change binds its target without calling the Host', async 
   assert.equal(mounted.calls.length, before, 'opening a menu must not call the Host')
   assert.deepEqual(menuActions(mounted.components, target).map((action) => action.id),
     ['open', 'stage', 'discard', 'copy-relative', 'copy-path'])
+  await mounted.harness.dispose()
+})
+
+test('every listed object resolves at least one menu command', async () => {
+  const mounted = await mountGit()
+  const byClass = (name) => mounted.harness.findAll((element) => String(element.props?.className ?? '').includes(name))
+  const surfaces = [
+    ['changed file', mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js').at(-1)],
+    ['folder', byClass('dshgg-folderRow')[0]],
+    ['change group header', mounted.harness.findAll((element) => element.props?.['data-section'] === 'changes')[0]?.children[0]],
+    ['commit', byClass('dshgg-graphRow')[0]],
+  ]
+  for (const [label, element] of surfaces) {
+    assert.ok(element, `no ${label} rendered`)
+    const before = mounted.menu.opens.length
+    mounted.harness.contextmenu(element, { clientX: 5, clientY: 6 })
+    assert.equal(mounted.menu.opens.length, before + 1, `${label} did not bind a menu target`)
+    const ids = menuActions(mounted.components, mounted.menu.opens.at(-1).target).map((action) => action.id)
+    assert.ok(ids.length > 0, `${label} resolved an empty menu`)
+  }
   await mounted.harness.dispose()
 })
 

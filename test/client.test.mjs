@@ -249,12 +249,26 @@ test('components render without a browser and expose stable markup entry points'
 /**
  * Apply the bundle with a Captured context-menu service and no other plugin
  * machinery; returns the recorded contribution and toast calls.
+ *
+ * The stand-in mirrors the shipped registry: `register` keeps the contribution
+ * and `resolve` calls it with the captured target's value, never with the
+ * `{ kind, value }` wrapper the trigger received. Reaching the contribution any
+ * other way would hide a contract mismatch like the one that opened empty menus.
  * @param {object} module - evaluated bundle module.
- * @returns {{contributions: object[], notifications: object[]}} recorder.
+ * @returns {{contributions: object[], notifications: object[], contextMenus: object}} recorder.
  */
 function applyWithMenuService(module) {
   const contributions = []
   const notifications = []
+  const contextMenus = {
+    register(contribution) { contributions.push(contribution); return () => {} },
+    resolve(target, signal) {
+      const contribution = contributions.at(-1)
+      assert.equal(typeof contribution?.resolve, 'function', 'no context-menu contribution was registered')
+      return contribution.resolve(target.value, signal)
+    },
+    notify(text, success) { notifications.push({ text, success }) },
+  }
   const shared = {
     effect(callback) { callback(); return () => {} },
     locale: { bind: () => translate, register: () => () => {} },
@@ -266,16 +280,10 @@ function applyWithMenuService(module) {
     ...shared,
     inject(services, callback) {
       if (!services.includes('contextMenus')) return
-      callback({
-        ...shared,
-        contextMenus: {
-          register(contribution) { contributions.push(contribution); return () => {} },
-          notify(text, success) { notifications.push({ text, success }) },
-        },
-      })
+      callback({ ...shared, contextMenus })
     },
   })
-  return { contributions, notifications }
+  return { contributions, notifications, contextMenus }
 }
 
 const MENU_IDS = (actions) => actions.map((action) => action.id)
@@ -290,14 +298,18 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
     if (specifier === 'react') return fakeReact
     throw new Error(`unexpected require("${specifier}")`)
   })
-  const { contributions } = applyWithMenuService(module)
+  const { contributions, contextMenus } = applyWithMenuService(module)
   assert.equal(contributions.length, 1)
   const contribution = contributions[0]
   assert.equal(contribution.id, 'git-graph.actions')
   assert.equal(contribution.target, 'gitGraphItem')
   assert.equal(typeof contribution.resolve, 'function')
 
-  const resolve = (value) => contribution.resolve({ kind: 'gitGraphItem', value }, new AbortController().signal)
+  const resolve = (value) => contextMenus.resolve({ kind: 'gitGraphItem', value }, new AbortController().signal)
+
+  // The registry hands the contribution the captured value, so an invoked row
+  // always yields its commands (an empty list here means the menu opens empty).
+  assert.ok(MENU_IDS(resolve({ sessionId: 's1', kind: 'file', section: 'changes', path: 'src/app.js', cwd: '/repo' })).length > 0)
   const ids = (value) => MENU_IDS(resolve(value))
 
   // Unstaged files offer opening, staging, discarding, and copying both paths.
@@ -386,9 +398,10 @@ test('menu copy actions write the clipboard and report the result', async () => 
     if (specifier === 'react') return fakeReact
     throw new Error(`unexpected require("${specifier}")`)
   })
-  const { contributions, notifications } = applyWithMenuService(module)
+  const { contributions, notifications, contextMenus } = applyWithMenuService(module)
   const contribution = contributions[0]
-  const resolve = (value) => contribution.resolve({ kind: 'gitGraphItem', value }, new AbortController().signal)
+  assert.equal(typeof contribution.resolve, 'function')
+  const resolve = (value) => contextMenus.resolve({ kind: 'gitGraphItem', value }, new AbortController().signal)
   const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
   const copied = []
   try {

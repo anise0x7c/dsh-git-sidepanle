@@ -745,7 +745,8 @@ window.__ModuleLoader__.load({
 
     /**
      * Resolve the actions for one captured context-menu target.
-     * @param value - captured row data.
+     * @param value - the captured target value: the row data the trigger was
+     *   bound with, as the shared registry hands it to a contribution.
      * @param t - locale binder.
      * @param notify - host toast for clipboard feedback.
      * @returns ordered actions for the shared overlay.
@@ -1941,12 +1942,15 @@ window.__ModuleLoader__.load({
       try {
         ctx.inject(['contextMenus'], (menuCtx) => {
           try {
+            // The shared registry calls a contribution with the value captured
+            // by the trigger, not with the { kind, value } target the trigger
+            // received. Unwrapping again here leaves every menu empty.
             menuCtx.effect(() => menuCtx.contextMenus.register({
               id: MENU_CONTRIBUTION_ID,
               target: MENU_TARGET,
               order: 10,
-              resolve: (target) => resolveMenuActions(
-                target?.value,
+              resolve: (value) => resolveMenuActions(
+                value,
                 t,
                 (text, success) => menuCtx.contextMenus.notify(text, success),
               ),
