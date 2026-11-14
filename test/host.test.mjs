@@ -10,14 +10,14 @@ import assert from 'node:assert/strict'
 import { execFile as execFileCallback } from 'node:child_process'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
 import { promisify } from 'node:util'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { apply } from '../index.js'
 
 const execFile = promisify(execFileCallback)
-const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
-const tmpRoot = join(packageRoot, '.tmp-test')
+/** @type {string} */
+let tmpRoot
 
 /** @type {string} */
 let repo
@@ -56,6 +56,36 @@ function createFakeContext(cwd) {
   return routes
 }
 
+async function withSessionServer(cwd, operation) {
+  const routes = createFakeContext(cwd)
+  const other = createServer((request, response) => {
+    const path = new URL(request.url ?? '/', 'http://localhost').pathname
+    const route = routes.get(path)
+    if (route === undefined) {
+      response.writeHead(404)
+      response.end()
+      return
+    }
+    void route.handler(request, response)
+  })
+  await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = other.address()
+    return await operation(`http://127.0.0.1:${address.port}`)
+  } finally {
+    await new Promise((resolve) => other.close(resolve))
+  }
+}
+
+async function callAt(baseUrl, op, payload = {}) {
+  const response = await fetch(`${baseUrl}/api/dsh-git-graph/rpc`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
+    body: JSON.stringify({ sessionId: 'session-1', op, ...payload }),
+  })
+  return { status: response.status, body: await response.json() }
+}
+
 async function call(op, payload = {}, options = {}) {
   const headers = { 'content-type': 'application/json', ...(options.untrusted === true ? {} : { 'x-dsh-git-graph': '1' }) }
   const response = await fetch(`${base}/api/dsh-git-graph/rpc`, {
@@ -68,8 +98,7 @@ async function call(op, payload = {}, options = {}) {
 }
 
 before(async () => {
-  await rm(tmpRoot, { recursive: true, force: true })
-  await mkdir(tmpRoot, { recursive: true })
+  tmpRoot = await mkdtemp(join(tmpdir(), 'dsh-git-graph-test-'))
   repo = await mkdtemp(join(tmpRoot, 'repo-'))
   await git(repo, 'init', '-b', 'main')
   await git(repo, 'config', 'user.name', 'Git Graph Test')
@@ -228,6 +257,48 @@ test('branches list and checkout switch the worktree', async () => {
   assert.equal(optionShaped.body.error.code, 'bad-request')
 })
 
+test('an unborn repository stages, unstages, and takes its first commit', async () => {
+  const unborn = await mkdtemp(join(tmpRoot, 'unborn-'))
+  await git(unborn, 'init', '-q', '-b', 'main')
+  await git(unborn, 'config', 'user.name', 'Unborn Test')
+  await git(unborn, 'config', 'user.email', 'unborn@example.test')
+  await writeFile(join(unborn, 'first.txt'), 'first file\n')
+
+  await withSessionServer(unborn, async (baseUrl) => {
+    let status = await callAt(baseUrl, 'status')
+    assert.equal(status.body.value.repo.unborn, true)
+    assert.equal(status.body.value.repo.branch, 'main')
+    assert.equal(status.body.value.files[0].kind, 'untracked')
+
+    const history = await callAt(baseUrl, 'history')
+    assert.deepEqual(history.body.value.commits, [])
+
+    await callAt(baseUrl, 'stage', { paths: ['first.txt'] })
+    status = await callAt(baseUrl, 'status')
+    assert.equal(status.body.value.files[0].x, 'A')
+
+    await callAt(baseUrl, 'unstage', { paths: ['first.txt'] })
+    status = await callAt(baseUrl, 'status')
+    assert.equal(status.body.value.files[0].kind, 'untracked')
+
+    const refused = await callAt(baseUrl, 'commit', { message: 'first commit' })
+    assert.equal(refused.body.error.code, 'nothing-staged')
+
+    const commit = await callAt(baseUrl, 'commit', { message: 'first commit', stageAll: true })
+    assert.equal(commit.body.ok, true)
+    status = await callAt(baseUrl, 'status')
+    assert.deepEqual(status.body.value.files, [])
+    assert.equal(status.body.value.repo.unborn, false)
+
+    const after = await callAt(baseUrl, 'history')
+    assert.equal(after.body.value.commits.length, 1)
+    assert.equal(after.body.value.commits[0].subject, 'first commit')
+
+    const branches = await callAt(baseUrl, 'branches')
+    assert.deepEqual(branches.body.value.branches, [{ name: 'main', current: true }])
+  })
+})
+
 test('a directory outside a repository reports no repository', async () => {
   const outside = join(tmpRoot, 'plain')
   await mkdir(outside, { recursive: true })
@@ -244,22 +315,25 @@ test('a directory outside a repository reports no repository', async () => {
     void route.handler(request, response)
   })
   await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve))
-  const address = other.address()
-  const response = await fetch(`http://127.0.0.1:${address.port}/api/dsh-git-graph/rpc`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
-    body: JSON.stringify({ sessionId: 'session-1', op: 'status' }),
-  })
-  const body = await response.json()
-  assert.equal(body.ok, true)
-  assert.equal(body.value.repo, null)
-  const refused = await fetch(`http://127.0.0.1:${address.port}/api/dsh-git-graph/rpc`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
-    body: JSON.stringify({ sessionId: 'session-1', op: 'history' }),
-  })
-  const refusedBody = await refused.json()
-  assert.equal(refusedBody.ok, false)
-  assert.equal(refusedBody.error.code, 'not-a-repository')
-  await new Promise((resolve) => other.close(resolve))
+  try {
+    const address = other.address()
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/dsh-git-graph/rpc`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
+      body: JSON.stringify({ sessionId: 'session-1', op: 'status' }),
+    })
+    const body = await response.json()
+    assert.equal(body.ok, true)
+    assert.equal(body.value.repo, null)
+    const refused = await fetch(`http://127.0.0.1:${address.port}/api/dsh-git-graph/rpc`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
+      body: JSON.stringify({ sessionId: 'session-1', op: 'history' }),
+    })
+    const refusedBody = await refused.json()
+    assert.equal(refusedBody.ok, false)
+    assert.equal(refusedBody.error.code, 'not-a-repository')
+  } finally {
+    await new Promise((resolve) => other.close(resolve))
+  }
 })

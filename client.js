@@ -54,6 +54,7 @@ window.__ModuleLoader__.load({
       'commit.hint': 'Commits staged changes only',
       'commit.hintNone': 'Nothing staged: commit stages every change first',
       'commit.emptyConfirm': 'No staged changes. Stage all changes and commit them?',
+      'commit.nothing': 'There are no changes to commit.',
       'commit.stageAll': 'Stage all and commit',
       'commit.done': 'Committed {hash}',
       'sections.merge': 'Merge changes',
@@ -74,6 +75,8 @@ window.__ModuleLoader__.load({
       'confirm.discard': 'Discard',
       'confirm.discardAll': 'Discard all',
       'action.cancel': 'Cancel',
+      'action.dismiss': 'Dismiss',
+      'error.discardUnborn': 'Changes cannot be discarded before the first commit.',
       'status.modified': 'Modified',
       'status.added': 'Added',
       'status.deleted': 'Deleted',
@@ -140,6 +143,7 @@ window.__ModuleLoader__.load({
       'commit.hint': '只提交已暂存的更改',
       'commit.hintNone': '尚未暂存：提交前会先暂存全部更改',
       'commit.emptyConfirm': '没有已暂存的更改。要暂存全部更改并提交吗？',
+      'commit.nothing': '没有可提交的更改。',
       'commit.stageAll': '全部暂存并提交',
       'commit.done': '已提交 {hash}',
       'sections.merge': '合并更改',
@@ -160,6 +164,8 @@ window.__ModuleLoader__.load({
       'confirm.discard': '放弃',
       'confirm.discardAll': '全部放弃',
       'action.cancel': '取消',
+      'action.dismiss': '关闭',
+      'error.discardUnborn': '首次提交前无法放弃更改。',
       'status.modified': '已修改',
       'status.added': '已添加',
       'status.deleted': '已删除',
@@ -205,7 +211,7 @@ window.__ModuleLoader__.load({
     // ------------------------------------------------------------------
 
     const CSS = `
-.dshgg-root{display:flex;flex-direction:column;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px;line-height:1.45;background:transparent}
+.dshgg-root{display:flex;flex-direction:column;flex:1 1 auto;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px;line-height:1.45;background:transparent}
 .dshgg-toolbar{display:flex;align-items:center;gap:6px;padding:6px 8px;min-height:36px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .dshgg-spacer{flex:1}
 .dshgg-branchWrap{position:relative;display:flex;min-width:0}
@@ -273,7 +279,7 @@ window.__ModuleLoader__.load({
 .dshgg-status[data-status="!"]{color:var(--dsw-alias-state-error-primary);font-size:12px}
 .dshgg-fileName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
 .dshgg-fileName[data-obsolete="true"]{color:var(--dsw-alias-label-secondary);text-decoration:line-through}
-.dshgg-fileArrow{flex:none;color:var(--dsw-alias-label-tertiary);font-size:11px;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.dshgg-fileArrow{flex:none;color:var(--dsw-alias-label-tertiary);font-size:11px;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgg-fileActions{display:flex;align-items:center;gap:0;flex:none;opacity:0}
 .dshgg-fileRow:hover .dshgg-fileActions,.dshgg-fileRow:focus-within .dshgg-fileActions{opacity:1}
 .dshgg-fileActions .dshgg-iconBtn{width:20px;height:20px}
@@ -313,11 +319,14 @@ window.__ModuleLoader__.load({
 .dshgg-menuNote{padding:7px 8px;color:var(--dsw-alias-label-secondary);font-size:12px}
 .dshgg-title{display:inline-flex;align-items:center;gap:5px;min-width:0}
 .dshgg-titleText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dshgg-diffRoot{display:flex;flex-direction:column;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px}
+.dshgg-diffRoot{display:flex;flex-direction:column;flex:1 1 auto;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px}
 .dshgg-diffHeader{display:flex;align-items:center;gap:6px;padding:5px 8px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1);min-width:0}
 .dshgg-diffPath{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}
 .dshgg-diffName{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgg-diffFrom{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgg-diffStats{flex:none;display:inline-flex;gap:4px;font-family:var(--ds-font-family-code);font-size:11px;font-variant-numeric:tabular-nums}
+.dshgg-diffAdd{color:var(--dsw-alias-code-diff-added)}
+.dshgg-diffDel{color:var(--dsw-alias-code-diff-deleted)}
 .dshgg-diffBadge{flex:none;padding:0 6px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .dshgg-diffBadge[data-kind="staged"]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}
 .dshgg-diffBadge[data-kind="untracked"]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}
@@ -593,6 +602,7 @@ window.__ModuleLoader__.load({
       if (code === 'network') return t('error.network')
       if (code === 'forbidden') return t('error.forbidden')
       if (code === 'not-a-repository') return t('noRepo.title')
+      if (code === 'discard-unborn') return t('error.discardUnborn')
       return failure.message || t('error.unknown')
     }
 
@@ -699,7 +709,7 @@ window.__ModuleLoader__.load({
       },
       h('span', { className: 'dshgg-status', 'data-status': letter }, letter),
       h('span', { className: 'dshgg-fileName' }, name),
-      entry.origPath === undefined ? null : h('span', { className: 'dshgg-fileArrow', title: entry.origPath }, baseName(entry.origPath)),
+      entry.origPath === undefined ? null : h('span', { className: 'dshgg-fileArrow', title: entry.origPath }, `\u2190 ${baseName(entry.origPath)}`),
       h('span', { className: 'dshgg-fileActions' }, actionButtons))
     }
 
@@ -938,6 +948,10 @@ window.__ModuleLoader__.load({
       const requestCommit = () => {
         if (message.trim() === '' || busyRef.current !== null) return
         if (stagedFiles.length === 0) {
+          if (files.length === 0) {
+            setActionFailure(makeFailure('nothing-staged', t('commit.nothing')))
+            return
+          }
           setConfirm({ kind: 'commitAll' })
           return
         }
@@ -1178,13 +1192,13 @@ window.__ModuleLoader__.load({
           detail: errorText(t, loadFailure),
           retryLabel: t('retry'),
           onRetry: () => { void loadStatus() },
-          dismissLabel: t('action.cancel'),
+          dismissLabel: t('action.dismiss'),
           onDismiss: () => setLoadFailure(null),
         }) : null,
         actionFailure !== null ? h(Banner, {
           title: t('error.title'),
           detail: errorText(t, actionFailure),
-          dismissLabel: t('action.cancel'),
+          dismissLabel: t('action.dismiss'),
           onDismiss: () => setActionFailure(null),
         }) : null,
         notice !== null ? h('div', { className: 'dshgg-notice', role: 'status' }, notice) : null,
@@ -1336,6 +1350,11 @@ window.__ModuleLoader__.load({
               ? null
               : h('span', { className: 'dshgg-diffFrom' }, t('diff.from', { path: params.origPath }))),
           h('span', { className: 'dshgg-diffBadge', 'data-kind': badgeKind }, badgeLabel),
+          state.phase === 'ready' && state.diff !== null && state.diff.binary !== true
+            ? h('span', { className: 'dshgg-diffStats' },
+              h('span', { className: 'dshgg-diffAdd' }, `+${state.diff.additions}`),
+              h('span', { className: 'dshgg-diffDel' }, `\u2212${state.diff.deletions}`))
+            : null,
           h(IconButton, {
             label: t('diff.refresh'),
             title: t('diff.refresh'),
@@ -1486,7 +1505,8 @@ window.__ModuleLoader__.load({
 
       try {
         ctx.inject(['shortcuts'], (shortcutCtx) => {
-          shortcutCtx.effect(() => shortcutCtx.shortcuts.register({
+          try {
+            shortcutCtx.effect(() => shortcutCtx.shortcuts.register({
             id: GIT_SHORTCUT,
             label: () => t('title'),
             aliases: ['git', 'source control', 'source-control'],
@@ -1507,7 +1527,10 @@ window.__ModuleLoader__.load({
                 run: () => { ctx.sidebarRight.openTabFromTarget(GIT_KIND, resolved) },
               }
             },
-          }), 'git-graph: toggle shortcut')
+            }), 'git-graph: toggle shortcut')
+          } catch (error) {
+            console.warn('[git-graph] shortcut registration failed', error)
+          }
         })
       } catch (error) {
         console.warn('[git-graph] shortcut registration failed', error)
