@@ -1,0 +1,5 @@
+# Inserts the Git source-control bundle. The bundle's one row provides both
+# halves: the Host route family and the browser tab types.
+- insert:
+    - id: git-graph
+      name: '@local/dsh-git-graph'

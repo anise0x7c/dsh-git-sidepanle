@@ -1,0 +1,13 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="dshGitGraphBranch" x1="8" y1="6" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4D6BFE"/>
+      <stop offset="1" stop-color="#8A5CFF"/>
+    </linearGradient>
+  </defs>
+  <path d="M11 14V22" stroke="url(#dshGitGraphBranch)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M11 14.2C11 19.2 15.6 18 20.8 18" stroke="url(#dshGitGraphBranch)" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="11" cy="10" r="3" stroke="url(#dshGitGraphBranch)" stroke-width="2.4"/>
+  <circle cx="11" cy="26" r="3" stroke="url(#dshGitGraphBranch)" stroke-width="2.4"/>
+  <circle cx="25" cy="18" r="3" stroke="url(#dshGitGraphBranch)" stroke-width="2.4"/>
+</svg>
