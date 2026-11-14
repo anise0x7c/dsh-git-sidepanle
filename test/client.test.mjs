@@ -245,3 +245,191 @@ test('components render without a browser and expose stable markup entry points'
   const restored = diffPanel({ sessionId: 'session-1', t: translate, useTabInfo: () => ({ sidebar: {}, panel: {}, tab: restoredTab }) })
   assert.equal(restored.props.className, 'dshgg-diffRoot')
 })
+
+/**
+ * Apply the bundle with a Captured context-menu service and no other plugin
+ * machinery; returns the recorded contribution and toast calls.
+ * @param {object} module - evaluated bundle module.
+ * @returns {{contributions: object[], notifications: object[]}} recorder.
+ */
+function applyWithMenuService(module) {
+  const contributions = []
+  const notifications = []
+  const shared = {
+    effect(callback) { callback(); return () => {} },
+    locale: { bind: () => translate, register: () => () => {} },
+    sidebarRightTabs: { register: () => () => {} },
+    slots: { inject(_key, callback) { callback(); return () => {} }, register: () => () => {} },
+    sidebarRight: { commandTarget: () => undefined, openTabFromTarget: () => {} },
+  }
+  module.apply({
+    ...shared,
+    inject(services, callback) {
+      if (!services.includes('contextMenus')) return
+      callback({
+        ...shared,
+        contextMenus: {
+          register(contribution) { contributions.push(contribution); return () => {} },
+          notify(text, success) { notifications.push({ text, success }) },
+        },
+      })
+    },
+  })
+  return { contributions, notifications }
+}
+
+const MENU_IDS = (actions) => actions.map((action) => action.id)
+
+test('the bundle contributes row, group, commit, and diff context-menu actions', async () => {
+  if (registration === undefined) {
+    globals = installGlobals()
+    await import('../client.js')
+    registration = globalThis.__gitGraphRegistration
+  }
+  const module = registration.factory((specifier) => {
+    if (specifier === 'react') return fakeReact
+    throw new Error(`unexpected require("${specifier}")`)
+  })
+  const { contributions } = applyWithMenuService(module)
+  assert.equal(contributions.length, 1)
+  const contribution = contributions[0]
+  assert.equal(contribution.id, 'git-graph.actions')
+  assert.equal(contribution.target, 'gitGraphItem')
+  assert.equal(typeof contribution.resolve, 'function')
+
+  const resolve = (value) => contribution.resolve({ kind: 'gitGraphItem', value }, new AbortController().signal)
+  const ids = (value) => MENU_IDS(resolve(value))
+
+  // Unstaged files offer opening, staging, discarding, and copying both paths.
+  const changes = resolve({ sessionId: 's1', kind: 'file', section: 'changes', path: 'src/app.js', cwd: '/repo' })
+  assert.deepEqual(MENU_IDS(changes), ['open', 'stage', 'discard', 'copy-relative', 'copy-path'])
+  assert.equal(changes[0].label, 'menu.openDiff')
+  assert.equal(changes[1].label, 'actions.stage')
+  assert.equal(changes[1].separatorBefore, true)
+  assert.equal(changes[2].label, 'actions.discard')
+  assert.equal(changes[2].danger, true)
+  assert.equal(changes[3].label, 'menu.copyRelativePath')
+  assert.equal(changes[4].label, 'menu.copyPath')
+
+  // Staged files offer unstaging instead of staging and discarding.
+  assert.deepEqual(ids({ sessionId: 's1', kind: 'file', section: 'staged', path: 'src/app.js', cwd: '/repo' }),
+    ['open', 'unstage', 'copy-relative', 'copy-path'])
+  // Conflicted files can be staged but not discarded.
+  assert.deepEqual(ids({ sessionId: 's1', kind: 'file', section: 'merge', path: 'merge.txt', cwd: '/repo' }),
+    ['open', 'stage', 'copy-relative', 'copy-path'])
+  // A captured target without a path or session resolves to nothing.
+  assert.deepEqual(ids({ sessionId: 's1', kind: 'file', section: 'changes' }), [])
+  assert.deepEqual(ids({ kind: 'file', section: 'changes', path: 'a' }), [])
+
+  // Folders act on everything below them.
+  const folder = resolve({ sessionId: 's1', kind: 'folder', section: 'changes', path: 'src', paths: ['src/a.js', 'src/b.js'], cwd: '/repo' })
+  assert.deepEqual(MENU_IDS(folder), ['stage-all', 'discard-all', 'copy-relative', 'copy-path'])
+  assert.deepEqual(ids({ sessionId: 's1', kind: 'folder', section: 'staged', path: 'src', paths: ['src/a.js'], cwd: '/repo' }),
+    ['unstage-all', 'copy-relative', 'copy-path'])
+  assert.deepEqual(ids({ sessionId: 's1', kind: 'folder', section: 'changes', path: 'src', paths: [] }), [])
+
+  // Group headers stage, unstage, discard, and refresh the whole group.
+  assert.deepEqual(ids({ sessionId: 's1', kind: 'section', section: 'changes' }), ['stage-all', 'discard-all', 'refresh'])
+  assert.deepEqual(ids({ sessionId: 's1', kind: 'section', section: 'staged' }), ['unstage-all', 'refresh'])
+  assert.deepEqual(ids({ sessionId: 's1', kind: 'section', section: 'merge' }), ['stage-all'])
+  const graphSection = resolve({ sessionId: 's1', kind: 'section', section: 'graph' })
+  assert.deepEqual(MENU_IDS(graphSection), ['refresh'])
+  assert.equal(graphSection[0].label, 'menu.refreshHistory')
+
+  // Commit rows copy the full identifier and the message.
+  const commit = resolve({ sessionId: 's1', kind: 'commit', oid: 'a'.repeat(40), shortOid: 'aaaaaaa', subject: 'Fix it' })
+  assert.deepEqual(MENU_IDS(commit), ['copy-id', 'copy-message'])
+  assert.equal(commit[0].label, 'menu.copyCommitId')
+  assert.equal(commit[1].label, 'menu.copyCommitSubject')
+
+  // The diff header copies the file's paths.
+  assert.deepEqual(ids({ sessionId: 's1', kind: 'diff', path: 'src/app.js', cwd: '/repo' }),
+    ['copy-relative', 'copy-path'])
+  assert.deepEqual(ids({ sessionId: 's1', kind: 'diff', path: 'src/app.js' }), ['copy-relative'])
+
+  // While the panel is busy, mutating actions are disabled and copies are not.
+  const busyFile = resolve({ sessionId: 's1', kind: 'file', section: 'changes', path: 'src/app.js', cwd: '/repo', busy: true })
+  assert.deepEqual(busyFile.filter((action) => action.disabled === true).map((action) => action.id),
+    ['open', 'stage', 'discard'])
+  assert.equal(busyFile.find((action) => action.id === 'copy-relative').disabled, undefined)
+  const busySection = resolve({ sessionId: 's1', kind: 'section', section: 'changes', busy: true })
+  assert.ok(busySection.every((action) => action.disabled === true))
+
+  // Menu labels exist in both dictionaries.
+  const dictionaries = []
+  module.apply({
+    effect(callback) { callback(); return () => {} },
+    locale: { bind: () => translate, register(namespace, value) { dictionaries.push(value); return () => {} } },
+    sidebarRightTabs: { register: () => () => {} },
+    slots: { inject(_key, callback) { callback() }, register: () => () => {} },
+    sidebarRight: { commandTarget: () => undefined, openTabFromTarget: () => {} },
+    inject() {},
+  })
+  const twoDictionaries = dictionaries[0]
+  for (const locale of ['en', 'zh']) {
+    for (const key of ['menu.openDiff', 'menu.copyRelativePath', 'menu.copyPath', 'menu.copyCommitId',
+      'menu.copyCommitSubject', 'menu.refreshHistory', 'menu.hint', 'menu.stale', 'menu.busy',
+      'menu.copiedRelativePath', 'menu.copiedPath', 'menu.copiedCommitId', 'menu.copiedCommitSubject',
+      'menu.copyFailed']) {
+      assert.equal(typeof twoDictionaries[locale][key], 'string', `${locale} is missing ${key}`)
+    }
+  }
+})
+
+test('menu copy actions write the clipboard and report the result', async () => {
+  if (registration === undefined) {
+    globals = installGlobals()
+    await import('../client.js')
+    registration = globalThis.__gitGraphRegistration
+  }
+  const module = registration.factory((specifier) => {
+    if (specifier === 'react') return fakeReact
+    throw new Error(`unexpected require("${specifier}")`)
+  })
+  const { contributions, notifications } = applyWithMenuService(module)
+  const contribution = contributions[0]
+  const resolve = (value) => contribution.resolve({ kind: 'gitGraphItem', value }, new AbortController().signal)
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  const copied = []
+  try {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { clipboard: { writeText: async (text) => { copied.push(text) } } },
+      configurable: true,
+    })
+    const file = resolve({ sessionId: 's1', kind: 'file', section: 'changes', path: 'src/app.js', cwd: '/repo' })
+    await file.find((action) => action.id === 'copy-relative').run()
+    assert.deepEqual(copied, ['src/app.js'])
+    assert.deepEqual(notifications.pop(), { text: 'menu.copiedRelativePath', success: true })
+    await file.find((action) => action.id === 'copy-path').run()
+    assert.deepEqual(copied, ['src/app.js', '/repo/src/app.js'])
+    assert.deepEqual(notifications.pop(), { text: 'menu.copiedPath', success: true })
+
+    const commit = resolve({ sessionId: 's1', kind: 'commit', oid: 'a'.repeat(40), shortOid: 'aaaaaaa', subject: 'Fix it' })
+    await commit.find((action) => action.id === 'copy-id').run()
+    assert.equal(copied.at(-1), 'a'.repeat(40))
+    assert.deepEqual(notifications.pop(), { text: 'menu.copiedCommitId', success: true })
+    await commit.find((action) => action.id === 'copy-message').run()
+    assert.equal(copied.at(-1), 'Fix it')
+    assert.deepEqual(notifications.pop(), { text: 'menu.copiedCommitSubject', success: true })
+
+    // A Windows working directory keeps native separators in the copied path.
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { clipboard: { writeText: async (text) => { copied.push(text) } } },
+      configurable: true,
+    })
+    const windowsFile = resolve({ sessionId: 's1', kind: 'file', section: 'changes', path: 'src/app.js', cwd: 'C:\\repo' })
+    await windowsFile.find((action) => action.id === 'copy-path').run()
+    assert.equal(copied.at(-1), 'C:\\repo\\src\\app.js')
+
+    // A refusing clipboard is reported instead of being ignored.
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { clipboard: { writeText: async () => { throw new Error('denied') } } },
+      configurable: true,
+    })
+    await file.find((action) => action.id === 'copy-relative').run()
+    assert.deepEqual(notifications.pop(), { text: 'menu.copyFailed', success: false })
+  } finally {
+    if (previousNavigator === undefined) delete globalThis.navigator
+    else Object.defineProperty(globalThis, 'navigator', previousNavigator)
+  }
+})

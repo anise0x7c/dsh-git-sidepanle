@@ -90,6 +90,48 @@ const HISTORY = {
 const BRANCHES = { branches: [{ name: 'main', current: true }, { name: 'feature/sidebar', current: false }] }
 
 /**
+ * Stand-in for the host's shared context-menu trigger bindings.
+ * Mirrors the shipped binding: existing handlers run first, a prevented event
+ * keeps its owner, pointer positions come from the event, and keyboard
+ * gestures use the row's lower edge.
+ * @returns {{opens: object[], useContextMenu: () => object}} recorder and hook.
+ */
+function createMenuMock() {
+  const opens = []
+  return {
+    opens,
+    useContextMenu: () => ({
+      getTriggerProps(target, handlers = {}) {
+        const show = (event, x, y) => {
+          if (event.defaultPrevented) return
+          event.preventDefault()
+          event.stopPropagation()
+          opens.push({ target, point: { x, y } })
+        }
+        return {
+          ...handlers,
+          tabIndex: handlers.tabIndex ?? 0,
+          onContextMenu(event) {
+            handlers.onContextMenu?.(event)
+            const rect = event.clientX === 0 && event.clientY === 0
+              ? event.currentTarget.getBoundingClientRect()
+              : undefined
+            show(event, rect?.left ?? event.clientX, rect?.bottom ?? event.clientY)
+          },
+          onKeyDown(event) {
+            handlers.onKeyDown?.(event)
+            if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return
+            if (!(event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey)) return
+            const rect = event.currentTarget.getBoundingClientRect()
+            show(event, rect.left, rect.bottom)
+          },
+        }
+      },
+    }),
+  }
+}
+
+/**
  * Build one harness, load the bundle components against it, and mount a panel.
  * @param {object} options - mount options.
  * @returns {object} mounted test context.
@@ -134,14 +176,16 @@ async function mountGit(options = {}) {
   const useTabInfo = () => ({ sidebar: { expanded: true, fullscreen: false }, panel: { id: 'pane-1', isFloating: false }, tab })
   const components = loadComponents(harness)
   const component = options.diff === true ? components.diff : components.git
+  const menu = createMenuMock()
   harness.setComponent(component, {
     sessionId: 'session-1',
     t: translate,
     useTabInfo: options.tabInfo ?? useTabInfo,
     useSessions: () => undefined,
+    ...(options.menus === false ? {} : { useContextMenu: menu.useContextMenu }),
   })
   await harness.render()
-  return { harness, calls, openedTabs, components, useTabInfo }
+  return { harness, calls, openedTabs, components, useTabInfo, menu }
 }
 
 function loadComponents(harness) {
@@ -150,8 +194,10 @@ function loadComponents(harness) {
     throw new Error(`unexpected require("${specifier}")`)
   })
   const registrations = []
-  module.apply({
-    effect(callback) { callback(); return () => {} },
+  const menuContributions = []
+  const notifications = []
+  const shared = {
+    effect(callback) { const cleanup = callback(); return () => { if (typeof cleanup === 'function') cleanup() } },
     locale: { bind: () => translate, register: () => () => {} },
     sidebarRightTabs: { register: () => () => {} },
     slots: {
@@ -159,7 +205,19 @@ function loadComponents(harness) {
       register(options, component) { registrations.push({ options, component }); return () => {} },
     },
     sidebarRight: { commandTarget: () => undefined, openTabFromTarget: () => {} },
-    inject() {},
+  }
+  module.apply({
+    ...shared,
+    inject(services, callback) {
+      if (!services.includes('contextMenus')) return
+      callback({
+        ...shared,
+        contextMenus: {
+          register(contribution) { menuContributions.push(contribution); return () => {} },
+          notify(text, success) { notifications.push({ text, success }) },
+        },
+      })
+    },
   })
   const bySeat = new Map(registrations.map(({ options, component }) => [`${options.name}:${options.key}`, component]))
   return {
@@ -167,6 +225,8 @@ function loadComponents(harness) {
     diff: bySeat.get('sidebar.right.pane.tab:@local/dsh-git-graph/diff'),
     gitTitle: bySeat.get('sidebar.right.pane.tab.title:@local/dsh-git-graph/git'),
     diffTitle: bySeat.get('sidebar.right.pane.tab.title:@local/dsh-git-graph/diff'),
+    contribution: menuContributions[0],
+    notifications,
   }
 }
 
@@ -407,4 +467,259 @@ test('the diff tab renders unified diff hunks from the Host', async () => {
   assert.match(text, /TWO/)
   assert.ok(calls.some((call) => call.op === 'diff' && call.path === 'src/app.js'))
   await harness.dispose()
+})
+
+/** Resolve the shared context-menu actions for a target captured by the mock. */
+function menuActions(components, target) {
+  assert.equal(typeof components.contribution?.resolve, 'function', 'no context-menu contribution was registered')
+  return components.contribution.resolve(target, new AbortController().signal)
+}
+
+/** Resolve and run one action id from a captured menu target. */
+function runMenuAction(components, target, id) {
+  const action = menuActions(components, target).find((candidate) => candidate.id === id)
+  assert.ok(action, `no context-menu action "${id}"`)
+  return action.run()
+}
+
+test('right-clicking a change binds its target without calling the Host', async () => {
+  const mounted = await mountGit()
+  const before = mounted.calls.length
+  const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js')
+  mounted.harness.contextmenu(rows[rows.length - 1], { clientX: 40, clientY: 60 })
+  assert.equal(mounted.menu.opens.length, 1)
+  assert.deepEqual(mounted.menu.opens[0].point, { x: 40, y: 60 })
+  const target = mounted.menu.opens[0].target
+  assert.equal(target.kind, 'gitGraphItem')
+  assert.equal(target.value.sessionId, 'session-1')
+  assert.equal(target.value.kind, 'file')
+  assert.equal(target.value.section, 'changes')
+  assert.equal(target.value.path, 'src/app.js')
+  assert.equal(target.value.cwd, '/repo')
+  assert.equal(mounted.calls.length, before, 'opening a menu must not call the Host')
+  assert.deepEqual(menuActions(mounted.components, target).map((action) => action.id),
+    ['open', 'stage', 'discard', 'copy-relative', 'copy-path'])
+  await mounted.harness.dispose()
+})
+
+test('a menu command stages through the panel like the inline control', async () => {
+  const mounted = await mountGit()
+  const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js')
+  mounted.harness.contextmenu(rows[rows.length - 1])
+  const target = mounted.menu.opens.at(-1).target
+  await runMenuAction(mounted.components, target, 'stage')
+  await mounted.harness.flush()
+  const stageCall = mounted.calls.find((call) => call.op === 'stage')
+  assert.deepEqual(stageCall?.paths, ['src/app.js'])
+  assert.ok(mounted.calls.filter((call) => call.op === 'status').length >= 2, 'the panel refreshes after a menu command')
+  await mounted.harness.dispose()
+})
+
+test('a menu discard keeps the panel confirmation before calling the Host', async () => {
+  const mounted = await mountGit()
+  const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js')
+  mounted.harness.contextmenu(rows[rows.length - 1])
+  await runMenuAction(mounted.components, mounted.menu.opens.at(-1).target, 'discard')
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'discard').length, 0)
+  assert.match(mounted.harness.text(), /confirm\.discardTitle/)
+  mounted.harness.click(buttonByText(mounted.harness, 'confirm.discard'))
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.find((call) => call.op === 'discard')?.path, 'src/app.js')
+  await mounted.harness.dispose()
+})
+
+test('a group header menu stages every change in the group', async () => {
+  const mounted = await mountGit()
+  const section = mounted.harness.findAll((element) => element.props?.['data-section'] === 'changes')[0]
+  assert.ok(section, 'no changes group rendered')
+  mounted.harness.contextmenu(section.children[0])
+  const target = mounted.menu.opens.at(-1).target
+  assert.equal(target.value.kind, 'section')
+  assert.equal(target.value.section, 'changes')
+  assert.deepEqual(menuActions(mounted.components, target).map((action) => action.id),
+    ['stage-all', 'discard-all', 'refresh'])
+  await runMenuAction(mounted.components, target, 'stage-all')
+  await mounted.harness.flush()
+  const stageCall = mounted.calls.find((call) => call.op === 'stage')
+  assert.deepEqual([...stageCall.paths].sort(), ['README.md', 'src/app.js'])
+  await mounted.harness.dispose()
+})
+
+test('the keyboard context-menu gesture binds the focused row', async () => {
+  const mounted = await mountGit()
+  const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js')
+  mounted.harness.keydown(rows[rows.length - 1], { key: 'F10', shiftKey: true })
+  assert.equal(mounted.menu.opens.length, 1)
+  assert.equal(mounted.menu.opens[0].target.value.path, 'src/app.js')
+  assert.equal(mounted.menu.opens[0].target.value.kind, 'file')
+  // Enter still opens the diff instead of a menu.
+  mounted.harness.keydown(rows[rows.length - 1], { key: 'Enter' })
+  assert.equal(mounted.menu.opens.length, 1)
+  assert.equal(mounted.openedTabs.length, 1)
+  await mounted.harness.dispose()
+})
+
+test('a menu command for another session is ignored', async () => {
+  const mounted = await mountGit()
+  const target = { kind: 'gitGraphItem', value: { sessionId: 'other-session', kind: 'file', section: 'changes', path: 'src/app.js', cwd: '/repo' } }
+  await runMenuAction(mounted.components, target, 'stage')
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'stage').length, 0)
+  await mounted.harness.dispose()
+})
+
+test('commit rows and the diff header bind their copy targets', async () => {
+  const mounted = await mountGit()
+  const graphRow = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-graphRow'))[0]
+  assert.ok(graphRow, 'no graph row rendered')
+  mounted.harness.contextmenu(graphRow, { clientX: 1, clientY: 2 })
+  const commitTarget = mounted.menu.opens.at(-1).target
+  assert.equal(commitTarget.value.kind, 'commit')
+  assert.equal(commitTarget.value.oid, 'a'.repeat(40))
+  assert.equal(commitTarget.value.subject, 'Fix the sidebar')
+  assert.deepEqual(menuActions(mounted.components, commitTarget).map((action) => action.id), ['copy-id', 'copy-message'])
+  await mounted.harness.dispose()
+
+  const harness = createHarness({
+    fetch: async (_url, init) => {
+      const request = JSON.parse(init.body)
+      const value = request.op === 'diff'
+        ? { path: 'src/app.js', staged: false, untracked: false, binary: false, truncated: false, additions: 0, deletions: 0, hunks: [] }
+        : STATUS
+      return { ok: true, status: 200, json: async () => ({ ok: true, value }) }
+    },
+    component: null,
+    props: {},
+  })
+  const components = loadComponents(harness)
+  const menu = createMenuMock()
+  const tab = {
+    id: 'tab-2',
+    title: 'Diff',
+    visible: true,
+    signal: new AbortController().signal,
+    actions: { openTab: () => {}, openResource: () => {}, close: () => {}, bindCommands: () => () => {} },
+    navigation: { address: 'sidebar://git-diff', params: { path: 'src/app.js', staged: false, untracked: false, status: 'M', cwd: '/repo' }, revision: 1 },
+  }
+  harness.setComponent(components.diff, {
+    sessionId: 'session-1',
+    t: translate,
+    useTabInfo: () => ({ sidebar: { expanded: true }, panel: { id: 'pane-1', isFloating: false }, tab }),
+    useContextMenu: menu.useContextMenu,
+  })
+  await harness.render()
+  const header = harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-diffHeader'))[0]
+  assert.ok(header, 'no diff header rendered')
+  harness.contextmenu(header, { clientX: 3, clientY: 4 })
+  const diffTarget = menu.opens.at(-1).target
+  assert.equal(diffTarget.value.kind, 'diff')
+  assert.equal(diffTarget.value.path, 'src/app.js')
+  assert.equal(diffTarget.value.cwd, '/repo')
+  assert.deepEqual(menuActions(components, diffTarget).map((action) => action.id), ['copy-relative', 'copy-path'])
+  await harness.dispose()
+})
+
+test('without host context menus the inline controls keep working', async () => {
+  const mounted = await mountGit({ menus: false })
+  const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js')
+  const row = rows[rows.length - 1]
+  assert.equal(row.props.onContextMenu, undefined)
+  mounted.harness.click(buttonInside(row, 'actions.stage'))
+  await mounted.harness.flush()
+  assert.deepEqual(mounted.calls.find((call) => call.op === 'stage')?.paths, ['src/app.js'])
+  await mounted.harness.dispose()
+})
+
+test('menu copies absolute paths from the repository root, not the Session directory', async () => {
+  const status = {
+    repo: {
+      root: '/repo',
+      cwd: '/repo/apps/web',
+      branch: 'main',
+      detached: false,
+      unborn: false,
+      upstream: null,
+      ahead: 0,
+      behind: 0,
+      headOid: '0123456789abcdef',
+    },
+    files: [{ kind: 'ordinary', x: '.', y: 'M', path: 'apps/web/src/app.js', conflict: false, untracked: false }],
+  }
+  const mounted = await mountGit({ status })
+  const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'apps/web/src/app.js')
+  mounted.harness.contextmenu(rows[rows.length - 1])
+  const target = mounted.menu.opens.at(-1).target
+  assert.equal(target.value.cwd, '/repo')
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  const copied = []
+  try {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { clipboard: { writeText: async (text) => { copied.push(text) } } },
+      configurable: true,
+    })
+    await runMenuAction(mounted.components, target, 'copy-path')
+    assert.equal(copied.at(-1), '/repo/apps/web/src/app.js')
+  } finally {
+    if (previousNavigator === undefined) delete globalThis.navigator
+    else Object.defineProperty(globalThis, 'navigator', previousNavigator)
+  }
+  mounted.harness.click(rows[rows.length - 1])
+  assert.equal(mounted.openedTabs[0].options.params.cwd, '/repo')
+  await mounted.harness.dispose()
+})
+
+test('a menu command for a vanished change reports it instead of doing nothing', async () => {
+  const mounted = await mountGit()
+  const target = {
+    kind: 'gitGraphItem',
+    value: { sessionId: 'session-1', kind: 'file', section: 'changes', path: 'gone.js', cwd: '/repo' },
+  }
+  await runMenuAction(mounted.components, target, 'stage')
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'stage').length, 0)
+  assert.match(mounted.harness.text(), /menu\.stale/)
+  await mounted.harness.dispose()
+})
+
+test('a group discard uses the group confirmation wording', async () => {
+  const status = {
+    repo: STATUS.repo,
+    files: [{ kind: 'ordinary', x: '.', y: 'M', path: 'only.js', conflict: false, untracked: false }],
+  }
+  const mounted = await mountGit({ status })
+  const section = mounted.harness.findAll((element) => element.props?.['data-section'] === 'changes')[0]
+  mounted.harness.contextmenu(section.children[0])
+  const target = mounted.menu.opens.at(-1).target
+  await runMenuAction(mounted.components, target, 'discard-all')
+  await mounted.harness.flush()
+  assert.match(mounted.harness.text(), /confirm\.discardAllTitle/)
+  await mounted.harness.dispose()
+})
+
+test('commit rows are keyboard focus stops with menu semantics', async () => {
+  const mounted = await mountGit()
+  const graphRow = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-graphRow'))[0]
+  assert.equal(graphRow.props.tabIndex, 0)
+  assert.equal(graphRow.props['aria-haspopup'], 'menu')
+  mounted.harness.keydown(graphRow, { key: 'ContextMenu' })
+  assert.equal(mounted.menu.opens.length, 1)
+  assert.equal(mounted.menu.opens[0].target.value.kind, 'commit')
+  await mounted.harness.dispose()
+})
+
+test('a menu command from another pane of the same Session is ignored', async () => {
+  const mounted = await mountGit()
+  const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js')
+  mounted.harness.contextmenu(rows[rows.length - 1])
+  const target = mounted.menu.opens.at(-1).target
+  assert.equal(typeof target.value.panelId, 'string')
+  const foreign = { kind: 'gitGraphItem', value: { ...target.value, panelId: 'git-panel-other' } }
+  await runMenuAction(mounted.components, foreign, 'stage')
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'stage').length, 0)
+  await runMenuAction(mounted.components, target, 'stage')
+  await mounted.harness.flush()
+  assert.deepEqual(mounted.calls.find((call) => call.op === 'stage')?.paths, ['src/app.js'])
+  await mounted.harness.dispose()
 })

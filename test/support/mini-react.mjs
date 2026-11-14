@@ -216,6 +216,35 @@ export function createHarness(options) {
     return handler({ stopPropagation() {}, preventDefault() {}, target: {}, ...event })
   }
 
+  function contextmenu(element, event = {}) {
+    const handler = element?.props?.onContextMenu
+    if (typeof handler !== 'function') throw new Error('element has no onContextMenu handler')
+    return handler({
+      stopPropagation() {},
+      preventDefault() {},
+      target: {},
+      currentTarget: { getBoundingClientRect: () => ({ left: 0, bottom: 0 }), focus() {} },
+      clientX: 0,
+      clientY: 0,
+      defaultPrevented: false,
+      ...event,
+    })
+  }
+
+  function keydown(element, event = {}) {
+    const handler = element?.props?.onKeyDown
+    if (typeof handler !== 'function') throw new Error('element has no onKeyDown handler')
+    return handler({
+      stopPropagation() {},
+      preventDefault() {},
+      target: {},
+      currentTarget: { getBoundingClientRect: () => ({ left: 0, bottom: 0 }), focus() {} },
+      key: '',
+      repeat: false,
+      ...event,
+    })
+  }
+
   function change(element, value) {
     const handler = element?.props?.onChange
     if (typeof handler !== 'function') throw new Error('element has no onChange handler')
@@ -243,6 +272,8 @@ export function createHarness(options) {
     findAll,
     text,
     click,
+    contextmenu,
+    keydown,
     change,
     dispose,
     setComponent(component, props) {

@@ -23,6 +23,9 @@ window.__ModuleLoader__.load({
     const RPC_PATH = 'api/dsh-git-graph/rpc'
     const POLL_INTERVAL_MS = 5000
     const MAX_RENDERED_DIFF_LINES = 4000
+    const MENU_TARGET = 'gitGraphItem'
+    const MENU_CONTRIBUTION_ID = 'git-graph.actions'
+    let panelSequence = 0
 
     // ------------------------------------------------------------------
     // Copy
@@ -67,6 +70,20 @@ window.__ModuleLoader__.load({
       'actions.stageAll': 'Stage all changes',
       'actions.unstageAll': 'Unstage all changes',
       'actions.discardAll': 'Discard all changes',
+      'menu.openDiff': 'Open changes',
+      'menu.copyRelativePath': 'Copy relative path',
+      'menu.copyPath': 'Copy path',
+      'menu.copyCommitId': 'Copy commit ID',
+      'menu.copyCommitSubject': 'Copy commit subject',
+      'menu.refreshHistory': 'Refresh history',
+      'menu.hint': 'Right-click for actions',
+      'menu.stale': 'That change is no longer available.',
+      'menu.busy': 'Wait for the current Git operation to finish.',
+      'menu.copiedRelativePath': 'Relative path copied',
+      'menu.copiedPath': 'Path copied',
+      'menu.copiedCommitId': 'Commit ID copied',
+      'menu.copiedCommitSubject': 'Commit subject copied',
+      'menu.copyFailed': 'Could not copy to the clipboard.',
       'confirm.discardTitle': 'Discard changes to {name}?',
       'confirm.discardDesc': 'The file is restored to its committed version. This cannot be undone.',
       'confirm.deleteUntrackedDesc': 'The untracked file is deleted. This cannot be undone.',
@@ -156,6 +173,20 @@ window.__ModuleLoader__.load({
       'actions.stageAll': '暂存全部更改',
       'actions.unstageAll': '取消暂存全部更改',
       'actions.discardAll': '放弃全部更改',
+      'menu.openDiff': '查看更改',
+      'menu.copyRelativePath': '复制相对路径',
+      'menu.copyPath': '复制路径',
+      'menu.copyCommitId': '复制提交 ID',
+      'menu.copyCommitSubject': '复制提交主题',
+      'menu.refreshHistory': '刷新提交历史',
+      'menu.hint': '右键查看更多操作',
+      'menu.stale': '该更改已不存在。',
+      'menu.busy': '请等待当前 Git 操作完成。',
+      'menu.copiedRelativePath': '已复制相对路径',
+      'menu.copiedPath': '已复制路径',
+      'menu.copiedCommitId': '已复制提交 ID',
+      'menu.copiedCommitSubject': '已复制提交主题',
+      'menu.copyFailed': '无法复制到剪贴板。',
       'confirm.discardTitle': '要放弃对 {name} 的更改吗？',
       'confirm.discardDesc': '文件将恢复为已提交的版本，此操作无法撤销。',
       'confirm.deleteUntrackedDesc': '未跟踪的文件将被删除，此操作无法撤销。',
@@ -293,6 +324,7 @@ window.__ModuleLoader__.load({
 .dshgg-cleanDesc{font-size:12px}
 .dshgg-graphRow{display:flex;gap:6px;padding:2px 8px 2px 4px;min-width:0;align-items:flex-start;border-radius:0}
 .dshgg-graphRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dshgg-graphRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
 .dshgg-graphPrefix{margin:0;flex:none;font-family:var(--ds-font-family-code);font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);white-space:pre;user-select:none}
 .dshgg-graphBody{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .dshgg-graphSubject{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary)}
@@ -607,6 +639,211 @@ window.__ModuleLoader__.load({
     }
 
     // ------------------------------------------------------------------
+    // Context menus
+    // ------------------------------------------------------------------
+
+    /**
+     * Menu commands are emitted by the host's shared context-menu overlay,
+     * outside this React tree, so actions only describe what to do. The mounted
+     * panel executes them through its own confirmation, busy, failure, and
+     * refresh paths, which keeps the two entry points identical.
+     */
+    function createCommandBus() {
+      const listeners = new Set()
+      return {
+        emit(command) {
+          for (const listener of [...listeners]) {
+            try {
+              listener(command)
+            } catch (error) {
+              console.warn('[git-graph] context menu command failed', error)
+            }
+          }
+        },
+        subscribe(listener) {
+          listeners.add(listener)
+          return () => { listeners.delete(listener) }
+        },
+      }
+    }
+
+    const panelCommands = createCommandBus()
+
+    /** Wrap the slot-provided hook into a plain factory, or null without host menus. */
+    function bindMenuTrigger(useContextMenu) {
+      if (typeof useContextMenu !== 'function') return null
+      let bindings
+      try {
+        bindings = useContextMenu()
+      } catch (error) {
+        console.warn('[git-graph] context menus are unavailable', error)
+        return null
+      }
+      if (bindings === null || bindings === undefined || typeof bindings.getTriggerProps !== 'function') return null
+      return (target, handlers) => bindings.getTriggerProps(target, handlers)
+    }
+
+    function menuTarget(sessionId, kind, detail) {
+      return { kind: MENU_TARGET, value: { sessionId, kind, ...detail } }
+    }
+
+    function collectTreePaths(node) {
+      if (node.type !== 'folder') return [node.path]
+      const paths = []
+      for (const child of node.children) paths.push(...collectTreePaths(child))
+      return paths
+    }
+
+    function absolutePath(cwd, path) {
+      if (typeof cwd !== 'string' || cwd === '') return path
+      const base = cwd.replace(/[\\/]+$/, '')
+      if (base === '') return path
+      const windows = base.includes('\\') && !base.includes('/')
+      return windows ? `${base}\\${path.replaceAll('/', '\\')}` : `${base}/${path}`
+    }
+
+    async function copyToClipboard(text) {
+      const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
+      if (clipboard !== undefined && clipboard !== null && typeof clipboard.writeText === 'function') {
+        try {
+          await clipboard.writeText(text)
+          return true
+        } catch (error) {
+          // Fall through to the selection based copy used by older WebViews.
+        }
+      }
+      try {
+        if (typeof document === 'undefined' || typeof document.execCommand !== 'function') return false
+        const area = document.createElement('textarea')
+        area.value = text
+        area.setAttribute('readonly', '')
+        area.style.position = 'fixed'
+        area.style.top = '-1000px'
+        document.body.appendChild(area)
+        area.select()
+        const copied = document.execCommand('copy') !== false
+        document.body.removeChild(area)
+        return copied
+      } catch (error) {
+        return false
+      }
+    }
+
+    async function copyAndReport(t, notify, text, successKey) {
+      const copied = await copyToClipboard(String(text))
+      if (typeof notify !== 'function') return
+      try {
+        notify(copied ? t(successKey) : t('menu.copyFailed'), copied)
+      } catch (error) {
+        console.warn('[git-graph] copy feedback failed', error)
+      }
+    }
+
+    function menuAction(id, label, run, extra = {}) {
+      return { id, label, run, ...extra }
+    }
+
+    /**
+     * Resolve the actions for one captured context-menu target.
+     * @param value - captured row data.
+     * @param t - locale binder.
+     * @param notify - host toast for clipboard feedback.
+     * @returns ordered actions for the shared overlay.
+     */
+    function resolveMenuActions(value, t, notify) {
+      if (value === null || value === undefined || typeof value !== 'object') return []
+      const sessionId = value.sessionId
+      if (typeof sessionId !== 'string' || sessionId === '') return []
+      const command = (payload) => () => panelCommands.emit({ sessionId, panelId: value.panelId, ...payload })
+      const copy = (text, successKey) => () => copyAndReport(t, notify, text, successKey)
+      const blocked = value.busy === true ? { disabled: true } : {}
+
+      if (value.kind === 'file') {
+        const path = value.path
+        if (typeof path !== 'string' || path === '') return []
+        const section = value.section === 'staged' || value.section === 'merge' ? value.section : 'changes'
+        const actions = [menuAction('open', t('menu.openDiff'), command({ type: 'open', section, path }), blocked)]
+        if (section === 'staged') {
+          actions.push(menuAction('unstage', t('actions.unstage'), command({ type: 'unstage', paths: [path] }), { separatorBefore: true, ...blocked }))
+        } else {
+          actions.push(menuAction('stage', t('actions.stage'), command({ type: 'stage', paths: [path] }), { separatorBefore: true, ...blocked }))
+          if (section !== 'merge') actions.push(menuAction('discard', t('actions.discard'), command({ type: 'discard', paths: [path], single: true }), { danger: true, ...blocked }))
+        }
+        actions.push(menuAction('copy-relative', t('menu.copyRelativePath'), copy(path, 'menu.copiedRelativePath'), { separatorBefore: true }))
+        if (typeof value.cwd === 'string' && value.cwd !== '') {
+          actions.push(menuAction('copy-path', t('menu.copyPath'), copy(absolutePath(value.cwd, path), 'menu.copiedPath')))
+        }
+        return actions
+      }
+
+      if (value.kind === 'folder') {
+        const folder = value.path
+        const paths = Array.isArray(value.paths) ? value.paths.filter((entry) => typeof entry === 'string' && entry !== '') : []
+        if (typeof folder !== 'string' || folder === '' || paths.length === 0) return []
+        const section = value.section === 'staged' || value.section === 'merge' ? value.section : 'changes'
+        const actions = []
+        if (section === 'staged') {
+          actions.push(menuAction('unstage-all', t('actions.unstage'), command({ type: 'unstage', paths }), blocked))
+        } else {
+          actions.push(menuAction('stage-all', t('actions.stage'), command({ type: 'stage', paths }), blocked))
+          if (section !== 'merge') actions.push(menuAction('discard-all', t('actions.discard'), command({ type: 'discard', paths }), { danger: true, ...blocked }))
+        }
+        actions.push(menuAction('copy-relative', t('menu.copyRelativePath'), copy(folder, 'menu.copiedRelativePath'), { separatorBefore: true }))
+        if (typeof value.cwd === 'string' && value.cwd !== '') {
+          actions.push(menuAction('copy-path', t('menu.copyPath'), copy(absolutePath(value.cwd, folder), 'menu.copiedPath')))
+        }
+        return actions
+      }
+
+      if (value.kind === 'section') {
+        const section = value.section
+        if (section === 'changes') {
+          return [
+            menuAction('stage-all', t('actions.stageAll'), command({ type: 'stageSection', section }), blocked),
+            menuAction('discard-all', t('actions.discardAll'), command({ type: 'discardSection', section }), { danger: true, ...blocked }),
+            menuAction('refresh', t('refresh'), command({ type: 'refresh' }), { separatorBefore: true, ...blocked }),
+          ]
+        }
+        if (section === 'staged') {
+          return [
+            menuAction('unstage-all', t('actions.unstageAll'), command({ type: 'unstageSection', section }), blocked),
+            menuAction('refresh', t('refresh'), command({ type: 'refresh' }), { separatorBefore: true, ...blocked }),
+          ]
+        }
+        if (section === 'merge') {
+          return [menuAction('stage-all', t('actions.stageAll'), command({ type: 'stageSection', section }), blocked)]
+        }
+        if (section === 'graph') {
+          return [menuAction('refresh', t('menu.refreshHistory'), command({ type: 'refresh' }), blocked)]
+        }
+        return []
+      }
+
+      if (value.kind === 'commit') {
+        const actions = []
+        if (typeof value.oid === 'string' && value.oid !== '') {
+          actions.push(menuAction('copy-id', t('menu.copyCommitId'), copy(value.oid, 'menu.copiedCommitId')))
+        }
+        if (typeof value.subject === 'string' && value.subject !== '') {
+          actions.push(menuAction('copy-message', t('menu.copyCommitSubject'), copy(value.subject, 'menu.copiedCommitSubject')))
+        }
+        return actions
+      }
+
+      if (value.kind === 'diff') {
+        const path = value.path
+        if (typeof path !== 'string' || path === '') return []
+        const actions = [menuAction('copy-relative', t('menu.copyRelativePath'), copy(path, 'menu.copiedRelativePath'))]
+        if (typeof value.cwd === 'string' && value.cwd !== '') {
+          actions.push(menuAction('copy-path', t('menu.copyPath'), copy(absolutePath(value.cwd, path), 'menu.copiedPath')))
+        }
+        return actions
+      }
+
+      return []
+    }
+
+    // ------------------------------------------------------------------
     // Small building blocks
     // ------------------------------------------------------------------
 
@@ -624,8 +861,12 @@ window.__ModuleLoader__.load({
 
     function Section(props) {
       const actions = props.actions === undefined || props.actions === null ? null : props.actions
+      const menuTrigger = typeof props.menuTrigger === 'function' ? props.menuTrigger : null
+      const menuProps = menuTrigger === null || props.menuTarget === undefined
+        ? null
+        : menuTrigger(props.menuTarget, { tabIndex: -1, 'aria-haspopup': 'menu', title: props.menuHint })
       return h('section', { className: 'dshgg-section', 'data-section': props.id, 'aria-label': props.title },
-        h('div', { className: 'dshgg-sectionHeader' },
+        h('div', { className: 'dshgg-sectionHeader', ...(menuProps ?? {}) },
           h('button', {
             type: 'button',
             className: 'dshgg-sectionToggle',
@@ -641,6 +882,18 @@ window.__ModuleLoader__.load({
     }
 
     function FolderRow(props) {
+      const keyboard = {
+        onKeyDown: (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            props.onToggle()
+          }
+        },
+      }
+      const menuTrigger = typeof props.menuTrigger === 'function' ? props.menuTrigger : null
+      const rowProps = menuTrigger === null || props.menuTarget === undefined
+        ? keyboard
+        : menuTrigger(props.menuTarget, { ...keyboard, 'aria-haspopup': 'menu', title: props.menuHint })
       return h('div', {
         className: 'dshgg-row dshgg-folderRow',
         style: { paddingLeft: `${4 + props.depth * 10}px` },
@@ -648,12 +901,7 @@ window.__ModuleLoader__.load({
         tabIndex: 0,
         'aria-expanded': props.open,
         onClick: props.onToggle,
-        onKeyDown: (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            props.onToggle()
-          }
-        },
+        ...rowProps,
       },
       h('span', { className: 'dshgg-chevron', 'data-open': props.open === true ? 'true' : 'false' },
         h(ChevronRightIcon, { size: 12 })),
@@ -692,6 +940,18 @@ window.__ModuleLoader__.load({
         }
       }
       const title = entry.origPath === undefined ? entry.path : `${entry.origPath} → ${entry.path}`
+      const keyboard = {
+        onKeyDown: (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            props.onOpen(entry)
+          }
+        },
+      }
+      const menuTrigger = typeof props.menuTrigger === 'function' ? props.menuTrigger : null
+      const rowProps = menuTrigger === null || props.menuTarget === undefined
+        ? keyboard
+        : menuTrigger(props.menuTarget, { ...keyboard, 'aria-haspopup': 'menu' })
       return h('div', {
         className: 'dshgg-row dshgg-fileRow',
         style: { paddingLeft: `${4 + props.depth * 10}px` },
@@ -700,12 +960,7 @@ window.__ModuleLoader__.load({
         'aria-label': `${props.t(statusKey(letter))} ${entry.path}`,
         title,
         onClick: () => props.onOpen(entry),
-        onKeyDown: (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            props.onOpen(entry)
-          }
-        },
+        ...rowProps,
       },
       h('span', { className: 'dshgg-status', 'data-status': letter }, letter),
       h('span', { className: 'dshgg-fileName' }, name),
@@ -715,6 +970,7 @@ window.__ModuleLoader__.load({
 
     function renderTree(nodes, depth, context) {
       const rows = []
+      const target = (kind, detail) => (context.menuTarget === undefined ? undefined : context.menuTarget(kind, detail))
       for (const node of nodes) {
         if (node.type === 'folder') {
           const open = context.collapsed[node.path] !== true
@@ -724,6 +980,9 @@ window.__ModuleLoader__.load({
             depth,
             open,
             onToggle: () => context.onToggleFolder(node.path),
+            menuTrigger: context.menuTrigger,
+            menuHint: context.menuHint,
+            menuTarget: target('folder', { section: context.mode, path: node.path, paths: collectTreePaths(node) }),
           }))
           if (open) rows.push(...renderTree(node.children, depth + 1, context))
           continue
@@ -740,6 +999,8 @@ window.__ModuleLoader__.load({
           onStage: context.onStage,
           onUnstage: context.onUnstage,
           onDiscard: context.onDiscard,
+          menuTrigger: context.menuTrigger,
+          menuTarget: target('file', { section: context.mode, path: node.entry.path }),
         }))
       }
       return rows
@@ -776,6 +1037,11 @@ window.__ModuleLoader__.load({
       const tab = tabInfo.tab
       const visible = tab.visible !== false
       const call = useMemo(() => createCaller(sessionId), [sessionId])
+      const menuTrigger = useMemo(
+        () => (typeof sessionId === 'string' && sessionId !== '' ? bindMenuTrigger(props.useContextMenu) : null),
+        [props.useContextMenu, sessionId],
+      )
+      const panelId = useMemo(() => `git-panel-${++panelSequence}`, [])
 
       const [status, setStatus] = useState(null)
       const [loading, setLoading] = useState(true)
@@ -800,10 +1066,16 @@ window.__ModuleLoader__.load({
       const confirmRef = useRef(null)
       const mounted = useRef(true)
       const wrapRef = useRef(null)
+      const commandRef = useRef(null)
       busyRef.current = busy
       confirmRef.current = confirm
 
       useEffect(() => () => { mounted.current = false }, [])
+
+      useEffect(() => panelCommands.subscribe((command) => {
+        const handler = commandRef.current
+        if (typeof handler === 'function') handler(command)
+      }), [])
 
       const loadStatus = useCallback(async (options = {}) => {
         if (inFlight.current) return
@@ -916,7 +1188,11 @@ window.__ModuleLoader__.load({
       }, [loadStatus, loadGraph])
 
       const repo = status?.repo ?? null
-      const cwd = status?.cwd
+      // The change list uses repository-relative paths, so the directory that
+      // makes them absolute is the repository root, not the Session directory.
+      // A no-repository status carries only the Session directory.
+      const sessionDirectory = status?.cwd ?? status?.repo?.cwd
+      const repoRoot = repo?.root ?? sessionDirectory
       const files = status?.files ?? []
       const mergeFiles = useMemo(() => files.filter((entry) => entry.conflict === true), [files])
       const stagedFiles = useMemo(() => files.filter((entry) => isStaged(entry)), [files])
@@ -941,9 +1217,10 @@ window.__ModuleLoader__.load({
             untracked: entry.untracked === true,
             status: mode === 'staged' ? statusLetter(entry.x) : entry.untracked === true ? 'U' : statusLetter(entry.y),
             origPath: entry.origPath,
+            cwd: repoRoot ?? undefined,
           },
         })
-      }, [tab.actions])
+      }, [tab.actions, repoRoot])
 
       const requestCommit = () => {
         if (message.trim() === '' || busyRef.current !== null) return
@@ -1013,6 +1290,98 @@ window.__ModuleLoader__.load({
         void loadGraph()
       }
 
+      // Menu actions run in the host overlay, outside this tree. Executing their
+      // commands here keeps confirmation, busy state, errors, and refresh shared
+      // with the equivalent inline controls.
+      const reportStale = () => setNotice(t('menu.stale'))
+      commandRef.current = (command) => {
+        if (command === null || typeof command !== 'object') return
+        if (typeof command.sessionId === 'string' && command.sessionId !== sessionId) return
+        if (typeof command.panelId === 'string' && command.panelId !== panelId) return
+        if (repo === null) return
+        const paths = Array.isArray(command.paths) ? command.paths.filter((path) => typeof path === 'string') : []
+        const matches = (entry) => paths.includes(entry.path)
+        if (command.type === 'refresh') {
+          refreshAll()
+          return
+        }
+        if (busyRef.current !== null) {
+          setNotice(t('menu.busy'))
+          return
+        }
+        if (command.type === 'open') {
+          const pools = { staged: stagedFiles, merge: mergeFiles, changes: changedFiles }
+          const preferred = pools[command.section] ?? changedFiles
+          let section = command.section === 'staged' ? 'staged' : 'changes'
+          let entry = preferred.find((candidate) => candidate.path === command.path)
+          if (entry === undefined) {
+            for (const [candidateSection, pool] of Object.entries(pools)) {
+              entry = pool.find((candidate) => candidate.path === command.path)
+              if (entry !== undefined) {
+                section = candidateSection === 'staged' ? 'staged' : 'changes'
+                break
+              }
+            }
+          }
+          if (entry === undefined) {
+            reportStale()
+            return
+          }
+          openDiff(entry, section)
+          return
+        }
+        if (command.type === 'stage' || command.type === 'stageSection') {
+          const entries = command.type === 'stageSection'
+            ? command.section === 'merge' ? mergeFiles : changedFiles
+            : files.filter((entry) => matches(entry) && entry.conflict === true)
+              .concat(files.filter((entry) => matches(entry) && isUnstaged(entry)))
+          if (entries.length === 0) {
+            reportStale()
+            return
+          }
+          void stage(entries)
+          return
+        }
+        if (command.type === 'unstage' || command.type === 'unstageSection') {
+          const entries = command.type === 'unstageSection'
+            ? stagedFiles
+            : files.filter((entry) => matches(entry) && isStaged(entry))
+          if (entries.length === 0) {
+            reportStale()
+            return
+          }
+          void unstage(entries)
+          return
+        }
+        if (command.type === 'discard') {
+          const entries = changedFiles.filter(matches)
+          if (entries.length === 0) {
+            reportStale()
+            return
+          }
+          setConfirm(command.single === true && entries.length === 1
+            ? { kind: 'discard', entry: entries[0] }
+            : { kind: 'discardAll', entries })
+          return
+        }
+        if (command.type === 'discardSection') {
+          if (changedFiles.length === 0) {
+            reportStale()
+            return
+          }
+          setConfirm({ kind: 'discardAll', entries: changedFiles })
+        }
+      }
+
+      const menuSection = (section) => menuTarget(sessionId, 'section', { section, busy: busy !== null, panelId })
+      const menuCommit = (commit) => menuTarget(sessionId, 'commit', {
+        oid: commit.oid,
+        shortOid: commit.shortOid,
+        subject: commit.subject,
+      })
+      const menuTreeTarget = (kind, detail) => menuTarget(sessionId, kind, { ...detail, cwd: repoRoot, busy: busy !== null, panelId })
+      const menu = { trigger: menuTrigger, sectionTarget: menuSection, commitTarget: menuCommit }
+
       const branchLabel = repo === null
         ? null
         : repo.detached === true
@@ -1059,6 +1428,9 @@ window.__ModuleLoader__.load({
         onStage: (entry) => { void stage([entry]) },
         onUnstage: (entry) => { void unstage([entry]) },
         onDiscard: (entry) => setConfirm({ kind: 'discard', entry }),
+        menuTrigger,
+        menuTarget: menuTreeTarget,
+        menuHint: t('menu.hint'),
         mode: 'changes',
       }
 
@@ -1089,7 +1461,7 @@ window.__ModuleLoader__.load({
           return h(EmptyState, {
             icon: h(GitBranchIcon, { size: 26 }),
             title: t('noRepo.title'),
-            desc: t('noRepo.desc', { path: cwd ?? '' }),
+            desc: t('noRepo.desc', { path: sessionDirectory ?? '' }),
             action: h('button', { type: 'button', className: 'dshgg-btn dshgg-btnGhost', onClick: refreshAll }, t('refresh')),
           })
         }
@@ -1101,10 +1473,12 @@ window.__ModuleLoader__.load({
         mergeFiles.length === 0 ? null : h(Section, {
           id: 'merge', title: t('sections.merge'), count: mergeFiles.length,
           open: openSections.merge === true, onToggle: () => toggleSection('merge'), actions: sectionActions.merge,
+          menuTrigger, menuHint: t('menu.hint'), menuTarget: menuSection('merge'),
         }, renderTree(treeCache.merge, 0, { ...treeContext, mode: 'merge', onOpen: (entry) => openDiff(entry, 'changes') })),
         stagedFiles.length === 0 ? null : h(Section, {
           id: 'staged', title: t('sections.staged'), count: stagedFiles.length,
           open: openSections.staged === true, onToggle: () => toggleSection('staged'), actions: sectionActions.staged,
+          menuTrigger, menuHint: t('menu.hint'), menuTarget: menuSection('staged'),
         }, renderTree(treeCache.staged, 0, {
           ...treeContext,
           mode: 'staged',
@@ -1115,12 +1489,13 @@ window.__ModuleLoader__.load({
         changedFiles.length === 0 ? null : h(Section, {
           id: 'changes', title: t('sections.changes'), count: changedFiles.length,
           open: openSections.changes === true, onToggle: () => toggleSection('changes'), actions: sectionActions.changes,
+          menuTrigger, menuHint: t('menu.hint'), menuTarget: menuSection('changes'),
         }, renderTree(treeCache.changes, 0, { ...treeContext, onOpen: (entry) => openDiff(entry, 'changes') })),
         clean ? h('div', { className: 'dshgg-clean' },
           h('span', { className: 'dshgg-cleanIcon' }, h(CheckCircleIcon, { size: 26 })),
           h('span', { className: 'dshgg-cleanTitle' }, t('clean.title')),
           h('span', { className: 'dshgg-cleanDesc' }, t('clean.desc'))) : null,
-        graphRows(t, graph, graphLoading, graphFailure, openSections.graph === true, () => toggleSection('graph'), () => { void loadGraph() }),
+        graphRows(t, graph, graphLoading, graphFailure, openSections.graph === true, () => toggleSection('graph'), () => { void loadGraph() }, menu),
       )
 
       const commitHint = stagedFiles.length > 0 ? t('commit.hint') : t('commit.hintNone')
@@ -1257,8 +1632,9 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'dshgg-menu', role: 'menu', 'aria-label': t('branch.menu') }, content)
     }
 
-    function graphRows(t, commits, loading, failure, open, onToggle, onRetry) {
+    function graphRows(t, commits, loading, failure, open, onToggle, onRetry, menu) {
       const rows = []
+      const trigger = menu === undefined ? null : menu.trigger
       if (loading === true && commits === null) {
         rows.push(h('div', { key: 'loading', className: 'dshgg-menuNote' }, t('graph.loading')))
       } else if (failure !== null) {
@@ -1272,7 +1648,15 @@ window.__ModuleLoader__.load({
       } else if (commits === null || commits.length === 0) {
         rows.push(h('div', { key: 'empty', className: 'dshgg-menuNote' }, t('graph.empty')))
       } else {
-        for (const commit of commits) rows.push(h(GraphRow, { key: commit.oid, commit, t }))
+        for (const commit of commits) {
+          rows.push(h(GraphRow, {
+            key: commit.oid,
+            commit,
+            t,
+            menuTrigger: trigger,
+            menuTarget: menu === undefined || trigger === null ? undefined : menu.commitTarget(commit),
+          }))
+        }
       }
       return h(Section, {
         id: 'graph',
@@ -1280,6 +1664,9 @@ window.__ModuleLoader__.load({
         count: commits === null ? undefined : commits.length,
         open: open,
         onToggle,
+        menuTrigger: trigger,
+        menuHint: t('menu.hint'),
+        menuTarget: menu === undefined || trigger === null ? undefined : menu.sectionTarget('graph'),
       }, rows)
     }
 
@@ -1289,7 +1676,15 @@ window.__ModuleLoader__.load({
       const refs = parseRefs(commit.refs)
       const visibleRefs = refs.slice(0, 3)
       const hidden = refs.length - visibleRefs.length
-      return h('div', { className: 'dshgg-graphRow', title: `${commit.shortOid} ${commit.subject}` },
+      const menuTrigger = typeof props.menuTrigger === 'function' ? props.menuTrigger : null
+      const menuProps = menuTrigger === null || props.menuTarget === undefined
+        ? null
+        : menuTrigger(props.menuTarget, { tabIndex: 0, 'aria-haspopup': 'menu' })
+      return h('div', {
+        className: 'dshgg-graphRow',
+        title: `${commit.shortOid} ${commit.subject} \u00b7 ${t('menu.hint')}`,
+        ...(menuProps ?? {}),
+      },
         h('pre', { className: 'dshgg-graphPrefix' }, commit.graph === '' ? '*' : commit.graph),
         h('div', { className: 'dshgg-graphBody' },
           h('div', { className: 'dshgg-graphSubject' }, commit.subject === '' ? t('graph.noSubject') : commit.subject),
@@ -1316,6 +1711,10 @@ window.__ModuleLoader__.load({
       const params = tab.navigation?.params ?? {}
       const revision = tab.navigation?.revision ?? 0
       const call = useMemo(() => createCaller(sessionId), [sessionId])
+      const menuTrigger = useMemo(
+        () => (typeof sessionId === 'string' && sessionId !== '' ? bindMenuTrigger(props.useContextMenu) : null),
+        [props.useContextMenu, sessionId],
+      )
       const [state, setState] = useState({ phase: 'loading', diff: null, failure: null })
       const [reload, setReload] = useState(0)
 
@@ -1342,8 +1741,11 @@ window.__ModuleLoader__.load({
 
       const badgeKind = params.untracked === true ? 'untracked' : params.staged === true ? 'staged' : 'unstaged'
       const badgeLabel = badgeKind === 'untracked' ? t('diff.untracked') : badgeKind === 'staged' ? t('diff.staged') : t('diff.unstaged')
+      const headerMenu = menuTrigger === null || !hasTarget
+        ? null
+        : menuTrigger(menuTarget(sessionId, 'diff', { path: params.path, cwd: params.cwd }), { tabIndex: -1, 'aria-haspopup': 'menu', title: t('menu.hint') })
       const header = hasTarget
-        ? h('div', { className: 'dshgg-diffHeader' },
+        ? h('div', { className: 'dshgg-diffHeader', ...(headerMenu ?? {}) },
           h('span', { className: 'dshgg-diffPath' },
             h('span', { className: 'dshgg-diffName' }, baseName(params.path)),
             params.origPath === undefined || params.origPath === null || params.origPath === ''
@@ -1534,6 +1936,27 @@ window.__ModuleLoader__.load({
         })
       } catch (error) {
         console.warn('[git-graph] shortcut registration failed', error)
+      }
+
+      try {
+        ctx.inject(['contextMenus'], (menuCtx) => {
+          try {
+            menuCtx.effect(() => menuCtx.contextMenus.register({
+              id: MENU_CONTRIBUTION_ID,
+              target: MENU_TARGET,
+              order: 10,
+              resolve: (target) => resolveMenuActions(
+                target?.value,
+                t,
+                (text, success) => menuCtx.contextMenus.notify(text, success),
+              ),
+            }), 'git-graph: context menu actions')
+          } catch (error) {
+            console.warn('[git-graph] context menu registration failed', error)
+          }
+        })
+      } catch (error) {
+        console.warn('[git-graph] context menu binding failed', error)
       }
     }
 

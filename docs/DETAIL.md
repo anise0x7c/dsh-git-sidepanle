@@ -18,6 +18,20 @@ The Git tab and its diff tabs live in the right Sidebar's normal docking surface
 
 Status refreshes when the page opens, after every action, when the refresh control is used, and every few seconds while the tab is visible.
 
+## Context menus
+
+Right-click a row, or focus a changed file, folder, or commit (or a button inside a group or diff header) and press the context-menu key or `Shift+F10`. Menus use the application's shared context-menu presentation, so position, dismissal, focus return, theme, and language match the rest of DSH.
+
+- **Changed file**: open changes, stage or unstage, discard when the file can be discarded, and copy its relative or full path.
+- **Folder**: the same staging, unstaging, and discarding for every changed file below it, plus copying the folder's paths.
+- **Group header**: the group-level actions that apply to that group: stage or unstage every file in it, discard every change in it, and refresh.
+- **Commit**: copy the full commit ID or the commit subject.
+- **Diff header**: copy the file's relative or full path.
+
+Full paths are formed from the repository root, which may differ from the Session's working directory when the Session runs in a subdirectory of the repository. The subject is the first line of a commit message, not its body.
+
+Menu commands behave like the equivalent hover control: same confirmation, same failure report, and same refresh. While a Git operation is running, commands that change the repository are disabled, and a command whose change disappeared in the meantime reports that instead of doing nothing. Opening a menu runs no Git command. Copies confirm success, and an unavailable clipboard is reported instead of being ignored. Without a context-menu facility in the host application, the panel and all of its inline controls keep working.
+
 ## Host execution and trust
 
 Every Git command runs on the Host in the Session's working directory, through a single local route (`/api/dsh-git-graph/rpc`). The route accepts only unproxied loopback requests with the bundle's own request header and same-origin browser markers; it never runs through a shell and never accepts a repository path from the browser.
