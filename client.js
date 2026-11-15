@@ -55,7 +55,10 @@ var import_react5 = require("react");
 
 // src/client/data/caller.js
 function makeFailure(code, message, status) {
-  const failure = new Error(message || code);
+  const failure = (
+    /** @type {CallerFailure} */
+    new Error(message || code)
+  );
   failure.code = code;
   failure.detail = message || "";
   failure.status = status;
@@ -456,6 +459,10 @@ function DiffPanel(props) {
 function createCommandBus() {
   const listeners = /* @__PURE__ */ new Set();
   return {
+    /**
+     * Deliver one command envelope to the current listeners.
+     * @param {object} command - envelope sent by a menu action.
+     */
     emit(command) {
       for (const listener of [...listeners]) {
         try {
@@ -465,6 +472,11 @@ function createCommandBus() {
         }
       }
     },
+    /**
+     * Subscribe one panel command handler.
+     * @param {(command: object) => void} listener - handler for emitted commands.
+     * @returns {() => void} unsubscribe.
+     */
     subscribe(listener) {
       listeners.add(listener);
       return () => {
@@ -679,7 +691,7 @@ function usePanelMenu({ sessionId, useContextMenu }) {
     () => typeof sessionId === "string" && sessionId !== "" ? bindMenuTrigger(useContextMenu) : null,
     [useContextMenu, sessionId]
   );
-  const panelId = (0, import_react6.useMemo)(() => `git-panel-${nextPanelId()}`, []);
+  const panelId = (0, import_react6.useMemo)(() => nextPanelId(), []);
   return { call, menuTrigger, panelId };
 }
 function usePanelRefs() {

@@ -25,7 +25,7 @@ export function usePanelMenu({ sessionId, useContextMenu }) {
     () => (typeof sessionId === 'string' && sessionId !== '' ? bindMenuTrigger(useContextMenu) : null),
     [useContextMenu, sessionId],
   )
-  const panelId = useMemo(() => `git-panel-${nextPanelId()}`, [])
+  const panelId = useMemo(() => nextPanelId(), [])
   return { call, menuTrigger, panelId }
 }
 
