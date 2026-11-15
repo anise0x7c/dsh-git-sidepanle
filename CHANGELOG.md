@@ -3,6 +3,45 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## 0.5.0
+
+Native look and a real commit graph. The panel now sits in the host's visual
+language, and the commit history is drawn as a lane graph instead of ASCII art:
+
+- The panel uses the host's theme tokens and type scale throughout: 13px/500
+  section headers, 28px rows with `--dsw-radius-md` hover fills, 0.5px
+  hairlines, the host's icon-button and primary/secondary button metrics, the
+  host menu surface and elevation for the branch picker, and the host input
+  treatment for the commit box. Light and dark themes follow the application,
+  and `prefers-reduced-motion` is respected.
+- The commit graph is a tree drawn with inline SVG: every commit is a node on a
+  colored lane, a first parent continues the lane, extra parents open side
+  lanes, and a parent another branch already expects is joined by a curve into
+  that lane. Lane colors come from theme tokens (business blue, violet,
+  success, warn, error, chart neutral) and are shared by every row so the
+  graph column stays aligned; a wide graph squeezes its lanes instead of
+  widening past 96px.
+- Commit rows keep a full-width subject and a muted hash/author/time line. Ref
+  labels are compact chips — HEAD, branches, tags — and a remote-tracking label
+  that only repeats a shown branch is folded away.
+- Spacing follows the sidebar's rhythm: 8px inline inset, 30px section
+  headers, 28px file/folder rows with 14px nesting steps, and a quieter
+  toolbar/commit-box hierarchy. No decorative animation was added; only the
+  refresh spinner and the chevron rotation remain.
+- Host: the `history` operation now returns each commit's `parents` instead of
+  the ASCII `--graph` prefix; `parseHistory` is pure and unit-tested. The
+  payload is otherwise unchanged.
+- Upgrade note: the Host half changed, so restart the Host once after
+  installing this version; the browser half hot-reloads its styling
+  immediately, and until the Host restarts commits render as nodes without
+  connectors because the old payload has no parent list.
+- Tests: 202 (was 178), including graph-layout unit tests (linear, fork and
+  merge, branch tips, octopus merge, parent outside the window, palette
+  cycling, wide-lane squeezing and SVG geometry), parent-order assertions
+  against a real merges repository, and rendered-panel assertions for nodes,
+  lane lines, colors, and ref folding. Both detail docs and the architecture
+  doc were updated.
+
 ## 0.4.0
 
 Commit details. Clicking a commit in the graph now shows what that commit
