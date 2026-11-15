@@ -31,9 +31,6 @@ __export(client_entry_exports, {
 });
 module.exports = __toCommonJS(client_entry_exports);
 
-// src/client/app.js
-var import_react10 = require("react");
-
 // src/client/constants.js
 var PACKAGE_ID = "@local/dsh-git-graph";
 var NS = "gitGraph";
@@ -52,6 +49,9 @@ function nextPanelId() {
   panelSequence += 1;
   return `git-panel-${panelSequence}`;
 }
+
+// src/client/diff/DiffPanel.js
+var import_react5 = require("react");
 
 // src/client/data/caller.js
 function makeFailure(code, message, status) {
@@ -88,9 +88,6 @@ function createCaller(sessionId) {
     return data.value;
   };
 }
-
-// src/client/diff/DiffPanel.js
-var import_react5 = require("react");
 
 // src/client/diff/render.js
 var import_react = require("react");
@@ -455,49 +452,6 @@ function DiffPanel(props) {
   );
 }
 
-// src/client/git/tree.js
-function buildTree(entries) {
-  const root = { type: "root", name: "", path: "", children: [], folders: /* @__PURE__ */ new Map() };
-  for (const entry of entries) {
-    const parts = entry.path.split("/");
-    let node = root;
-    for (let index = 0; index < parts.length - 1; index += 1) {
-      const name = parts[index];
-      let folder = node.folders.get(name);
-      if (folder === void 0) {
-        folder = {
-          type: "folder",
-          name,
-          path: parts.slice(0, index + 1).join("/"),
-          children: [],
-          folders: /* @__PURE__ */ new Map()
-        };
-        node.folders.set(name, folder);
-        node.children.push(folder);
-      }
-      node = folder;
-    }
-    node.children.push({ type: "file", name: parts[parts.length - 1], path: entry.path, entry });
-  }
-  const sort = (nodes) => {
-    nodes.sort((left, right) => {
-      const leftFolder = left.type === "folder" ? 0 : 1;
-      const rightFolder = right.type === "folder" ? 0 : 1;
-      if (leftFolder !== rightFolder) return leftFolder - rightFolder;
-      return left.name.localeCompare(right.name, void 0, { numeric: true, sensitivity: "base" });
-    });
-    for (const node of nodes) if (node.type === "folder") sort(node.children);
-  };
-  sort(root.children);
-  return root.children;
-}
-function collectTreePaths(node) {
-  if (node.type !== "folder") return [node.path];
-  const paths = [];
-  for (const child of node.children) paths.push(...collectTreePaths(child));
-  return paths;
-}
-
 // src/client/menu/bus.js
 function createCommandBus() {
   const listeners = /* @__PURE__ */ new Set();
@@ -655,9 +609,419 @@ function resolveMenuActions(value, t, notify) {
   return [];
 }
 
-// src/client/panel/BranchMenu.js
+// src/client/panel/GitPanel.js
+var import_react19 = require("react");
+
+// src/client/git/tree.js
+function buildTree(entries) {
+  const root = { type: "root", name: "", path: "", children: [], folders: /* @__PURE__ */ new Map() };
+  for (const entry of entries) {
+    const parts = entry.path.split("/");
+    let node = root;
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      const name = parts[index];
+      let folder = node.folders.get(name);
+      if (folder === void 0) {
+        folder = {
+          type: "folder",
+          name,
+          path: parts.slice(0, index + 1).join("/"),
+          children: [],
+          folders: /* @__PURE__ */ new Map()
+        };
+        node.folders.set(name, folder);
+        node.children.push(folder);
+      }
+      node = folder;
+    }
+    node.children.push({ type: "file", name: parts[parts.length - 1], path: entry.path, entry });
+  }
+  const sort = (nodes) => {
+    nodes.sort((left, right) => {
+      const leftFolder = left.type === "folder" ? 0 : 1;
+      const rightFolder = right.type === "folder" ? 0 : 1;
+      if (leftFolder !== rightFolder) return leftFolder - rightFolder;
+      return left.name.localeCompare(right.name, void 0, { numeric: true, sensitivity: "base" });
+    });
+    for (const node of nodes) if (node.type === "folder") sort(node.children);
+  };
+  sort(root.children);
+  return root.children;
+}
+function collectTreePaths(node) {
+  if (node.type !== "folder") return [node.path];
+  const paths = [];
+  for (const child of node.children) paths.push(...collectTreePaths(child));
+  return paths;
+}
+
+// src/client/panel/confirm.js
+function confirmTitle(t, confirm) {
+  if (confirm.kind === "commitAll") return t("commit.emptyConfirm");
+  if (confirm.kind === "discardAll") return t("confirm.discardAllTitle", { n: confirm.entries.length });
+  return t("confirm.discardTitle", { name: baseName(confirm.entry.path) });
+}
+function confirmDescription(t, confirm) {
+  if (confirm.kind === "commitAll") return "";
+  if (confirm.kind === "discardAll") return t("confirm.discardAllDesc");
+  return confirm.entry.untracked === true ? t("confirm.deleteUntrackedDesc") : t("confirm.discardDesc");
+}
+function confirmActionLabel(t, confirm) {
+  if (confirm.kind === "commitAll") return t("commit.stageAll");
+  return confirm.kind === "discardAll" ? t("confirm.discardAll") : t("confirm.discard");
+}
+
+// src/client/panel/menu.js
 var import_react6 = require("react");
-var h6 = import_react6.createElement;
+function usePanelMenu({ sessionId, useContextMenu }) {
+  const call = (0, import_react6.useMemo)(() => createCaller(sessionId), [sessionId]);
+  const menuTrigger = (0, import_react6.useMemo)(
+    () => typeof sessionId === "string" && sessionId !== "" ? bindMenuTrigger(useContextMenu) : null,
+    [useContextMenu, sessionId]
+  );
+  const panelId = (0, import_react6.useMemo)(() => `git-panel-${nextPanelId()}`, []);
+  return { call, menuTrigger, panelId };
+}
+function usePanelRefs() {
+  const inFlight = (0, import_react6.useRef)(false);
+  const busy = (0, import_react6.useRef)(null);
+  const confirm = (0, import_react6.useRef)(null);
+  const mounted = (0, import_react6.useRef)(true);
+  const wrap = (0, import_react6.useRef)(null);
+  (0, import_react6.useEffect)(() => () => {
+    mounted.current = false;
+  }, []);
+  return (0, import_react6.useMemo)(
+    () => ({ inFlight, busy, confirm, mounted, wrap }),
+    [inFlight, busy, confirm, mounted, wrap]
+  );
+}
+function createMenuTargets({ sessionId, panelId, busy, cwd }) {
+  return {
+    sectionTarget: (section) => menuTarget(sessionId, "section", { section, busy: busy !== null, panelId }),
+    commitTarget: (commit) => menuTarget(sessionId, "commit", {
+      oid: commit.oid,
+      shortOid: commit.shortOid,
+      subject: commit.subject
+    }),
+    treeTarget: (kind, detail) => menuTarget(sessionId, kind, { ...detail, cwd, busy: busy !== null, panelId })
+  };
+}
+
+// src/client/panel/hooks/useBranches.js
+var import_react7 = require("react");
+function useBranches({ call, refs, perform }) {
+  const [branchMenu, setBranchMenu] = (0, import_react7.useState)(false);
+  const [branches, setBranches] = (0, import_react7.useState)(null);
+  const [branchLoading, setBranchLoading] = (0, import_react7.useState)(false);
+  const [branchFailure, setBranchFailure] = (0, import_react7.useState)(null);
+  const loadBranches = (0, import_react7.useCallback)(async () => {
+    if (refs.mounted.current) setBranchLoading(true);
+    try {
+      const value = await call("branches");
+      if (!refs.mounted.current) return;
+      setBranches(Array.isArray(value?.branches) ? value.branches : []);
+      setBranchFailure(null);
+    } catch (error) {
+      if (!refs.mounted.current) return;
+      setBranchFailure(error);
+    } finally {
+      if (refs.mounted.current) setBranchLoading(false);
+    }
+  }, [call, refs]);
+  (0, import_react7.useEffect)(() => {
+    if (!branchMenu) return void 0;
+    const onPointerDown = (event) => {
+      const wrap = refs.wrap.current;
+      if (wrap !== null && wrap.contains(event.target)) return;
+      setBranchMenu(false);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setBranchMenu(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [branchMenu, refs]);
+  const toggleBranchMenu = () => {
+    const next = !branchMenu;
+    setBranchMenu(next);
+    if (next && branches === null && branchFailure === null) void loadBranches();
+  };
+  const checkout = (branch) => {
+    setBranchMenu(false);
+    void perform("checkout", () => call("checkout", { branch }), {
+      graph: true,
+      after: () => {
+        setBranches(null);
+        setBranchFailure(null);
+      }
+    });
+  };
+  return { branchMenu, branches, branchLoading, branchFailure, loadBranches, toggleBranchMenu, checkout };
+}
+
+// src/client/panel/hooks/useChangeActions.js
+var import_react8 = require("react");
+function useChangeActions({ call, t, refs, files, stagedFiles, loadStatus, loadGraph }) {
+  const [actionFailure, setActionFailure] = (0, import_react8.useState)(null);
+  const [busy, setBusy] = (0, import_react8.useState)(null);
+  const [message, setMessage] = (0, import_react8.useState)("");
+  const [notice, setNotice] = (0, import_react8.useState)(null);
+  const [confirm, setConfirm] = (0, import_react8.useState)(null);
+  refs.busy.current = busy;
+  refs.confirm.current = confirm;
+  (0, import_react8.useEffect)(() => {
+    if (notice === null) return void 0;
+    const timer = setTimeout(() => {
+      if (refs.mounted.current) setNotice(null);
+    }, 4e3);
+    return () => clearTimeout(timer);
+  }, [notice, refs]);
+  const perform = (0, import_react8.useCallback)(async (name, operation, options = {}) => {
+    if (refs.busy.current !== null) return void 0;
+    refs.busy.current = name;
+    setBusy(name);
+    setActionFailure(null);
+    try {
+      const result = await operation();
+      if (!refs.mounted.current) return result;
+      if (options.notice !== void 0) setNotice(options.notice);
+      if (options.after !== void 0) await options.after(result);
+      await loadStatus({ silent: true });
+      if (options.graph === true) await loadGraph();
+      return result;
+    } catch (error) {
+      if (refs.mounted.current) setActionFailure(error);
+      return void 0;
+    } finally {
+      refs.busy.current = null;
+      if (refs.mounted.current) setBusy(null);
+    }
+  }, [refs, loadStatus, loadGraph]);
+  const stage = (entries) => perform("stage", () => call("stage", { paths: entries.map((entry) => entry.path) }));
+  const unstage = (entries) => perform("unstage", () => call("unstage", { paths: entries.map((entry) => entry.path) }));
+  const requestCommit = () => {
+    if (message.trim() === "" || refs.busy.current !== null) return;
+    if (stagedFiles.length === 0) {
+      if (files.length === 0) {
+        setActionFailure(makeFailure("nothing-staged", t("commit.nothing")));
+        return;
+      }
+      setConfirm({ kind: "commitAll" });
+      return;
+    }
+    void perform("commit", () => call("commit", { message }), {
+      graph: true,
+      after: (result) => {
+        setMessage("");
+        setNotice(t("commit.done", { hash: result?.commit ?? "" }));
+      }
+    });
+  };
+  const confirmAction = () => {
+    const current = refs.confirm.current;
+    if (current === null) return;
+    setConfirm(null);
+    if (current.kind === "commitAll") {
+      void perform("commit", () => call("commit", { message, stageAll: true }), {
+        graph: true,
+        after: (result) => {
+          setMessage("");
+          setNotice(t("commit.done", { hash: result?.commit ?? "" }));
+        }
+      });
+      return;
+    }
+    if (current.kind === "discard") {
+      void perform("discard", () => call("discard", { path: current.entry.path, untracked: current.entry.untracked === true }));
+      return;
+    }
+    if (current.kind === "discardAll") {
+      const entries = current.entries;
+      void perform("discard", async () => {
+        for (const entry of entries) await call("discard", { path: entry.path, untracked: entry.untracked === true });
+      });
+    }
+  };
+  return {
+    actionFailure,
+    setActionFailure,
+    busy,
+    message,
+    setMessage,
+    notice,
+    setNotice,
+    confirm,
+    setConfirm,
+    perform,
+    stage,
+    unstage,
+    requestCommit,
+    confirmAction
+  };
+}
+
+// src/client/panel/hooks/useHistory.js
+var import_react9 = require("react");
+function useHistory({ call, refs }) {
+  const [graph, setGraph] = (0, import_react9.useState)(null);
+  const [graphLoading, setGraphLoading] = (0, import_react9.useState)(false);
+  const [graphFailure, setGraphFailure] = (0, import_react9.useState)(null);
+  const loadGraph = (0, import_react9.useCallback)(async () => {
+    if (refs.mounted.current) setGraphLoading(true);
+    try {
+      const value = await call("history");
+      if (!refs.mounted.current) return;
+      setGraph(Array.isArray(value?.commits) ? value.commits : []);
+      setGraphFailure(null);
+    } catch (error) {
+      if (!refs.mounted.current) return;
+      if (error.code === "not-a-repository") setGraph([]);
+      else setGraphFailure(error);
+    } finally {
+      if (refs.mounted.current) setGraphLoading(false);
+    }
+  }, [call, refs]);
+  (0, import_react9.useEffect)(() => {
+    void loadGraph();
+  }, [loadGraph]);
+  return { graph, graphLoading, graphFailure, loadGraph };
+}
+
+// src/client/panel/hooks/useMenuCommands.js
+var import_react10 = require("react");
+function useMenuCommands() {
+  const optionsRef = (0, import_react10.useRef)(null);
+  (0, import_react10.useEffect)(() => panelCommands.subscribe((command) => {
+    const options = optionsRef.current;
+    if (options !== null) dispatch(options, command);
+  }), []);
+  return optionsRef;
+}
+function dispatch(options, command) {
+  const { sessionId, panelId, repo, t, busyRef, files, stagedFiles, changedFiles, mergeFiles } = options;
+  const { refreshAll, stage, unstage, setConfirm, setNotice, openDiff } = options;
+  if (command === null || typeof command !== "object") return;
+  if (typeof command.sessionId === "string" && command.sessionId !== sessionId) return;
+  if (typeof command.panelId === "string" && command.panelId !== panelId) return;
+  if (repo === null) return;
+  const paths = Array.isArray(command.paths) ? command.paths.filter((path) => typeof path === "string") : [];
+  const matches = (entry) => paths.includes(entry.path);
+  const reportStale = () => setNotice(t("menu.stale"));
+  if (command.type === "refresh") {
+    refreshAll();
+    return;
+  }
+  if (busyRef.current !== null) {
+    setNotice(t("menu.busy"));
+    return;
+  }
+  if (command.type === "open") {
+    const pools = { staged: stagedFiles, merge: mergeFiles, changes: changedFiles };
+    const preferred = pools[command.section] ?? changedFiles;
+    let section = command.section === "staged" ? "staged" : "changes";
+    let entry = preferred.find((candidate) => candidate.path === command.path);
+    if (entry === void 0) {
+      for (const [candidateSection, pool] of Object.entries(pools)) {
+        entry = pool.find((candidate) => candidate.path === command.path);
+        if (entry !== void 0) {
+          section = candidateSection === "staged" ? "staged" : "changes";
+          break;
+        }
+      }
+    }
+    if (entry === void 0) {
+      reportStale();
+      return;
+    }
+    openDiff(entry, section);
+    return;
+  }
+  if (command.type === "stage" || command.type === "stageSection") {
+    const entries = command.type === "stageSection" ? command.section === "merge" ? mergeFiles : changedFiles : files.filter((entry) => matches(entry) && entry.conflict === true).concat(files.filter((entry) => matches(entry) && isUnstaged(entry)));
+    if (entries.length === 0) {
+      reportStale();
+      return;
+    }
+    void stage(entries);
+    return;
+  }
+  if (command.type === "unstage" || command.type === "unstageSection") {
+    const entries = command.type === "unstageSection" ? stagedFiles : files.filter((entry) => matches(entry) && isStaged(entry));
+    if (entries.length === 0) {
+      reportStale();
+      return;
+    }
+    void unstage(entries);
+    return;
+  }
+  if (command.type === "discard") {
+    const entries = changedFiles.filter(matches);
+    if (entries.length === 0) {
+      reportStale();
+      return;
+    }
+    setConfirm(command.single === true && entries.length === 1 ? { kind: "discard", entry: entries[0] } : { kind: "discardAll", entries });
+    return;
+  }
+  if (command.type === "discardSection") {
+    if (changedFiles.length === 0) {
+      reportStale();
+      return;
+    }
+    setConfirm({ kind: "discardAll", entries: changedFiles });
+  }
+}
+
+// src/client/panel/hooks/useRepoStatus.js
+var import_react11 = require("react");
+function useRepoStatus({ sessionId, useContextMenu, visible, refs }) {
+  const { call, menuTrigger, panelId } = usePanelMenu({ sessionId, useContextMenu });
+  const [status, setStatus] = (0, import_react11.useState)(null);
+  const [loading, setLoading] = (0, import_react11.useState)(true);
+  const [loadFailure, setLoadFailure] = (0, import_react11.useState)(null);
+  const loadStatus = (0, import_react11.useCallback)(async (options = {}) => {
+    if (refs.inFlight.current) return;
+    refs.inFlight.current = true;
+    if (options.silent !== true) setLoading(true);
+    try {
+      const value = await call("status");
+      if (!refs.mounted.current) return;
+      setStatus(value);
+      setLoadFailure(null);
+    } catch (error) {
+      if (!refs.mounted.current) return;
+      setLoadFailure(error);
+    } finally {
+      refs.inFlight.current = false;
+      if (refs.mounted.current) setLoading(false);
+    }
+  }, [call, refs]);
+  (0, import_react11.useEffect)(() => {
+    void loadStatus();
+  }, [loadStatus]);
+  (0, import_react11.useEffect)(() => {
+    if (!visible) return void 0;
+    const timer = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (refs.inFlight.current || refs.busy.current !== null || refs.confirm.current !== null) return;
+      void loadStatus({ silent: true });
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [visible, loadStatus, refs]);
+  return { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus };
+}
+
+// src/client/panel/views/BranchHeader.js
+var import_react13 = require("react");
+
+// src/client/panel/BranchMenu.js
+var import_react12 = require("react");
+var h6 = import_react12.createElement;
 function BranchMenu(props) {
   const t = props.t;
   let content;
@@ -692,25 +1056,61 @@ function BranchMenu(props) {
   return h6("div", { className: "dshgg-menu", role: "menu", "aria-label": t("branch.menu") }, content);
 }
 
-// src/client/panel/confirm.js
-function confirmTitle(t, confirm) {
-  if (confirm.kind === "commitAll") return t("commit.emptyConfirm");
-  if (confirm.kind === "discardAll") return t("confirm.discardAllTitle", { n: confirm.entries.length });
-  return t("confirm.discardTitle", { name: baseName(confirm.entry.path) });
-}
-function confirmDescription(t, confirm) {
-  if (confirm.kind === "commitAll") return "";
-  if (confirm.kind === "discardAll") return t("confirm.discardAllDesc");
-  return confirm.entry.untracked === true ? t("confirm.deleteUntrackedDesc") : t("confirm.discardDesc");
-}
-function confirmActionLabel(t, confirm) {
-  if (confirm.kind === "commitAll") return t("commit.stageAll");
-  return confirm.kind === "discardAll" ? t("confirm.discardAll") : t("confirm.discard");
+// src/client/panel/views/BranchHeader.js
+var h7 = import_react13.createElement;
+function BranchHeader(props) {
+  const t = props.t;
+  const repo = props.repo;
+  return h7(
+    "div",
+    { className: "dshgg-toolbar" },
+    h7(
+      "div",
+      { className: "dshgg-branchWrap", ref: props.wrapRef },
+      h7(
+        "button",
+        {
+          type: "button",
+          className: "dshgg-branchChip",
+          onClick: props.onToggleMenu,
+          disabled: repo === null || props.busy !== null,
+          "aria-haspopup": "menu",
+          "aria-expanded": props.branchMenu,
+          title: repo === null ? t("noRepo.title") : t("branch.menu")
+        },
+        h7(GitBranchIcon, { size: 14 }),
+        h7("span", { className: "dshgg-branchName" }, props.branchLabel ?? t("loading")),
+        props.ahead > 0 ? h7("span", { className: "dshgg-sync", title: t("branch.ahead", { n: props.ahead }) }, h7("span", null, "↑"), String(props.ahead)) : null,
+        props.behind > 0 ? h7("span", { className: "dshgg-sync", title: t("branch.behind", { n: props.behind }) }, h7("span", null, "↓"), String(props.behind)) : null,
+        repo?.upstream !== void 0 && repo?.upstream !== null ? h7("span", { className: "dshgg-upstream", title: t("branch.upstream", { name: repo.upstream }) }, repo.upstream) : null,
+        h7(ChevronDownIcon, { size: 12 })
+      ),
+      props.branchMenu ? h7(BranchMenu, {
+        t,
+        branches: props.branches,
+        loading: props.branchLoading,
+        failure: props.branchFailure,
+        onPick: props.onPickBranch,
+        onRetry: props.onRetryBranches
+      }) : null
+    ),
+    h7("span", { className: "dshgg-spacer" }),
+    h7(IconButton, {
+      label: t("refresh"),
+      title: t("refresh"),
+      disabled: props.busy !== null,
+      spinning: props.busy === "refresh",
+      onClick: props.onRefresh
+    }, h7(RefreshIcon, { size: 14 }))
+  );
 }
 
+// src/client/panel/views/ChangeGroups.js
+var import_react16 = require("react");
+
 // src/client/panel/rows.js
-var import_react7 = require("react");
-var h7 = import_react7.createElement;
+var import_react14 = require("react");
+var h8 = import_react14.createElement;
 function FolderRow(props) {
   const keyboard = {
     onKeyDown: (event) => {
@@ -722,7 +1122,7 @@ function FolderRow(props) {
   };
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
   const rowProps = menuTrigger === null || props.menuTarget === void 0 ? keyboard : menuTrigger(props.menuTarget, { ...keyboard, "aria-haspopup": "menu", title: props.menuHint });
-  return h7(
+  return h8(
     "div",
     {
       className: "dshgg-row dshgg-folderRow",
@@ -733,12 +1133,12 @@ function FolderRow(props) {
       onClick: props.onToggle,
       ...rowProps
     },
-    h7(
+    h8(
       "span",
       { className: "dshgg-chevron", "data-open": props.open === true ? "true" : "false" },
-      h7(ChevronRightIcon, { size: 12 })
+      h8(ChevronRightIcon, { size: 12 })
     ),
-    h7("span", { className: "dshgg-folderName" }, props.node.name)
+    h8("span", { className: "dshgg-folderName" }, props.node.name)
   );
 }
 function FileRow(props) {
@@ -747,7 +1147,7 @@ function FileRow(props) {
   const name = baseName(entry.path);
   const actionButtons = [];
   if (props.mode === "staged") {
-    actionButtons.push(h7(IconButton, {
+    actionButtons.push(h8(IconButton, {
       key: "unstage",
       label: props.t("actions.unstage"),
       title: props.t("actions.unstage"),
@@ -756,9 +1156,9 @@ function FileRow(props) {
         event.stopPropagation();
         props.onUnstage(entry);
       }
-    }, h7(MinusIcon, { size: 14 })));
+    }, h8(MinusIcon, { size: 14 })));
   } else {
-    actionButtons.push(h7(IconButton, {
+    actionButtons.push(h8(IconButton, {
       key: "stage",
       label: props.t("actions.stage"),
       title: props.t("actions.stage"),
@@ -767,9 +1167,9 @@ function FileRow(props) {
         event.stopPropagation();
         props.onStage(entry);
       }
-    }, h7(PlusIcon, { size: 14 })));
+    }, h8(PlusIcon, { size: 14 })));
     if (props.mode !== "merge" && typeof props.onDiscard === "function") {
-      actionButtons.push(h7(IconButton, {
+      actionButtons.push(h8(IconButton, {
         key: "discard",
         label: props.t("actions.discard"),
         title: props.t("actions.discard"),
@@ -778,7 +1178,7 @@ function FileRow(props) {
           event.stopPropagation();
           props.onDiscard(entry);
         }
-      }, h7(UndoIcon, { size: 14 })));
+      }, h8(UndoIcon, { size: 14 })));
     }
   }
   const title = entry.origPath === void 0 ? entry.path : `${entry.origPath} → ${entry.path}`;
@@ -792,7 +1192,7 @@ function FileRow(props) {
   };
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
   const rowProps = menuTrigger === null || props.menuTarget === void 0 ? keyboard : menuTrigger(props.menuTarget, { ...keyboard, "aria-haspopup": "menu" });
-  return h7(
+  return h8(
     "div",
     {
       className: "dshgg-row dshgg-fileRow",
@@ -804,10 +1204,10 @@ function FileRow(props) {
       onClick: () => props.onOpen(entry),
       ...rowProps
     },
-    h7("span", { className: "dshgg-status", "data-status": letter }, letter),
-    h7("span", { className: "dshgg-fileName" }, name),
-    entry.origPath === void 0 ? null : h7("span", { className: "dshgg-fileArrow", title: entry.origPath }, `← ${baseName(entry.origPath)}`),
-    h7("span", { className: "dshgg-fileActions" }, actionButtons)
+    h8("span", { className: "dshgg-status", "data-status": letter }, letter),
+    h8("span", { className: "dshgg-fileName" }, name),
+    entry.origPath === void 0 ? null : h8("span", { className: "dshgg-fileArrow", title: entry.origPath }, `← ${baseName(entry.origPath)}`),
+    h8("span", { className: "dshgg-fileActions" }, actionButtons)
   );
 }
 function renderTree(nodes, depth, context) {
@@ -816,7 +1216,7 @@ function renderTree(nodes, depth, context) {
   for (const node of nodes) {
     if (node.type === "folder") {
       const open = context.collapsed[node.path] !== true;
-      rows.push(h7(FolderRow, {
+      rows.push(h8(FolderRow, {
         key: `folder:${node.path}`,
         node,
         depth,
@@ -829,7 +1229,7 @@ function renderTree(nodes, depth, context) {
       if (open) rows.push(...renderTree(node.children, depth + 1, context));
       continue;
     }
-    rows.push(h7(FileRow, {
+    rows.push(h8(FileRow, {
       key: `file:${node.entry.kind}:${node.entry.path}:${node.entry.x}:${node.entry.y}`,
       entry: node.entry,
       letter: node.entry.letter ?? "",
@@ -849,19 +1249,19 @@ function renderTree(nodes, depth, context) {
 }
 
 // src/client/panel/Section.js
-var import_react8 = require("react");
-var h8 = import_react8.createElement;
+var import_react15 = require("react");
+var h9 = import_react15.createElement;
 function Section(props) {
   const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
   const menuProps = menuTrigger === null || props.menuTarget === void 0 ? null : menuTrigger(props.menuTarget, { tabIndex: -1, "aria-haspopup": "menu", title: props.menuHint });
-  return h8(
+  return h9(
     "section",
     { className: "dshgg-section", "data-section": props.id, "aria-label": props.title },
-    h8(
+    h9(
       "div",
       { className: "dshgg-sectionHeader", ...menuProps ?? {} },
-      h8(
+      h9(
         "button",
         {
           type: "button",
@@ -869,33 +1269,491 @@ function Section(props) {
           "aria-expanded": props.open,
           onClick: props.onToggle
         },
-        h8(
+        h9(
           "span",
           { className: "dshgg-chevron", "data-open": props.open === true ? "true" : "false" },
-          h8(ChevronRightIcon, { size: 12 })
+          h9(ChevronRightIcon, { size: 12 })
         ),
-        h8("span", { className: "dshgg-sectionTitle" }, props.title),
-        props.count === void 0 || props.count === null ? null : h8("span", { className: "dshgg-sectionCount" }, String(props.count))
+        h9("span", { className: "dshgg-sectionTitle" }, props.title),
+        props.count === void 0 || props.count === null ? null : h9("span", { className: "dshgg-sectionCount" }, String(props.count))
       ),
-      actions === null ? null : h8("div", { className: "dshgg-sectionActions" }, actions)
+      actions === null ? null : h9("div", { className: "dshgg-sectionActions" }, actions)
     ),
-    props.open === true ? h8("div", { className: "dshgg-sectionBody" }, props.children) : null
+    props.open === true ? h9("div", { className: "dshgg-sectionBody" }, props.children) : null
+  );
+}
+
+// src/client/panel/views/ChangeGroups.js
+var h10 = import_react16.createElement;
+function ChangeGroups(props) {
+  const t = props.t;
+  const sectionActions = {
+    merge: null,
+    staged: props.stagedFiles.length === 0 ? null : h10(IconButton, {
+      label: t("actions.unstageAll"),
+      title: t("actions.unstageAll"),
+      disabled: !props.canAct,
+      onClick: () => {
+        void props.onUnstage(props.stagedFiles);
+      }
+    }, h10(MinusIcon, { size: 14 })),
+    changes: props.changedFiles.length === 0 ? null : [
+      h10(IconButton, {
+        key: "stage-all",
+        label: t("actions.stageAll"),
+        title: t("actions.stageAll"),
+        disabled: !props.canAct,
+        onClick: () => {
+          void props.onStage(props.changedFiles);
+        }
+      }, h10(PlusIcon, { size: 14 })),
+      h10(IconButton, {
+        key: "discard-all",
+        label: t("actions.discardAll"),
+        title: t("actions.discardAll"),
+        disabled: !props.canAct,
+        onClick: () => props.onDiscardAll()
+      }, h10(UndoIcon, { size: 14 }))
+    ]
+  };
+  const treeContext = {
+    collapsed: props.collapsed,
+    t,
+    busy: props.busy,
+    onToggleFolder: props.onToggleFolder,
+    onOpen: (entry) => props.onOpenDiff(entry, "changes"),
+    onStage: (entry) => {
+      void props.onStage([entry]);
+    },
+    onUnstage: (entry) => {
+      void props.onUnstage([entry]);
+    },
+    onDiscard: (entry) => props.onDiscard(entry),
+    menuTrigger: props.menuTrigger,
+    menuTarget: props.treeTarget,
+    menuHint: t("menu.hint"),
+    mode: "changes"
+  };
+  return h10(
+    import_react16.Fragment,
+    null,
+    props.mergeFiles.length === 0 ? null : h10(Section, {
+      id: "merge",
+      title: t("sections.merge"),
+      count: props.mergeFiles.length,
+      open: props.openSections.merge === true,
+      onToggle: () => props.onToggleSection("merge"),
+      actions: sectionActions.merge,
+      menuTrigger: props.menuTrigger,
+      menuHint: t("menu.hint"),
+      menuTarget: props.sectionTarget("merge")
+    }, renderTree(props.treeCache.merge, 0, { ...treeContext, mode: "merge", onOpen: (entry) => props.onOpenDiff(entry, "changes") })),
+    props.stagedFiles.length === 0 ? null : h10(Section, {
+      id: "staged",
+      title: t("sections.staged"),
+      count: props.stagedFiles.length,
+      open: props.openSections.staged === true,
+      onToggle: () => props.onToggleSection("staged"),
+      actions: sectionActions.staged,
+      menuTrigger: props.menuTrigger,
+      menuHint: t("menu.hint"),
+      menuTarget: props.sectionTarget("staged")
+    }, renderTree(props.treeCache.staged, 0, {
+      ...treeContext,
+      mode: "staged",
+      onOpen: (entry) => props.onOpenDiff(entry, "staged"),
+      onStage: (entry) => {
+        void props.onStage([entry]);
+      },
+      onUnstage: (entry) => {
+        void props.onUnstage([entry]);
+      }
+    })),
+    props.changedFiles.length === 0 ? null : h10(Section, {
+      id: "changes",
+      title: t("sections.changes"),
+      count: props.changedFiles.length,
+      open: props.openSections.changes === true,
+      onToggle: () => props.onToggleSection("changes"),
+      actions: sectionActions.changes,
+      menuTrigger: props.menuTrigger,
+      menuHint: t("menu.hint"),
+      menuTarget: props.sectionTarget("changes")
+    }, renderTree(props.treeCache.changes, 0, { ...treeContext, onOpen: (entry) => props.onOpenDiff(entry, "changes") })),
+    props.clean ? h10(
+      "div",
+      { className: "dshgg-clean" },
+      h10("span", { className: "dshgg-cleanIcon" }, h10(CheckCircleIcon, { size: 26 })),
+      h10("span", { className: "dshgg-cleanTitle" }, t("clean.title")),
+      h10("span", { className: "dshgg-cleanDesc" }, t("clean.desc"))
+    ) : null
+  );
+}
+
+// src/client/panel/views/CommitBox.js
+var import_react17 = require("react");
+var h11 = import_react17.createElement;
+function CommitBox(props) {
+  const t = props.t;
+  return h11(
+    "div",
+    { className: "dshgg-commitBox" },
+    h11("textarea", {
+      className: "dshgg-commitMessage",
+      value: props.message,
+      rows: 3,
+      spellCheck: false,
+      placeholder: props.placeholder,
+      "aria-label": t("commit.action"),
+      disabled: props.busy !== null,
+      onChange: (event) => props.onChange(event.target.value),
+      onKeyDown: (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+          event.preventDefault();
+          props.onCommit();
+        }
+      }
+    }),
+    h11(
+      "div",
+      { className: "dshgg-commitRow" },
+      h11("span", { className: "dshgg-commitHint", title: props.hint }, props.hint),
+      h11("button", {
+        type: "button",
+        className: "dshgg-btn dshgg-btnPrimary",
+        disabled: props.message.trim() === "" || props.busy !== null,
+        onClick: props.onCommit
+      }, props.busy === "commit" ? t("commit.committing") : t("commit.action"))
+    )
+  );
+}
+
+// src/client/panel/views/GraphSection.js
+var import_react18 = require("react");
+var h12 = import_react18.createElement;
+function GraphSection(props) {
+  const t = props.t;
+  const commits = props.commits;
+  const menu = props.menu;
+  const trigger = menu === void 0 ? null : menu.trigger;
+  const rows = [];
+  if (props.loading === true && commits === null) {
+    rows.push(h12("div", { key: "loading", className: "dshgg-menuNote" }, t("graph.loading")));
+  } else if (props.failure !== null) {
+    rows.push(h12(Banner, {
+      key: "error",
+      title: t("error.title"),
+      detail: errorText(t, props.failure),
+      retryLabel: t("retry"),
+      onRetry: props.onRetry
+    }));
+  } else if (commits === null || commits.length === 0) {
+    rows.push(h12("div", { key: "empty", className: "dshgg-menuNote" }, t("graph.empty")));
+  } else {
+    for (const commit of commits) {
+      rows.push(h12(GraphRow, {
+        key: commit.oid,
+        commit,
+        t,
+        menuTrigger: trigger,
+        menuTarget: menu === void 0 || trigger === null ? void 0 : menu.commitTarget(commit)
+      }));
+    }
+  }
+  return h12(Section, {
+    id: "graph",
+    title: t("sections.graph"),
+    count: commits === null ? void 0 : commits.length,
+    open: props.open,
+    onToggle: props.onToggle,
+    menuTrigger: trigger,
+    menuHint: t("menu.hint"),
+    menuTarget: menu === void 0 || trigger === null ? void 0 : menu.sectionTarget("graph")
+  }, rows);
+}
+function GraphRow(props) {
+  const commit = props.commit;
+  const t = props.t;
+  const refs = parseRefs(commit.refs);
+  const visibleRefs = refs.slice(0, 3);
+  const hidden = refs.length - visibleRefs.length;
+  const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
+  const menuProps = menuTrigger === null || props.menuTarget === void 0 ? null : menuTrigger(props.menuTarget, { tabIndex: 0, "aria-haspopup": "menu" });
+  return h12(
+    "div",
+    {
+      className: "dshgg-graphRow",
+      title: `${commit.shortOid} ${commit.subject} · ${t("menu.hint")}`,
+      ...menuProps ?? {}
+    },
+    h12("pre", { className: "dshgg-graphPrefix" }, commit.graph === "" ? "*" : commit.graph),
+    h12(
+      "div",
+      { className: "dshgg-graphBody" },
+      h12("div", { className: "dshgg-graphSubject" }, commit.subject === "" ? t("graph.noSubject") : commit.subject),
+      h12(
+        "div",
+        { className: "dshgg-graphMeta" },
+        h12("span", { className: "dshgg-graphHash" }, commit.shortOid),
+        h12("span", { className: "dshgg-dot" }, "·"),
+        h12("span", null, commit.author),
+        h12("span", { className: "dshgg-dot" }, "·"),
+        h12("span", null, formatAgo(t, commit.authoredAt)),
+        visibleRefs.length === 0 ? null : h12(
+          "span",
+          { className: "dshgg-refs" },
+          visibleRefs.map((ref, index) => h12("span", { key: `${ref.label}:${index}`, className: "dshgg-ref", "data-kind": ref.kind, title: ref.label }, ref.label)),
+          hidden > 0 ? h12("span", { key: "more", className: "dshgg-ref", title: refs.slice(3).map((ref) => ref.label).join(", ") }, `+${hidden}`) : null
+        )
+      )
+    )
+  );
+}
+
+// src/client/panel/GitPanel.js
+var h13 = import_react19.createElement;
+function GitPanel(props) {
+  const t = props.t;
+  const tab = props.useTabInfo().tab;
+  const visible = tab.visible !== false;
+  const refs = usePanelRefs();
+  const commandOptions = useMenuCommands();
+  const statusState = useRepoStatus({ sessionId: props.sessionId, useContextMenu: props.useContextMenu, visible, refs });
+  const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
+  const { graph, graphLoading, graphFailure, loadGraph } = useHistory({ call, refs });
+  const [openSections, setOpenSections] = (0, import_react19.useState)({ merge: true, staged: true, changes: true, graph: true });
+  const [collapsed, setCollapsed] = (0, import_react19.useState)({});
+  const repo = status?.repo ?? null;
+  const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
+  const repoRoot = repo?.root ?? sessionDirectory;
+  const files = status?.files ?? [];
+  const mergeFiles = (0, import_react19.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
+  const stagedFiles = (0, import_react19.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
+  const changedFiles = (0, import_react19.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
+  const treeCache = (0, import_react19.useMemo)(() => ({
+    merge: buildTree(mergeFiles.map((entry) => ({ ...entry, letter: "!" }))),
+    staged: buildTree(stagedFiles.map((entry) => ({ ...entry, letter: statusLetter(entry.x) }))),
+    changes: buildTree(changedFiles.map((entry) => ({ ...entry, letter: entry.untracked === true ? "U" : statusLetter(entry.y) })))
+  }), [mergeFiles, stagedFiles, changedFiles]);
+  const clean = repo !== null && mergeFiles.length === 0 && stagedFiles.length === 0 && changedFiles.length === 0;
+  const actions = useChangeActions({ call, t, refs, files, stagedFiles, loadStatus, loadGraph });
+  const {
+    busy,
+    message,
+    setMessage,
+    notice,
+    setNotice,
+    actionFailure,
+    setActionFailure,
+    confirm,
+    setConfirm,
+    perform,
+    stage,
+    unstage,
+    requestCommit,
+    confirmAction
+  } = actions;
+  const { branchMenu, branches, branchLoading, branchFailure, loadBranches, toggleBranchMenu, checkout } = useBranches({ call, refs, perform });
+  const openDiff = (0, import_react19.useCallback)((entry, mode) => {
+    tab.actions.openTab(DIFF_KIND, {
+      params: {
+        path: entry.path,
+        staged: mode === "staged",
+        untracked: entry.untracked === true,
+        status: mode === "staged" ? statusLetter(entry.x) : entry.untracked === true ? "U" : statusLetter(entry.y),
+        origPath: entry.origPath,
+        cwd: repoRoot ?? void 0
+      }
+    });
+  }, [tab.actions, repoRoot]);
+  const toggleSection = (id) => setOpenSections((current) => ({ ...current, [id]: current[id] !== true }));
+  const toggleFolder = (path) => setCollapsed((current) => ({ ...current, [path]: current[path] !== true }));
+  const refreshAll = () => {
+    setActionFailure(null);
+    void loadStatus({ silent: true });
+    void loadGraph();
+  };
+  const branchLabel = repo === null ? null : repo.detached === true ? t("branch.detached") : repo.unborn === true ? t("branch.unborn") : repo.branch;
+  const ahead = repo?.ahead ?? 0;
+  const behind = repo?.behind ?? 0;
+  const canAct = repo !== null && busy === null;
+  const targets = createMenuTargets({ sessionId: props.sessionId, panelId, busy, cwd: repoRoot });
+  const graphMenu = { trigger: menuTrigger, sectionTarget: targets.sectionTarget, commitTarget: targets.commitTarget };
+  commandOptions.current = {
+    sessionId: props.sessionId,
+    panelId,
+    repo,
+    busyRef: refs.busy,
+    t,
+    files,
+    stagedFiles,
+    changedFiles,
+    mergeFiles,
+    refreshAll,
+    stage,
+    unstage,
+    setConfirm,
+    setNotice,
+    openDiff
+  };
+  const renderState = () => {
+    if (loading && status === null) {
+      return h13(EmptyState, {
+        icon: h13(GitBranchIcon, { size: 26 }),
+        title: t("loading")
+      });
+    }
+    if (loadFailure !== null && status === null) {
+      if (loadFailure.code === "git-unavailable") {
+        return h13(EmptyState, {
+          icon: h13(AlertIcon, { size: 26 }),
+          title: t("gitUnavailable.title"),
+          desc: t("gitUnavailable.desc"),
+          action: h13("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
+            void loadStatus();
+          } }, t("retry"))
+        });
+      }
+      return h13(EmptyState, {
+        icon: h13(AlertIcon, { size: 26 }),
+        title: t("error.title"),
+        desc: errorText(t, loadFailure),
+        action: h13("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
+          void loadStatus();
+        } }, t("retry"))
+      });
+    }
+    if (status !== null && repo === null) {
+      return h13(EmptyState, {
+        icon: h13(GitBranchIcon, { size: 26 }),
+        title: t("noRepo.title"),
+        desc: t("noRepo.desc", { path: sessionDirectory ?? "" }),
+        action: h13("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: refreshAll }, t("refresh"))
+      });
+    }
+    return null;
+  };
+  const body = renderState() ?? h13(
+    import_react19.Fragment,
+    null,
+    h13(ChangeGroups, {
+      t,
+      clean,
+      mergeFiles,
+      stagedFiles,
+      changedFiles,
+      treeCache,
+      openSections,
+      collapsed,
+      busy: busy !== null,
+      canAct,
+      onToggleSection: toggleSection,
+      onToggleFolder: toggleFolder,
+      onStage: stage,
+      onUnstage: unstage,
+      onOpenDiff: openDiff,
+      onDiscard: (entry) => setConfirm({ kind: "discard", entry }),
+      onDiscardAll: () => setConfirm({ kind: "discardAll", entries: changedFiles }),
+      menuTrigger,
+      sectionTarget: targets.sectionTarget,
+      treeTarget: targets.treeTarget
+    }),
+    h13(GraphSection, {
+      t,
+      commits: graph,
+      loading: graphLoading,
+      failure: graphFailure,
+      open: openSections.graph === true,
+      onToggle: () => toggleSection("graph"),
+      onRetry: () => {
+        void loadGraph();
+      },
+      menu: graphMenu
+    })
+  );
+  const commitHint = stagedFiles.length > 0 ? t("commit.hint") : t("commit.hintNone");
+  const placeholder = repo === null ? t("commit.placeholder", { branch: "" }) : t("commit.placeholder", { branch: branchLabel ?? "" });
+  return h13(
+    "div",
+    { className: "dshgg-root", "data-dsh-git-graph": "" },
+    h13(BranchHeader, {
+      t,
+      wrapRef: refs.wrap,
+      repo,
+      branchLabel,
+      ahead,
+      behind,
+      busy,
+      branchMenu,
+      branches,
+      branchLoading,
+      branchFailure,
+      onToggleMenu: toggleBranchMenu,
+      onPickBranch: checkout,
+      onRetryBranches: () => {
+        void loadBranches();
+      },
+      onRefresh: refreshAll
+    }),
+    repo === null ? null : h13(CommitBox, {
+      t,
+      message,
+      hint: commitHint,
+      placeholder,
+      busy,
+      onChange: setMessage,
+      onCommit: requestCommit
+    }),
+    loadFailure !== null && status !== null ? h13(Banner, {
+      title: t("error.title"),
+      detail: errorText(t, loadFailure),
+      retryLabel: t("retry"),
+      onRetry: () => {
+        void loadStatus();
+      },
+      dismissLabel: t("action.dismiss"),
+      onDismiss: () => setLoadFailure(null)
+    }) : null,
+    actionFailure !== null ? h13(Banner, {
+      title: t("error.title"),
+      detail: errorText(t, actionFailure),
+      dismissLabel: t("action.dismiss"),
+      onDismiss: () => setActionFailure(null)
+    }) : null,
+    notice !== null ? h13("div", { className: "dshgg-notice", role: "status" }, notice) : null,
+    h13("div", { className: "dshgg-scroll" }, body),
+    confirm !== null ? h13(
+      "div",
+      { className: "dshgg-confirm", role: "alertdialog", "aria-label": confirmTitle(t, confirm) },
+      h13(
+        "div",
+        { className: "dshgg-confirmText" },
+        h13("div", { className: "dshgg-confirmTitle" }, confirmTitle(t, confirm)),
+        confirmDescription(t, confirm) === "" ? null : h13("div", { className: "dshgg-confirmDesc" }, confirmDescription(t, confirm))
+      ),
+      h13(
+        "div",
+        { className: "dshgg-confirmActions" },
+        h13("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", disabled: busy !== null, onClick: () => setConfirm(null) }, t("action.cancel")),
+        h13("button", { type: "button", className: "dshgg-btn dshgg-btnPrimary", disabled: busy !== null, onClick: confirmAction }, confirmActionLabel(t, confirm))
+      )
+    ) : null
   );
 }
 
 // src/client/titles.js
-var import_react9 = require("react");
-var h9 = import_react9.createElement;
+var import_react20 = require("react");
+var h14 = import_react20.createElement;
 function GitTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;
-  return h9("span", { className: "dshgg-title" }, h9(GitBranchIcon, { size: 14 }), h9("span", { className: "dshgg-titleText" }, title));
+  return h14("span", { className: "dshgg-title" }, h14(GitBranchIcon, { size: 14 }), h14("span", { className: "dshgg-titleText" }, title));
 }
 function DiffTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const params = tabInfo.tab.navigation?.params ?? {};
   const name = typeof params.path === "string" && params.path !== "" ? baseName(params.path) : tabInfo.tab.title;
-  return h9("span", { className: "dshgg-title" }, h9(FileIcon, { size: 14 }), h9("span", { className: "dshgg-titleText" }, name));
+  return h14("span", { className: "dshgg-title" }, h14(FileIcon, { size: 14 }), h14("span", { className: "dshgg-titleText" }, name));
 }
 
 // src/client/locale/en.js
@@ -1118,665 +1976,6 @@ if (typeof document !== "undefined" && document.querySelector(`style[data-plugin
 }
 
 // src/client/app.js
-var h10 = import_react10.createElement;
-function GitPanel(props) {
-  const sessionId = props.sessionId;
-  const t = props.t;
-  const useTabInfo = props.useTabInfo;
-  const tabInfo = useTabInfo();
-  const tab = tabInfo.tab;
-  const visible = tab.visible !== false;
-  const call = (0, import_react10.useMemo)(() => createCaller(sessionId), [sessionId]);
-  const menuTrigger = (0, import_react10.useMemo)(
-    () => typeof sessionId === "string" && sessionId !== "" ? bindMenuTrigger(props.useContextMenu) : null,
-    [props.useContextMenu, sessionId]
-  );
-  const panelId = (0, import_react10.useMemo)(() => `git-panel-${nextPanelId()}`, []);
-  const [status, setStatus] = (0, import_react10.useState)(null);
-  const [loading, setLoading] = (0, import_react10.useState)(true);
-  const [loadFailure, setLoadFailure] = (0, import_react10.useState)(null);
-  const [actionFailure, setActionFailure] = (0, import_react10.useState)(null);
-  const [busy, setBusy] = (0, import_react10.useState)(null);
-  const [message, setMessage] = (0, import_react10.useState)("");
-  const [notice, setNotice] = (0, import_react10.useState)(null);
-  const [confirm, setConfirm] = (0, import_react10.useState)(null);
-  const [openSections, setOpenSections] = (0, import_react10.useState)({ merge: true, staged: true, changes: true, graph: true });
-  const [collapsed, setCollapsed] = (0, import_react10.useState)({});
-  const [graph, setGraph] = (0, import_react10.useState)(null);
-  const [graphLoading, setGraphLoading] = (0, import_react10.useState)(false);
-  const [graphFailure, setGraphFailure] = (0, import_react10.useState)(null);
-  const [branchMenu, setBranchMenu] = (0, import_react10.useState)(false);
-  const [branches, setBranches] = (0, import_react10.useState)(null);
-  const [branchLoading, setBranchLoading] = (0, import_react10.useState)(false);
-  const [branchFailure, setBranchFailure] = (0, import_react10.useState)(null);
-  const inFlight = (0, import_react10.useRef)(false);
-  const busyRef = (0, import_react10.useRef)(null);
-  const confirmRef = (0, import_react10.useRef)(null);
-  const mounted = (0, import_react10.useRef)(true);
-  const wrapRef = (0, import_react10.useRef)(null);
-  const commandRef = (0, import_react10.useRef)(null);
-  busyRef.current = busy;
-  confirmRef.current = confirm;
-  (0, import_react10.useEffect)(() => () => {
-    mounted.current = false;
-  }, []);
-  (0, import_react10.useEffect)(() => panelCommands.subscribe((command) => {
-    const handler = commandRef.current;
-    if (typeof handler === "function") handler(command);
-  }), []);
-  const loadStatus = (0, import_react10.useCallback)(async (options = {}) => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    if (options.silent !== true) setLoading(true);
-    try {
-      const value = await call("status");
-      if (!mounted.current) return;
-      setStatus(value);
-      setLoadFailure(null);
-    } catch (error) {
-      if (!mounted.current) return;
-      setLoadFailure(error);
-    } finally {
-      inFlight.current = false;
-      if (mounted.current) setLoading(false);
-    }
-  }, [call]);
-  const loadGraph = (0, import_react10.useCallback)(async () => {
-    if (mounted.current) setGraphLoading(true);
-    try {
-      const value = await call("history");
-      if (!mounted.current) return;
-      setGraph(Array.isArray(value?.commits) ? value.commits : []);
-      setGraphFailure(null);
-    } catch (error) {
-      if (!mounted.current) return;
-      if (error.code === "not-a-repository") setGraph([]);
-      else setGraphFailure(error);
-    } finally {
-      if (mounted.current) setGraphLoading(false);
-    }
-  }, [call]);
-  const loadBranches = (0, import_react10.useCallback)(async () => {
-    if (mounted.current) setBranchLoading(true);
-    try {
-      const value = await call("branches");
-      if (!mounted.current) return;
-      setBranches(Array.isArray(value?.branches) ? value.branches : []);
-      setBranchFailure(null);
-    } catch (error) {
-      if (!mounted.current) return;
-      setBranchFailure(error);
-    } finally {
-      if (mounted.current) setBranchLoading(false);
-    }
-  }, [call]);
-  (0, import_react10.useEffect)(() => {
-    void loadStatus();
-    void loadGraph();
-  }, [loadStatus, loadGraph]);
-  (0, import_react10.useEffect)(() => {
-    if (!visible) return void 0;
-    const timer = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-      if (inFlight.current || busyRef.current !== null || confirmRef.current !== null) return;
-      void loadStatus({ silent: true });
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [visible, loadStatus]);
-  (0, import_react10.useEffect)(() => {
-    if (notice === null) return void 0;
-    const timer = setTimeout(() => {
-      if (mounted.current) setNotice(null);
-    }, 4e3);
-    return () => clearTimeout(timer);
-  }, [notice]);
-  (0, import_react10.useEffect)(() => {
-    if (!branchMenu) return void 0;
-    const onPointerDown = (event) => {
-      const wrap = wrapRef.current;
-      if (wrap !== null && wrap.contains(event.target)) return;
-      setBranchMenu(false);
-    };
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") setBranchMenu(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [branchMenu]);
-  const perform = (0, import_react10.useCallback)(async (name, operation, options = {}) => {
-    if (busyRef.current !== null) return void 0;
-    busyRef.current = name;
-    setBusy(name);
-    setActionFailure(null);
-    try {
-      const result = await operation();
-      if (!mounted.current) return result;
-      if (options.notice !== void 0) setNotice(options.notice);
-      if (options.after !== void 0) await options.after(result);
-      await loadStatus({ silent: true });
-      if (options.graph === true) await loadGraph();
-      return result;
-    } catch (error) {
-      if (mounted.current) setActionFailure(error);
-      return void 0;
-    } finally {
-      busyRef.current = null;
-      if (mounted.current) setBusy(null);
-    }
-  }, [loadStatus, loadGraph]);
-  const repo = status?.repo ?? null;
-  const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
-  const repoRoot = repo?.root ?? sessionDirectory;
-  const files = status?.files ?? [];
-  const mergeFiles = (0, import_react10.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
-  const stagedFiles = (0, import_react10.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
-  const changedFiles = (0, import_react10.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
-  const treeCache = (0, import_react10.useMemo)(() => ({
-    merge: buildTree(mergeFiles.map((entry) => ({ ...entry, letter: "!" }))),
-    staged: buildTree(stagedFiles.map((entry) => ({ ...entry, letter: statusLetter(entry.x) }))),
-    changes: buildTree(changedFiles.map((entry) => ({ ...entry, letter: entry.untracked === true ? "U" : statusLetter(entry.y) })))
-  }), [mergeFiles, stagedFiles, changedFiles]);
-  const clean = repo !== null && mergeFiles.length === 0 && stagedFiles.length === 0 && changedFiles.length === 0;
-  const toggleSection = (id) => setOpenSections((current) => ({ ...current, [id]: current[id] !== true }));
-  const toggleFolder = (path) => setCollapsed((current) => ({ ...current, [path]: current[path] !== true }));
-  const stage = (entries) => perform("stage", () => call("stage", { paths: entries.map((entry) => entry.path) }));
-  const unstage = (entries) => perform("unstage", () => call("unstage", { paths: entries.map((entry) => entry.path) }));
-  const openDiff = (0, import_react10.useCallback)((entry, mode) => {
-    tab.actions.openTab(DIFF_KIND, {
-      params: {
-        path: entry.path,
-        staged: mode === "staged",
-        untracked: entry.untracked === true,
-        status: mode === "staged" ? statusLetter(entry.x) : entry.untracked === true ? "U" : statusLetter(entry.y),
-        origPath: entry.origPath,
-        cwd: repoRoot ?? void 0
-      }
-    });
-  }, [tab.actions, repoRoot]);
-  const requestCommit = () => {
-    if (message.trim() === "" || busyRef.current !== null) return;
-    if (stagedFiles.length === 0) {
-      if (files.length === 0) {
-        setActionFailure(makeFailure("nothing-staged", t("commit.nothing")));
-        return;
-      }
-      setConfirm({ kind: "commitAll" });
-      return;
-    }
-    void perform("commit", () => call("commit", { message }), {
-      graph: true,
-      after: (result) => {
-        setMessage("");
-        setNotice(t("commit.done", { hash: result?.commit ?? "" }));
-      }
-    });
-  };
-  const confirmAction = () => {
-    const current = confirmRef.current;
-    if (current === null) return;
-    setConfirm(null);
-    if (current.kind === "commitAll") {
-      void perform("commit", () => call("commit", { message, stageAll: true }), {
-        graph: true,
-        after: (result) => {
-          setMessage("");
-          setNotice(t("commit.done", { hash: result?.commit ?? "" }));
-        }
-      });
-      return;
-    }
-    if (current.kind === "discard") {
-      void perform("discard", () => call("discard", { path: current.entry.path, untracked: current.entry.untracked === true }));
-      return;
-    }
-    if (current.kind === "discardAll") {
-      const entries = current.entries;
-      void perform("discard", async () => {
-        for (const entry of entries) await call("discard", { path: entry.path, untracked: entry.untracked === true });
-      });
-    }
-  };
-  const toggleBranchMenu = () => {
-    const next = !branchMenu;
-    setBranchMenu(next);
-    if (next && branches === null && branchFailure === null) void loadBranches();
-  };
-  const checkout = (branch) => {
-    setBranchMenu(false);
-    void perform("checkout", () => call("checkout", { branch }), {
-      graph: true,
-      after: () => {
-        setBranches(null);
-        setBranchFailure(null);
-      }
-    });
-  };
-  const refreshAll = () => {
-    setActionFailure(null);
-    void loadStatus({ silent: true });
-    void loadGraph();
-  };
-  const reportStale = () => setNotice(t("menu.stale"));
-  commandRef.current = (command) => {
-    if (command === null || typeof command !== "object") return;
-    if (typeof command.sessionId === "string" && command.sessionId !== sessionId) return;
-    if (typeof command.panelId === "string" && command.panelId !== panelId) return;
-    if (repo === null) return;
-    const paths = Array.isArray(command.paths) ? command.paths.filter((path) => typeof path === "string") : [];
-    const matches = (entry) => paths.includes(entry.path);
-    if (command.type === "refresh") {
-      refreshAll();
-      return;
-    }
-    if (busyRef.current !== null) {
-      setNotice(t("menu.busy"));
-      return;
-    }
-    if (command.type === "open") {
-      const pools = { staged: stagedFiles, merge: mergeFiles, changes: changedFiles };
-      const preferred = pools[command.section] ?? changedFiles;
-      let section = command.section === "staged" ? "staged" : "changes";
-      let entry = preferred.find((candidate) => candidate.path === command.path);
-      if (entry === void 0) {
-        for (const [candidateSection, pool] of Object.entries(pools)) {
-          entry = pool.find((candidate) => candidate.path === command.path);
-          if (entry !== void 0) {
-            section = candidateSection === "staged" ? "staged" : "changes";
-            break;
-          }
-        }
-      }
-      if (entry === void 0) {
-        reportStale();
-        return;
-      }
-      openDiff(entry, section);
-      return;
-    }
-    if (command.type === "stage" || command.type === "stageSection") {
-      const entries = command.type === "stageSection" ? command.section === "merge" ? mergeFiles : changedFiles : files.filter((entry) => matches(entry) && entry.conflict === true).concat(files.filter((entry) => matches(entry) && isUnstaged(entry)));
-      if (entries.length === 0) {
-        reportStale();
-        return;
-      }
-      void stage(entries);
-      return;
-    }
-    if (command.type === "unstage" || command.type === "unstageSection") {
-      const entries = command.type === "unstageSection" ? stagedFiles : files.filter((entry) => matches(entry) && isStaged(entry));
-      if (entries.length === 0) {
-        reportStale();
-        return;
-      }
-      void unstage(entries);
-      return;
-    }
-    if (command.type === "discard") {
-      const entries = changedFiles.filter(matches);
-      if (entries.length === 0) {
-        reportStale();
-        return;
-      }
-      setConfirm(command.single === true && entries.length === 1 ? { kind: "discard", entry: entries[0] } : { kind: "discardAll", entries });
-      return;
-    }
-    if (command.type === "discardSection") {
-      if (changedFiles.length === 0) {
-        reportStale();
-        return;
-      }
-      setConfirm({ kind: "discardAll", entries: changedFiles });
-    }
-  };
-  const menuSection = (section) => menuTarget(sessionId, "section", { section, busy: busy !== null, panelId });
-  const menuCommit = (commit) => menuTarget(sessionId, "commit", {
-    oid: commit.oid,
-    shortOid: commit.shortOid,
-    subject: commit.subject
-  });
-  const menuTreeTarget = (kind, detail) => menuTarget(sessionId, kind, { ...detail, cwd: repoRoot, busy: busy !== null, panelId });
-  const menu = { trigger: menuTrigger, sectionTarget: menuSection, commitTarget: menuCommit };
-  const branchLabel = repo === null ? null : repo.detached === true ? t("branch.detached") : repo.unborn === true ? t("branch.unborn") : repo.branch;
-  const ahead = repo?.ahead ?? 0;
-  const behind = repo?.behind ?? 0;
-  const canAct = repo !== null && busy === null;
-  const sectionActions = {
-    merge: null,
-    staged: stagedFiles.length === 0 ? null : h10(IconButton, {
-      label: t("actions.unstageAll"),
-      title: t("actions.unstageAll"),
-      disabled: !canAct,
-      onClick: () => {
-        void unstage(stagedFiles);
-      }
-    }, h10(MinusIcon, { size: 14 })),
-    changes: changedFiles.length === 0 ? null : [
-      h10(IconButton, {
-        key: "stage-all",
-        label: t("actions.stageAll"),
-        title: t("actions.stageAll"),
-        disabled: !canAct,
-        onClick: () => {
-          void stage(changedFiles);
-        }
-      }, h10(PlusIcon, { size: 14 })),
-      h10(IconButton, {
-        key: "discard-all",
-        label: t("actions.discardAll"),
-        title: t("actions.discardAll"),
-        disabled: !canAct,
-        onClick: () => setConfirm({ kind: "discardAll", entries: changedFiles })
-      }, h10(UndoIcon, { size: 14 }))
-    ]
-  };
-  const treeContext = {
-    collapsed,
-    t,
-    busy: busy !== null,
-    onToggleFolder: toggleFolder,
-    onOpen: (entry) => openDiff(entry, "changes"),
-    onStage: (entry) => {
-      void stage([entry]);
-    },
-    onUnstage: (entry) => {
-      void unstage([entry]);
-    },
-    onDiscard: (entry) => setConfirm({ kind: "discard", entry }),
-    menuTrigger,
-    menuTarget: menuTreeTarget,
-    menuHint: t("menu.hint"),
-    mode: "changes"
-  };
-  const renderState = () => {
-    if (loading && status === null) {
-      return h10(EmptyState, {
-        icon: h10(GitBranchIcon, { size: 26 }),
-        title: t("loading")
-      });
-    }
-    if (loadFailure !== null && status === null) {
-      if (loadFailure.code === "git-unavailable") {
-        return h10(EmptyState, {
-          icon: h10(AlertIcon, { size: 26 }),
-          title: t("gitUnavailable.title"),
-          desc: t("gitUnavailable.desc"),
-          action: h10("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
-            void loadStatus();
-          } }, t("retry"))
-        });
-      }
-      return h10(EmptyState, {
-        icon: h10(AlertIcon, { size: 26 }),
-        title: t("error.title"),
-        desc: errorText(t, loadFailure),
-        action: h10("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
-          void loadStatus();
-        } }, t("retry"))
-      });
-    }
-    if (status !== null && repo === null) {
-      return h10(EmptyState, {
-        icon: h10(GitBranchIcon, { size: 26 }),
-        title: t("noRepo.title"),
-        desc: t("noRepo.desc", { path: sessionDirectory ?? "" }),
-        action: h10("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: refreshAll }, t("refresh"))
-      });
-    }
-    return null;
-  };
-  const stateView = renderState();
-  const body = stateView !== null ? stateView : h10(
-    import_react10.Fragment,
-    null,
-    mergeFiles.length === 0 ? null : h10(Section, {
-      id: "merge",
-      title: t("sections.merge"),
-      count: mergeFiles.length,
-      open: openSections.merge === true,
-      onToggle: () => toggleSection("merge"),
-      actions: sectionActions.merge,
-      menuTrigger,
-      menuHint: t("menu.hint"),
-      menuTarget: menuSection("merge")
-    }, renderTree(treeCache.merge, 0, { ...treeContext, mode: "merge", onOpen: (entry) => openDiff(entry, "changes") })),
-    stagedFiles.length === 0 ? null : h10(Section, {
-      id: "staged",
-      title: t("sections.staged"),
-      count: stagedFiles.length,
-      open: openSections.staged === true,
-      onToggle: () => toggleSection("staged"),
-      actions: sectionActions.staged,
-      menuTrigger,
-      menuHint: t("menu.hint"),
-      menuTarget: menuSection("staged")
-    }, renderTree(treeCache.staged, 0, {
-      ...treeContext,
-      mode: "staged",
-      onOpen: (entry) => openDiff(entry, "staged"),
-      onStage: (entry) => {
-        void stage([entry]);
-      },
-      onUnstage: (entry) => {
-        void unstage([entry]);
-      }
-    })),
-    changedFiles.length === 0 ? null : h10(Section, {
-      id: "changes",
-      title: t("sections.changes"),
-      count: changedFiles.length,
-      open: openSections.changes === true,
-      onToggle: () => toggleSection("changes"),
-      actions: sectionActions.changes,
-      menuTrigger,
-      menuHint: t("menu.hint"),
-      menuTarget: menuSection("changes")
-    }, renderTree(treeCache.changes, 0, { ...treeContext, onOpen: (entry) => openDiff(entry, "changes") })),
-    clean ? h10(
-      "div",
-      { className: "dshgg-clean" },
-      h10("span", { className: "dshgg-cleanIcon" }, h10(CheckCircleIcon, { size: 26 })),
-      h10("span", { className: "dshgg-cleanTitle" }, t("clean.title")),
-      h10("span", { className: "dshgg-cleanDesc" }, t("clean.desc"))
-    ) : null,
-    graphRows(t, graph, graphLoading, graphFailure, openSections.graph === true, () => toggleSection("graph"), () => {
-      void loadGraph();
-    }, menu)
-  );
-  const commitHint = stagedFiles.length > 0 ? t("commit.hint") : t("commit.hintNone");
-  const placeholder = repo === null ? t("commit.placeholder", { branch: "" }) : t("commit.placeholder", { branch: branchLabel ?? "" });
-  return h10(
-    "div",
-    { className: "dshgg-root", "data-dsh-git-graph": "" },
-    h10(
-      "div",
-      { className: "dshgg-toolbar" },
-      h10(
-        "div",
-        { className: "dshgg-branchWrap", ref: wrapRef },
-        h10(
-          "button",
-          {
-            type: "button",
-            className: "dshgg-branchChip",
-            onClick: toggleBranchMenu,
-            disabled: repo === null || busy !== null,
-            "aria-haspopup": "menu",
-            "aria-expanded": branchMenu,
-            title: repo === null ? t("noRepo.title") : t("branch.menu")
-          },
-          h10(GitBranchIcon, { size: 14 }),
-          h10("span", { className: "dshgg-branchName" }, branchLabel ?? t("loading")),
-          ahead > 0 ? h10("span", { className: "dshgg-sync", title: t("branch.ahead", { n: ahead }) }, h10("span", null, "↑"), String(ahead)) : null,
-          behind > 0 ? h10("span", { className: "dshgg-sync", title: t("branch.behind", { n: behind }) }, h10("span", null, "↓"), String(behind)) : null,
-          repo?.upstream !== void 0 && repo?.upstream !== null ? h10("span", { className: "dshgg-upstream", title: t("branch.upstream", { name: repo.upstream }) }, repo.upstream) : null,
-          h10(ChevronDownIcon, { size: 12 })
-        ),
-        branchMenu ? h10(BranchMenu, {
-          t,
-          branches,
-          loading: branchLoading,
-          failure: branchFailure,
-          onPick: checkout,
-          onRetry: () => {
-            void loadBranches();
-          }
-        }) : null
-      ),
-      h10("span", { className: "dshgg-spacer" }),
-      h10(IconButton, {
-        label: t("refresh"),
-        title: t("refresh"),
-        disabled: busy !== null,
-        spinning: busy === "refresh",
-        onClick: refreshAll
-      }, h10(RefreshIcon, { size: 14 }))
-    ),
-    repo === null ? null : h10(
-      "div",
-      { className: "dshgg-commitBox" },
-      h10("textarea", {
-        className: "dshgg-commitMessage",
-        value: message,
-        rows: 3,
-        spellCheck: false,
-        placeholder,
-        "aria-label": t("commit.action"),
-        disabled: busy !== null,
-        onChange: (event) => setMessage(event.target.value),
-        onKeyDown: (event) => {
-          if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-            event.preventDefault();
-            requestCommit();
-          }
-        }
-      }),
-      h10(
-        "div",
-        { className: "dshgg-commitRow" },
-        h10("span", { className: "dshgg-commitHint", title: commitHint }, commitHint),
-        h10("button", {
-          type: "button",
-          className: "dshgg-btn dshgg-btnPrimary",
-          disabled: message.trim() === "" || busy !== null,
-          onClick: requestCommit
-        }, busy === "commit" ? t("commit.committing") : t("commit.action"))
-      )
-    ),
-    loadFailure !== null && status !== null ? h10(Banner, {
-      title: t("error.title"),
-      detail: errorText(t, loadFailure),
-      retryLabel: t("retry"),
-      onRetry: () => {
-        void loadStatus();
-      },
-      dismissLabel: t("action.dismiss"),
-      onDismiss: () => setLoadFailure(null)
-    }) : null,
-    actionFailure !== null ? h10(Banner, {
-      title: t("error.title"),
-      detail: errorText(t, actionFailure),
-      dismissLabel: t("action.dismiss"),
-      onDismiss: () => setActionFailure(null)
-    }) : null,
-    notice !== null ? h10("div", { className: "dshgg-notice", role: "status" }, notice) : null,
-    h10("div", { className: "dshgg-scroll" }, body),
-    confirm !== null ? h10(
-      "div",
-      { className: "dshgg-confirm", role: "alertdialog", "aria-label": confirmTitle(t, confirm) },
-      h10(
-        "div",
-        { className: "dshgg-confirmText" },
-        h10("div", { className: "dshgg-confirmTitle" }, confirmTitle(t, confirm)),
-        confirmDescription(t, confirm) === "" ? null : h10("div", { className: "dshgg-confirmDesc" }, confirmDescription(t, confirm))
-      ),
-      h10(
-        "div",
-        { className: "dshgg-confirmActions" },
-        h10("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", disabled: busy !== null, onClick: () => setConfirm(null) }, t("action.cancel")),
-        h10("button", { type: "button", className: "dshgg-btn dshgg-btnPrimary", disabled: busy !== null, onClick: confirmAction }, confirmActionLabel(t, confirm))
-      )
-    ) : null
-  );
-}
-function graphRows(t, commits, loading, failure, open, onToggle, onRetry, menu) {
-  const rows = [];
-  const trigger = menu === void 0 ? null : menu.trigger;
-  if (loading === true && commits === null) {
-    rows.push(h10("div", { key: "loading", className: "dshgg-menuNote" }, t("graph.loading")));
-  } else if (failure !== null) {
-    rows.push(h10(Banner, {
-      key: "error",
-      title: t("error.title"),
-      detail: errorText(t, failure),
-      retryLabel: t("retry"),
-      onRetry
-    }));
-  } else if (commits === null || commits.length === 0) {
-    rows.push(h10("div", { key: "empty", className: "dshgg-menuNote" }, t("graph.empty")));
-  } else {
-    for (const commit of commits) {
-      rows.push(h10(GraphRow, {
-        key: commit.oid,
-        commit,
-        t,
-        menuTrigger: trigger,
-        menuTarget: menu === void 0 || trigger === null ? void 0 : menu.commitTarget(commit)
-      }));
-    }
-  }
-  return h10(Section, {
-    id: "graph",
-    title: t("sections.graph"),
-    count: commits === null ? void 0 : commits.length,
-    open,
-    onToggle,
-    menuTrigger: trigger,
-    menuHint: t("menu.hint"),
-    menuTarget: menu === void 0 || trigger === null ? void 0 : menu.sectionTarget("graph")
-  }, rows);
-}
-function GraphRow(props) {
-  const commit = props.commit;
-  const t = props.t;
-  const refs = parseRefs(commit.refs);
-  const visibleRefs = refs.slice(0, 3);
-  const hidden = refs.length - visibleRefs.length;
-  const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
-  const menuProps = menuTrigger === null || props.menuTarget === void 0 ? null : menuTrigger(props.menuTarget, { tabIndex: 0, "aria-haspopup": "menu" });
-  return h10(
-    "div",
-    {
-      className: "dshgg-graphRow",
-      title: `${commit.shortOid} ${commit.subject} · ${t("menu.hint")}`,
-      ...menuProps ?? {}
-    },
-    h10("pre", { className: "dshgg-graphPrefix" }, commit.graph === "" ? "*" : commit.graph),
-    h10(
-      "div",
-      { className: "dshgg-graphBody" },
-      h10("div", { className: "dshgg-graphSubject" }, commit.subject === "" ? t("graph.noSubject") : commit.subject),
-      h10(
-        "div",
-        { className: "dshgg-graphMeta" },
-        h10("span", { className: "dshgg-graphHash" }, commit.shortOid),
-        h10("span", { className: "dshgg-dot" }, "·"),
-        h10("span", null, commit.author),
-        h10("span", { className: "dshgg-dot" }, "·"),
-        h10("span", null, formatAgo(t, commit.authoredAt)),
-        visibleRefs.length === 0 ? null : h10(
-          "span",
-          { className: "dshgg-refs" },
-          visibleRefs.map((ref, index) => h10("span", { key: `${ref.label}:${index}`, className: "dshgg-ref", "data-kind": ref.kind, title: ref.label }, ref.label)),
-          hidden > 0 ? h10("span", { key: "more", className: "dshgg-ref", title: refs.slice(3).map((ref) => ref.label).join(", ") }, `+${hidden}`) : null
-        )
-      )
-    )
-  );
-}
 var inject = ["slots", "locale", "sidebarRightTabs", "sidebarRight"];
 function apply(ctx) {
   const t = ctx.locale.bind(NS);
