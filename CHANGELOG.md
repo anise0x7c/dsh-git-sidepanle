@@ -3,6 +3,20 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## 0.3.1
+
+Fix the merge-conflict group. The Host status parser read a conflicted entry's
+path from the wrong capture group, so conflicted rows arrived without a path
+and the panel could not build the merge-changes group (the row's open and stage
+actions were unreachable). Conflicted files now appear under merge changes with
+their folder path and the `!` status letter, and behave like the other groups.
+
+- Tests: a parser unit case with nested conflicted paths, a real-Git end-to-end
+  test that creates a conflicting merge and reads the status over the RPC route,
+  and a rendered-panel test for a conflicted file inside nested folders.
+- `git diff` renders a conflicted file's combined diff with conflict markers as
+  plain text; there is still no merge editor.
+
 ## 0.3.0
 
 Internal refactor. **No observable behavior change**: the routes, trust fence,

@@ -417,6 +417,6 @@ export { inject, apply } from './client/plugin.js'
 3. **阶段 2.6 并入 2.1–2.3。** `DiffPanel` 与 `renderDiff` 在同一批机械迁移中完成，单独提交没有额外价值。
 4. **类型检查保持"标记 + JSDoc"**（§10 决策 2 的推荐项）：纯函数层加 `// @ts-check`，不引入 `typescript`。
 
-### 已知问题（本轮范围外，未修复）
+### 已知问题（0.3.1 已修复一项）
 
-- `src/host/git/status.js` 的 `parseStatus` 在 `unmerged`（冲突）记录上读 `match[11]`，而记录只有 10 个捕获组，导致冲突行 `path` 为 `undefined`；客户端树构建会对该行调用 `path.split('/')`。这是 0.1.0 起就存在的缺陷，本轮重构按"零行为变化"原样保留并有差分测试锚定；建议另开一个 LiteSpec 变更修复并补冲突夹具。
+- ~~`src/host/git/status.js` 的 `parseStatus` 在 `unmerged`（冲突）记录上读 `match[11]`，而记录只有 10 个捕获组，导致冲突行 `path` 为 `undefined`。~~ 已在 **0.3.1** 修复（改为 `match[10]`，并补了解析单测、真实冲突合并的端到端测试与嵌套目录的渲染测试），详见 `CHANGELOG.md` 与 `.litespec/changes/archive/2026-11-15-fix-merge-conflict-paths/`。

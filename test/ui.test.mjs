@@ -165,6 +165,20 @@ test('the panel renders branch, change groups, status letters, and the graph', a
   await mounted.harness.dispose()
 })
 
+test('a conflicted file keeps its folder tree under merge changes', async () => {
+  const status = createStatus({
+    files: [
+      { kind: 'unmerged', x: 'U', y: 'U', path: 'src/deep/conflicted.txt', conflict: true, untracked: false },
+    ],
+  })
+  const mounted = await mountGit({ status })
+  const text = mounted.harness.text()
+  assert.match(text, /sections\.merge/)
+  assert.match(text, /conflicted\.txt/)
+  assert.match(text, /deep/)
+  assert.match(text, /!/)
+})
+
 test('row actions stage and unstage through the Host', async () => {
   const mounted = await mountGit()
   const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js')

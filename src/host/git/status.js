@@ -66,8 +66,9 @@ export function parseStatus(output) {
       continue
     }
     if (token.startsWith('u ')) {
+      // u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
       const match = /^u (.)(.) \S+ (\S+) (\S+) (\S+) (\S+) (\S+) (\S+) (\S+) (.*)$/s.exec(token)
-      if (match !== null) files.push(changeEntry('unmerged', match[1], match[2], match[11]))
+      if (match !== null) files.push(changeEntry('unmerged', match[1], match[2], match[10]))
       continue
     }
     if (token.startsWith('? ')) {

@@ -168,23 +168,23 @@ describe('parseStatus', () => {
     ])
   })
 
-  test('flags unmerged rows as conflicts', () => {
+  test('flags unmerged rows as conflicts and keeps their paths', () => {
     const output = porcelain(
       `# branch.oid ${OID_A}`,
       '# branch.head main',
       `u UU N... 100644 100644 100644 100644 ${OID_A} ${OID_B} ${OID_C} conflict.txt`,
+      `u UU N... 100644 100644 100644 100644 ${OID_A} ${OID_B} ${OID_C} src/deep/conflict.txt`,
     )
     const { files } = parseStatus(output)
-    assert.equal(files.length, 1)
-    assert.equal(files[0].kind, 'unmerged')
-    assert.equal(files[0].x, 'U')
-    assert.equal(files[0].y, 'U')
-    assert.equal(files[0].conflict, true)
-    assert.equal(files[0].untracked, false)
-    // The pre-split parser reads the unmerged path from capture 11 while the
-    // record only has ten captures, so the path is undefined today. Preserved
-    // verbatim by the split and reported separately; the client needs a path.
-    assert.equal(files[0].path, undefined)
+    assert.equal(files.length, 2)
+    assert.deepEqual(files.map((file) => file.path), ['conflict.txt', 'src/deep/conflict.txt'])
+    for (const file of files) {
+      assert.equal(file.kind, 'unmerged')
+      assert.equal(file.x, 'U')
+      assert.equal(file.y, 'U')
+      assert.equal(file.conflict, true)
+      assert.equal(file.untracked, false)
+    }
   })
 
   test('ignores records it does not understand', () => {
