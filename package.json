@@ -14,7 +14,9 @@
   "files": [
     "index.js",
     "client.js",
+    "client.js.map",
     "cordis.patch.yml",
+    "src",
     "locale/*.json",
     "docs",
     "README.md",
@@ -40,6 +42,13 @@
     }
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "build": "node scripts/build-client.mjs",
+    "dev": "node scripts/build-client.mjs --watch",
+    "pretest": "node scripts/build-client.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check:build": "node scripts/build-client.mjs --check"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }
