@@ -101,6 +101,18 @@ function buttonByLabel(harness, label) {
   return buttons[0]
 }
 
+function collectElements(element, predicate) {
+  const found = []
+  const visit = (node) => {
+    if (Array.isArray(node)) { node.forEach(visit); return }
+    if (node === null || node === undefined || typeof node !== 'object') return
+    if (predicate(node)) found.push(node)
+    for (const child of node.children ?? []) visit(child)
+  }
+  visit(element)
+  return found
+}
+
 function elementText(element) {
   const parts = []
   const walk = (node) => {
@@ -152,6 +164,9 @@ test('the panel renders branch, change groups, status letters, and the graph', a
   assert.match(text, /sections\.graph/)
   assert.match(text, /Fix the sidebar/)
   assert.match(text, /Initial commit/)
+  const refChips = mounted.harness.findAll((element) => String(element.props?.className ?? '') === 'dshgg-ref')
+  assert.deepEqual(refChips.map((chip) => chip.props['data-kind']), ['head', 'tag'], 'a remote spelling of the shown branch folds away')
+  assert.match(text, /origin\/main/)
   assert.match(text, /app\.js/)
   assert.match(text, /README\.md/)
   assert.match(text, /merge\.txt/)
@@ -163,6 +178,56 @@ test('the panel renders branch, change groups, status letters, and the graph', a
   const initial = mounted.calls.filter((call) => call.op === 'status')
   assert.ok(initial.length >= 1)
   assert.equal(typeof mounted.harness.hookStoreSize(), 'number')
+  await mounted.harness.dispose()
+})
+
+test('the commit graph draws a node per commit and lane lines from the parents', async () => {
+  const mounted = await mountGit()
+  const svgs = mounted.harness.findAll((element) => element.type === 'svg' && element.props.className === 'dshgg-graphSvg')
+  assert.equal(svgs.length, 2, 'one graph cell per commit row')
+  for (const svg of svgs) {
+    assert.equal(svg.props['aria-hidden'], 'true')
+    assert.equal(svg.props.width, 12, 'a linear history needs only one lane')
+    assert.equal(svg.props.height, 40)
+  }
+  const circles = mounted.harness.findAll((element) => element.type === 'circle' && element.props.className === 'dshgg-graphNode')
+  assert.equal(circles.length, 2)
+  for (const circle of circles) {
+    assert.equal(circle.props.className, 'dshgg-graphNode')
+    assert.equal(circle.props.cx, 6)
+    assert.equal(circle.props.cy, 14)
+  }
+  const paths = mounted.harness.findAll((element) => element.type === 'path' && element.props.className === 'dshgg-graphEdge')
+  assert.equal(paths.length, 2)
+  assert.equal(paths[0].props.d, 'M6 14V40', 'the newer commit draws toward its parent')
+  assert.equal(paths[0].props['data-lane'], '0')
+  await mounted.harness.dispose()
+})
+
+test('a merge fans out into colored lanes and joins at the shared parent', async () => {
+  const now = Math.floor(Date.now() / 1000)
+  const history = {
+    commits: [
+      { oid: 'd'.repeat(40), shortOid: 'ddddddd', author: 'Ann', authoredAt: now, refs: 'HEAD -> main', subject: 'Merge feature', parents: ['c'.repeat(40), 'b'.repeat(40)] },
+      { oid: 'c'.repeat(40), shortOid: 'ccccccc', author: 'Ann', authoredAt: now - 60, refs: '', subject: 'Main work', parents: ['a'.repeat(40)] },
+      { oid: 'b'.repeat(40), shortOid: 'bbbbbbb', author: 'Bob', authoredAt: now - 120, refs: '', subject: 'Feature work', parents: ['a'.repeat(40)] },
+      { oid: 'a'.repeat(40), shortOid: 'aaaaaaa', author: 'Bob', authoredAt: now - 180, refs: 'tag: v1.0', subject: 'Initial commit', parents: [] },
+    ],
+  }
+  const mounted = await mountGit({ history })
+  const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '') === 'dshgg-graphRow')
+  assert.equal(rows.length, 4)
+  const svgs = mounted.harness.findAll((element) => element.type === 'svg' && element.props.className === 'dshgg-graphSvg')
+  assert.equal(svgs.length, 4)
+  for (const svg of svgs) assert.equal(svg.props.width, 24, 'two lanes share one width across rows')
+  const circles = mounted.harness.findAll((element) => element.type === 'circle' && element.props.className === 'dshgg-graphNode')
+  assert.deepEqual(circles.map((circle) => circle.props['data-lane']), ['0', '0', '1', '0'])
+  const mergeCell = rows[0].children[0]
+  assert.equal(mergeCell.type, 'svg')
+  const mergeEdges = collectElements(mergeCell, (element) => element.type === 'path')
+  assert.deepEqual(mergeEdges.map((edge) => edge.props['data-lane']), ['0', '1'])
+  const sideLanePaths = mounted.harness.findAll((element) => element.type === 'path' && element.props['data-lane'] === '1')
+  assert.ok(sideLanePaths.length >= 2, 'the side lane keeps its own color as it runs and joins')
   await mounted.harness.dispose()
 })
 

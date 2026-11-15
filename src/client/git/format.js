@@ -143,6 +143,22 @@ export function parseRefs(refs) {
 }
 
 /**
+ * Drop refs that only repeat a branch already named by another ref in the same
+ * decoration. `main` + `origin/main` and `feature/x` + `origin/feature/x` each
+ * name one branch, and the sidebar's commit rows are too narrow to print both;
+ * the part after the first slash is what the two spellings share.
+ * @param {ParsedRef[]} refs - parsed refs in decoration order.
+ * @returns {ParsedRef[]} refs without a duplicate spelling of another ref.
+ */
+export function distinctRefs(refs) {
+  const labels = new Set(refs.map((ref) => ref.label))
+  return refs.filter((ref) => {
+    const slash = ref.label.indexOf('/')
+    return slash < 0 || !labels.has(ref.label.slice(slash + 1))
+  })
+}
+
+/**
  * Choose the localized text for a failure surfaced by the RPC caller.
  * @param {LocaleBinder} t - locale binder.
  * @param {Failure | null | undefined} failure - failure envelope.

@@ -206,6 +206,13 @@ function parseRefs(refs) {
     return { label, kind: "branch" };
   });
 }
+function distinctRefs(refs) {
+  const labels = new Set(refs.map((ref) => ref.label));
+  return refs.filter((ref) => {
+    const slash = ref.label.indexOf("/");
+    return slash < 0 || !labels.has(ref.label.slice(slash + 1));
+  });
+}
 function errorText(t, failure) {
   if (failure === null || failure === void 0) return t("error.unknown");
   const code = failure.code;
@@ -1168,13 +1175,14 @@ function BranchHeader(props) {
           disabled: repo === null || props.busy !== null,
           "aria-haspopup": "menu",
           "aria-expanded": props.branchMenu,
-          title: repo === null ? t("noRepo.title") : t("branch.menu")
+          "aria-label": props.branchLabel ?? t("title"),
+          title: repo === null ? t("noRepo.title") : repo.upstream === void 0 || repo.upstream === null ? t("branch.menu") : `${t("branch.upstream", { name: repo.upstream })} · ${t("branch.menu")}`
         },
         h7(GitBranchIcon, { size: 14 }),
-        h7("span", { className: "dshgg-branchName" }, props.branchLabel ?? t("loading")),
+        props.branchLabel === void 0 || props.branchLabel === null ? null : h7("span", { className: "dshgg-branchName" }, props.branchLabel),
         props.ahead > 0 ? h7("span", { className: "dshgg-sync", title: t("branch.ahead", { n: props.ahead }) }, h7("span", null, "↑"), String(props.ahead)) : null,
         props.behind > 0 ? h7("span", { className: "dshgg-sync", title: t("branch.behind", { n: props.behind }) }, h7("span", null, "↓"), String(props.behind)) : null,
-        repo?.upstream !== void 0 && repo?.upstream !== null ? h7("span", { className: "dshgg-upstream", title: t("branch.upstream", { name: repo.upstream }) }, repo.upstream) : null,
+        repo?.upstream === void 0 || repo?.upstream === null ? null : h7("span", { className: "dshgg-upstream", title: t("branch.upstream", { name: repo.upstream }) }, repo.upstream),
         h7(ChevronDownIcon, { size: 12 })
       ),
       props.branchMenu ? h7(BranchMenu, {
@@ -1218,7 +1226,7 @@ function FolderRow(props) {
     "div",
     {
       className: "dshgg-row dshgg-folderRow",
-      style: { paddingLeft: `${4 + props.depth * 10}px` },
+      style: { paddingLeft: `${6 + props.depth * 14}px` },
       role: "button",
       tabIndex: 0,
       "aria-expanded": props.open,
@@ -1289,7 +1297,7 @@ function FileRow(props) {
     "div",
     {
       className: "dshgg-row dshgg-fileRow",
-      style: { paddingLeft: `${4 + props.depth * 10}px` },
+      style: { paddingLeft: `${6 + props.depth * 14}px` },
       role: "button",
       tabIndex: 0,
       "aria-label": `${props.t(statusKey(letter))} ${entry.path}`,
@@ -1605,15 +1613,115 @@ function CommitDetails(props) {
 
 // src/client/panel/views/GraphSection.js
 var import_react20 = require("react");
+
+// src/client/git/graph.js
+var LANE_WIDTH = 12;
+var MAX_GRAPH_WIDTH = 96;
+var MIN_LANE_WIDTH = 4;
+var ROW_HEIGHT = 40;
+var NODE_Y = 14;
+var LANE_COLORS = 6;
+function firstFreeLane(lanes) {
+  for (let index = 0; index < lanes.length; index += 1) {
+    if (lanes[index] === null) return index;
+  }
+  return -1;
+}
+function freeLaneAfter(lanes, after) {
+  const count = lanes.length;
+  for (let offset = 1; offset < count; offset += 1) {
+    const index = (after + offset) % count;
+    if (lanes[index] === null) return index;
+  }
+  return -1;
+}
+function computeGraph(commits) {
+  let lanes = [];
+  const rows = [];
+  let laneCount = 0;
+  for (const commit of commits) {
+    const parents = Array.isArray(commit.parents) ? commit.parents.filter((parent) => typeof parent === "string" && parent !== "") : [];
+    let lane = lanes.indexOf(commit.oid);
+    const isNewLane = lane === -1;
+    if (isNewLane) {
+      lane = firstFreeLane(lanes);
+      if (lane === -1) {
+        lane = lanes.length;
+        lanes.push(null);
+      }
+      lanes[lane] = commit.oid;
+    }
+    const edges = [];
+    for (let index = 0; index < lanes.length; index += 1) {
+      if (lanes[index] === null || index === lane) continue;
+      edges.push({ kind: "through", color: index % LANE_COLORS, from: index, to: index });
+    }
+    if (!isNewLane) edges.push({ kind: "in", color: lane % LANE_COLORS, from: lane, to: lane });
+    lanes[lane] = null;
+    for (let index = 0; index < parents.length; index += 1) {
+      const parent = parents[index];
+      let target = lanes.indexOf(parent);
+      if (target === -1) {
+        if (index === 0 && lanes[lane] === null) {
+          target = lane;
+        } else {
+          target = freeLaneAfter(lanes, lane);
+          if (target === -1) {
+            target = lanes.length;
+            lanes.push(null);
+          }
+        }
+        lanes[target] = parent;
+      }
+      edges.push({ kind: "out", color: target % LANE_COLORS, from: lane, to: target });
+    }
+    laneCount = Math.max(laneCount, lane + 1);
+    for (const edge of edges) laneCount = Math.max(laneCount, edge.from + 1, edge.to + 1);
+    rows.push({ oid: commit.oid, lane, color: lane % LANE_COLORS, edges });
+  }
+  return { rows, laneCount };
+}
+function laneStep(laneCount) {
+  if (laneCount <= 0) return LANE_WIDTH;
+  return Math.max(MIN_LANE_WIDTH, Math.min(LANE_WIDTH, MAX_GRAPH_WIDTH / laneCount));
+}
+function round(value) {
+  return Math.round(value * 100) / 100;
+}
+function edgePath(x1, y1, x2, y2) {
+  if (x1 === x2) return `M${round(x1)} ${round(y1)}V${round(y2)}`;
+  const bend = (y2 - y1) * 0.45;
+  return `M${round(x1)} ${round(y1)}C${round(x1)} ${round(y1 + bend)} ${round(x2)} ${round(y2 - bend)} ${round(x2)} ${round(y2)}`;
+}
+function graphRowGeometry(row, laneCount) {
+  const step = laneStep(laneCount);
+  const width = laneCount <= 0 ? step : laneCount * step;
+  const x = (lane) => lane * step + step / 2;
+  const edges = row.edges.map((edge) => {
+    const startY = edge.kind === "through" ? 0 : edge.kind === "out" ? NODE_Y : 0;
+    const endY = edge.kind === "in" ? NODE_Y : ROW_HEIGHT;
+    return { d: edgePath(x(edge.from), startY, x(edge.to), endY), color: edge.color };
+  });
+  return {
+    width,
+    height: ROW_HEIGHT,
+    node: { cx: x(row.lane), cy: NODE_Y, r: Math.max(2, Math.min(3.4, step * 0.3)) },
+    edges
+  };
+}
+
+// src/client/panel/views/GraphSection.js
 var h13 = import_react20.createElement;
+var VISIBLE_REFS = 2;
 function GraphSection(props) {
   const t = props.t;
-  const commits = props.commits;
+  const commits = Array.isArray(props.commits) ? props.commits : null;
+  const layout = (0, import_react20.useMemo)(() => computeGraph(commits ?? []), [commits]);
   const menu = props.menu;
   const trigger = menu === void 0 ? null : menu.trigger;
   const rows = [];
   if (props.loading === true && commits === null) {
-    rows.push(h13("div", { key: "loading", className: "dshgg-menuNote" }, t("graph.loading")));
+    rows.push(h13("div", { key: "loading", className: "dshgg-note" }, t("graph.loading")));
   } else if (props.failure !== null) {
     rows.push(h13(Banner, {
       key: "error",
@@ -1623,12 +1731,16 @@ function GraphSection(props) {
       onRetry: props.onRetry
     }));
   } else if (commits === null || commits.length === 0) {
-    rows.push(h13("div", { key: "empty", className: "dshgg-menuNote" }, t("graph.empty")));
+    rows.push(h13("div", { key: "empty", className: "dshgg-note" }, t("graph.empty")));
   } else {
-    for (const commit of commits) {
+    for (let index = 0; index < commits.length; index += 1) {
+      const commit = commits[index];
+      const row = layout.rows[index];
       rows.push(h13(GraphRow, {
         key: commit.oid,
         commit,
+        row,
+        geometry: graphRowGeometry(row, layout.laneCount),
         t,
         onSelect: props.onSelect,
         menuTrigger: trigger,
@@ -1649,9 +1761,10 @@ function GraphSection(props) {
 }
 function GraphRow(props) {
   const commit = props.commit;
+  const geometry = props.geometry;
   const t = props.t;
-  const refs = parseRefs(commit.refs);
-  const visibleRefs = refs.slice(0, 3);
+  const refs = distinctRefs(parseRefs(commit.refs));
+  const visibleRefs = refs.slice(0, VISIBLE_REFS);
   const hidden = refs.length - visibleRefs.length;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
   const open = () => {
@@ -1669,18 +1782,52 @@ function GraphRow(props) {
     }
   };
   const rowProps = menuTrigger === null || props.menuTarget === void 0 ? interactive : menuTrigger(props.menuTarget, { ...interactive, "aria-haspopup": "menu" });
+  const subject = commit.subject === "" ? t("graph.noSubject") : commit.subject;
   return h13(
     "div",
     {
       className: "dshgg-graphRow",
-      title: `${commit.shortOid} ${commit.subject} · ${t("menu.hint")}`,
+      title: `${commit.shortOid} ${subject} · ${t("menu.hint")}`,
       ...rowProps
     },
-    h13("pre", { className: "dshgg-graphPrefix" }, commit.graph === "" ? "*" : commit.graph),
+    h13(
+      "svg",
+      {
+        className: "dshgg-graphSvg",
+        width: geometry.width,
+        height: geometry.height,
+        viewBox: `0 0 ${geometry.width} ${geometry.height}`,
+        "aria-hidden": "true",
+        focusable: false
+      },
+      geometry.edges.map((edge, index) => h13("path", {
+        key: `edge:${index}`,
+        className: "dshgg-graphEdge",
+        "data-lane": String(edge.color),
+        d: edge.d
+      })),
+      h13("circle", {
+        className: "dshgg-graphNode",
+        "data-lane": String(props.row.color),
+        cx: geometry.node.cx,
+        cy: geometry.node.cy,
+        r: geometry.node.r
+      })
+    ),
     h13(
       "div",
       { className: "dshgg-graphBody" },
-      h13("div", { className: "dshgg-graphSubject" }, commit.subject === "" ? t("graph.noSubject") : commit.subject),
+      h13(
+        "div",
+        { className: "dshgg-graphSubjectLine" },
+        h13("span", { className: "dshgg-graphSubject" }, subject),
+        visibleRefs.length === 0 ? null : h13(
+          "span",
+          { className: "dshgg-refs" },
+          visibleRefs.map((ref, index) => h13("span", { key: `${ref.label}:${index}`, className: "dshgg-ref", "data-kind": ref.kind, title: ref.label }, ref.label)),
+          hidden > 0 ? h13("span", { key: "more", className: "dshgg-ref", "data-kind": "more", title: refs.slice(VISIBLE_REFS).map((ref) => ref.label).join(", ") }, `+${hidden}`) : null
+        )
+      ),
       h13(
         "div",
         { className: "dshgg-graphMeta" },
@@ -1688,13 +1835,7 @@ function GraphRow(props) {
         h13("span", { className: "dshgg-dot" }, "·"),
         h13("span", null, commit.author),
         h13("span", { className: "dshgg-dot" }, "·"),
-        h13("span", null, formatAgo(t, commit.authoredAt)),
-        visibleRefs.length === 0 ? null : h13(
-          "span",
-          { className: "dshgg-refs" },
-          visibleRefs.map((ref, index) => h13("span", { key: `${ref.label}:${index}`, className: "dshgg-ref", "data-kind": ref.kind, title: ref.label }, ref.label)),
-          hidden > 0 ? h13("span", { key: "more", className: "dshgg-ref", title: refs.slice(3).map((ref) => ref.label).join(", ") }, `+${hidden}`) : null
-        )
+        h13("span", null, formatAgo(t, commit.authoredAt))
       )
     )
   );
@@ -1783,7 +1924,7 @@ function GitPanel(props) {
     void loadGraph();
     if (selectedCommit !== null) commitState.retryCommit();
   };
-  const branchLabel = repo === null ? null : repo.detached === true ? t("branch.detached") : repo.unborn === true ? t("branch.unborn") : repo.branch;
+  const branchLabel = repo === null ? loading && status === null ? t("loading") : null : repo.detached === true ? t("branch.detached") : repo.unborn === true ? t("branch.unborn") : repo.branch;
   const ahead = repo?.ahead ?? 0;
   const behind = repo?.behind ?? 0;
   const canAct = repo !== null && busy === null;
@@ -2209,7 +2350,7 @@ var zh = {
 };
 
 // src/client/styles.css
-var styles_default = '.dshgg-root{display:flex;flex-direction:column;flex:1 1 auto;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px;line-height:1.45;background:transparent}\n.dshgg-toolbar{display:flex;align-items:center;gap:6px;padding:6px 8px;min-height:36px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1)}\n.dshgg-spacer{flex:1}\n.dshgg-branchWrap{position:relative;display:flex;min-width:0}\n.dshgg-branchChip{display:flex;align-items:center;gap:5px;min-width:0;max-width:100%;height:24px;padding:0 6px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}\n.dshgg-branchChip:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l1)}\n.dshgg-branchChip:disabled{cursor:default;color:var(--dsw-alias-label-secondary)}\n.dshgg-branchName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}\n.dshgg-upstream{display:inline-flex;align-items:center;gap:2px;color:var(--dsw-alias-label-secondary);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-sync{display:inline-flex;align-items:center;gap:1px;color:var(--dsw-alias-label-secondary);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-chevron{flex:none;transition:transform .12s ease}\n.dshgg-chevron[data-open="true"]{transform:rotate(90deg)}\n.dshgg-iconBtn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none}\n.dshgg-iconBtn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}\n.dshgg-iconBtn:disabled{opacity:.4;cursor:default}\n.dshgg-iconBtn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-iconBtn[data-spinning="true"] svg{animation:dshgg-spin 1s linear infinite}\n@keyframes dshgg-spin{to{transform:rotate(360deg)}}\n.dshgg-commitBox{display:flex;flex-direction:column;gap:6px;padding:8px 8px 9px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1)}\n.dshgg-commitMessage{width:100%;box-sizing:border-box;min-height:54px;max-height:40vh;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:5px;background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:1.5;resize:vertical;outline:none}\n.dshgg-commitMessage::placeholder{color:var(--dsw-alias-label-tertiary)}\n.dshgg-commitMessage:focus{border-color:var(--dsw-alias-state-business-primary)}\n.dshgg-commitMessage:disabled{opacity:.6}\n.dshgg-commitRow{display:flex;align-items:center;gap:8px}\n.dshgg-commitHint{flex:1;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:25px;padding:0 11px;border:1px solid transparent;border-radius:5px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex:none}\n.dshgg-btn:disabled{opacity:.45;cursor:default}\n.dshgg-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}\n.dshgg-btnPrimary{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}\n.dshgg-btnPrimary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}\n.dshgg-btnGhost{background:transparent;border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);font-weight:500}\n.dshgg-btnGhost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-banner{display:flex;align-items:flex-start;gap:8px;margin:6px 8px 0;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;font-size:12px}\n.dshgg-banner[data-kind="error"]{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}\n.dshgg-bannerText{flex:1;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}\n.dshgg-bannerDetail{margin-top:3px;color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code);font-size:11px;max-height:96px;overflow:auto;white-space:pre-wrap}\n.dshgg-bannerActions{display:flex;align-items:center;gap:4px;flex:none}\n.dshgg-linkBtn{padding:0;border:none;background:none;color:var(--dsw-alias-state-business-primary);font:inherit;font-size:12px;cursor:pointer}\n.dshgg-linkBtn:hover{text-decoration:underline}\n.dshgg-notice{margin:6px 8px 0;padding:6px 9px;border:1px solid var(--dsw-alias-state-success-primary);border-radius:6px;color:var(--dsw-alias-state-success-primary);font-size:12px}\n.dshgg-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;padding-bottom:8px}\n.dshgg-state{display:flex;flex-direction:column;align-items:center;gap:6px;padding:34px 18px;text-align:center}\n.dshgg-stateIcon{color:var(--dsw-alias-label-tertiary);display:flex}\n.dshgg-stateTitle{margin:2px 0 0;font-size:13px;font-weight:600}\n.dshgg-stateDesc{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;max-width:320px;overflow-wrap:anywhere}\n.dshgg-stateAction{margin-top:8px}\n.dshgg-section{display:flex;flex-direction:column;flex:none}\n.dshgg-sectionHeader{display:flex;align-items:center;gap:2px;height:24px;padding:0 6px 0 2px;position:relative}\n.dshgg-sectionToggle{display:flex;align-items:center;gap:5px;min-width:0;flex:1;height:100%;padding:0 4px;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:11px;font-weight:700;letter-spacing:.02em;cursor:pointer}\n.dshgg-sectionToggle:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-sectionToggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-sectionTitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-sectionCount{color:var(--dsw-alias-label-secondary);font-weight:500;font-variant-numeric:tabular-nums}\n.dshgg-sectionActions{display:flex;align-items:center;gap:1px;flex:none}\n.dshgg-sectionBody{display:flex;flex-direction:column}\n.dshgg-row{display:flex;align-items:center;gap:6px;height:23px;padding-right:4px;flex:none;min-width:0}\n.dshgg-fileRow{cursor:pointer;user-select:none}\n.dshgg-fileRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-fileRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-status{flex:none;width:14px;text-align:center;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}\n.dshgg-status[data-status="M"]{color:var(--dsw-alias-state-warn-primary)}\n.dshgg-status[data-status="A"],.dshgg-status[data-status="U"]{color:var(--dsw-alias-state-success-primary)}\n.dshgg-status[data-status="D"]{color:var(--dsw-alias-state-error-primary)}\n.dshgg-status[data-status="R"],.dshgg-status[data-status="C"]{color:var(--dsw-alias-state-business-primary)}\n.dshgg-status[data-status="T"]{color:var(--dsw-alias-state-warn-primary)}\n.dshgg-status[data-status="!"]{color:var(--dsw-alias-state-error-primary);font-size:12px}\n.dshgg-fileName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}\n.dshgg-fileName[data-obsolete="true"]{color:var(--dsw-alias-label-secondary);text-decoration:line-through}\n.dshgg-fileArrow{flex:none;color:var(--dsw-alias-label-tertiary);font-size:11px;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-fileActions{display:flex;align-items:center;gap:0;flex:none;opacity:0}\n.dshgg-fileRow:hover .dshgg-fileActions,.dshgg-fileRow:focus-within .dshgg-fileActions{opacity:1}\n.dshgg-fileActions .dshgg-iconBtn{width:20px;height:20px}\n.dshgg-folderRow{cursor:pointer;user-select:none;color:var(--dsw-alias-label-primary)}\n.dshgg-folderRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-folderRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-folderName{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-clean{display:flex;flex-direction:column;align-items:center;gap:5px;padding:26px 16px 20px;text-align:center;color:var(--dsw-alias-label-secondary)}\n.dshgg-cleanIcon{color:var(--dsw-alias-state-success-primary);display:flex}\n.dshgg-cleanTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}\n.dshgg-cleanDesc{font-size:12px}\n.dshgg-graphRow{display:flex;gap:6px;padding:2px 8px 2px 4px;min-width:0;align-items:flex-start;border-radius:0}\n.dshgg-graphRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-graphRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-graphPrefix{margin:0;flex:none;font-family:var(--ds-font-family-code);font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);white-space:pre;user-select:none}\n.dshgg-graphBody{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}\n.dshgg-graphSubject{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary)}\n.dshgg-graphMeta{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:11px;color:var(--dsw-alias-label-secondary);min-width:0}\n.dshgg-graphHash{font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-tertiary)}\n.dshgg-dot{color:var(--dsw-alias-label-tertiary)}\n.dshgg-refs{display:inline-flex;gap:3px;flex-wrap:wrap}\n.dshgg-ref{display:inline-flex;align-items:center;gap:3px;padding:0 5px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:10px;line-height:15px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-ref[data-kind="head"]{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);font-weight:600}\n.dshgg-ref[data-kind="branch"]{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}\n.dshgg-ref[data-kind="tag"]{color:var(--dsw-alias-state-warn-primary);border-color:var(--dsw-alias-state-warn-primary)}\n.dshgg-confirm{display:flex;align-items:center;gap:10px;margin:0;padding:8px 10px;flex:none;border-top:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1)}\n.dshgg-confirmText{flex:1;min-width:0}\n.dshgg-confirmTitle{font-size:12.5px;font-weight:600;overflow-wrap:anywhere}\n.dshgg-confirmDesc{margin-top:2px;font-size:11.5px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}\n.dshgg-confirmActions{display:flex;align-items:center;gap:6px;flex:none}\n.dshgg-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:min(320px,70vw);max-height:320px;overflow-y:auto;padding:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-overlay);box-shadow:0 8px 24px rgba(0,0,0,.18)}\n.dshgg-menuItem{display:flex;align-items:center;gap:6px;width:100%;height:26px;padding:0 7px;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}\n.dshgg-menuItem:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-menuItem:disabled{cursor:default;font-weight:600}\n.dshgg-menuItem:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-menuCheck{display:inline-flex;width:12px;flex:none;color:var(--dsw-alias-state-business-primary)}\n.dshgg-menuLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-menuNote{padding:7px 8px;color:var(--dsw-alias-label-secondary);font-size:12px}\n.dshgg-title{display:inline-flex;align-items:center;gap:5px;min-width:0}\n.dshgg-titleText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffRoot{display:flex;flex-direction:column;flex:1 1 auto;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px}\n.dshgg-diffHeader{display:flex;align-items:center;gap:6px;padding:5px 8px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1);min-width:0}\n.dshgg-diffPath{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}\n.dshgg-diffName{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffFrom{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffStats{flex:none;display:inline-flex;gap:4px;font-family:var(--ds-font-family-code);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-diffAdd{color:var(--dsw-alias-code-diff-added)}\n.dshgg-diffDel{color:var(--dsw-alias-code-diff-deleted)}\n.dshgg-diffBadge{flex:none;padding:0 6px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-secondary)}\n.dshgg-diffBadge[data-kind="staged"]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}\n.dshgg-diffBadge[data-kind="untracked"]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}\n.dshgg-diffBody{flex:1;min-height:0;overflow:auto;font-family:var(--ds-font-family-code);font-size:12px;line-height:18px;padding-bottom:10px}\n.dshgg-hunkHeader{padding:2px 10px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);font-size:11.5px;white-space:pre;border-top:1px solid var(--dsw-alias-border-l1);border-bottom:1px solid var(--dsw-alias-border-l1);margin-top:2px}\n.dshgg-diffLine{display:grid;grid-template-columns:44px 44px 16px minmax(0,1fr);min-width:max-content}\n.dshgg-gutter{padding-right:6px;text-align:right;color:var(--dsw-alias-label-tertiary);user-select:none;font-variant-numeric:tabular-nums;font-size:11px;border-right:1px solid var(--dsw-alias-border-l1)}\n.dshgg-marker{text-align:center;user-select:none;color:var(--dsw-alias-label-tertiary);font-weight:700}\n.dshgg-code{padding:0 10px;white-space:pre;min-width:0}\n.dshgg-diffLine[data-type="+"]{background:var(--dsw-alias-file-diff-added-bg)}\n.dshgg-diffLine[data-type="+"] .dshgg-gutter{background:var(--dsw-alias-file-diff-added-gutter)}\n.dshgg-diffLine[data-type="+"] .dshgg-marker{color:var(--dsw-alias-file-diff-added-marker)}\n.dshgg-diffLine[data-type="-"]{background:var(--dsw-alias-file-diff-deleted-bg)}\n.dshgg-diffLine[data-type="-"] .dshgg-gutter{background:var(--dsw-alias-file-diff-deleted-gutter)}\n.dshgg-diffLine[data-type="-"] .dshgg-marker{color:var(--dsw-alias-file-diff-deleted-marker)}\n.dshgg-diffNote{padding:16px;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-family);font-size:12.5px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}\n.dshgg-emptyLine{min-height:18px}\n.dshgg-commitView{display:flex;flex-direction:column;flex:none;padding-top:2px}\n.dshgg-commitToolbar{display:flex;align-items:center;gap:6px;padding:3px 8px 2px;min-width:0}\n.dshgg-commitHash{flex:none;padding:0 5px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code);font-size:10.5px;line-height:16px}\n.dshgg-commitSubject{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:600}\n.dshgg-commitMeta{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:1px 8px 6px;color:var(--dsw-alias-label-secondary);font-size:11px;overflow-wrap:anywhere}\n.dshgg-commitBody{margin:0 8px 6px;padding:6px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:5px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:var(--ds-font-family-code);font-size:11.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;max-height:150px;overflow:auto}\n.dshgg-commitFilesHeader{display:flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-top:1px solid var(--dsw-alias-border-l1);font-size:11px;font-weight:700;letter-spacing:.02em}\n.dshgg-commitNote{padding:7px 8px;color:var(--dsw-alias-label-secondary);font-size:12px}\n.dshgg-graphRow{cursor:pointer}\n.dshgg-diffBadge[data-kind="commit"]{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}\n';
+var styles_default = '/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host\'s `--dsw-*`\n * theme tokens, and text uses the host\'s `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH\'s\n * own sidebar surfaces. Sizes follow the host\'s sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n\n/* --------------------------------------------------------------- buttons --- */\n\n.dshgg-iconBtn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n  padding: 6px;\n  color: var(--dsw-alias-label-secondary);\n  line-height: 1;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-iconBtn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-iconBtn[data-spinning="true"] svg {\n  animation: dshgg-spin 1s linear infinite;\n}\n\n@keyframes dshgg-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.dshgg-btn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  height: 28px;\n  padding: 0 12px;\n  border: 0.5px solid transparent;\n  border-radius: var(--dsw-radius-sm);\n  font: var(--dsw-font-xxs-strong-12);\n  white-space: nowrap;\n  cursor: pointer;\n}\n\n.dshgg-btn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-btnPrimary {\n  color: var(--dsw-alias-label-primary-foreground);\n  background: var(--dsw-alias-button-primary-fill);\n}\n\n.dshgg-btnPrimary:hover:not(:disabled) {\n  background: var(--dsw-alias-button-primary-hover);\n}\n\n.dshgg-btnGhost {\n  color: var(--dsw-alias-label-primary);\n  background: transparent;\n  border-color: var(--dsw-alias-border-l3);\n  font-weight: 400;\n}\n\n.dshgg-btnGhost:hover:not(:disabled) {\n  background: var(--dsw-alias-interactive-bg-hover-solid);\n}\n\n.dshgg-linkBtn {\n  flex: none;\n  padding: 0;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-strong-12);\n  background: none;\n  border: none;\n  cursor: pointer;\n}\n\n.dshgg-linkBtn:hover {\n  text-decoration: underline;\n}\n\n/* --------------------------------------------------------------- toolbar --- */\n\n.dshgg-toolbar {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  height: 38px;\n  padding: 0 6px;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l1);\n}\n\n.dshgg-branchWrap {\n  position: relative;\n  display: flex;\n  flex: 0 1 auto;\n  min-width: 0;\n}\n\n.dshgg-branchChip {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  height: 28px;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-branchChip:disabled {\n  color: var(--dsw-alias-label-tertiary);\n  cursor: default;\n}\n\n.dshgg-branchChip svg:first-child {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-branchName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font-weight: 500;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-upstream {\n  display: inline-flex;\n  flex: 0 1000 auto;\n  align-items: center;\n  min-width: 0;\n  max-width: 140px;\n  padding: 0 2px;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sync {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-branchChip .dshgg-chevron {\n  color: var(--dsw-alias-label-caption);\n}\n\n@media (hover: hover) {\n  .dshgg-branchChip:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-chevron {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  color: var(--dsw-alias-label-caption);\n  transition: transform 150ms var(--ds-ease-in-out);\n}\n\n.dshgg-chevron svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-chevron[data-open="true"] {\n  transform: rotate(90deg);\n}\n\n/* ------------------------------------------------------------ commit box --- */\n\n.dshgg-commitBox {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  gap: 8px;\n  padding: 10px 8px 8px;\n}\n\n.dshgg-commitMessage {\n  box-sizing: border-box;\n  width: 100%;\n  min-height: 60px;\n  max-height: 30vh;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  resize: vertical;\n  outline: none;\n}\n\n.dshgg-commitMessage::placeholder {\n  color: var(--dsw-alias-label-dimmed);\n}\n\n.dshgg-commitMessage:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-commitMessage:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-commitRow {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.dshgg-commitHint {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* -------------------------------------------------------------- feedback --- */\n\n.dshgg-banner {\n  display: flex;\n  align-items: flex-start;\n  gap: 8px;\n  margin: 0 8px 8px;\n  padding: 8px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-bannerText {\n  flex: 1;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerText > span {\n  font-weight: 500;\n}\n\n.dshgg-bannerDetail {\n  max-height: 96px;\n  margin-top: 4px;\n  overflow: auto;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  margin: -4px -4px -4px 0;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn svg {\n  width: 12px;\n  height: 12px;\n}\n\n.dshgg-notice {\n  margin: 0 8px 8px;\n  padding: 7px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: var(--dsw-alias-state-success-tertiary);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 24%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-state {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 6px;\n  padding: 28px 16px;\n  text-align: center;\n}\n\n.dshgg-stateIcon {\n  display: flex;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-stateTitle {\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-stateDesc {\n  max-width: 280px;\n  margin: 0;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-stateAction {\n  margin-top: 8px;\n}\n\n.dshgg-note {\n  padding: 4px 6px 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-menuNote {\n  padding: 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-clean {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n  padding: 20px 12px;\n  text-align: center;\n}\n\n.dshgg-cleanIcon {\n  display: flex;\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-cleanTitle {\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-cleanDesc {\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* --------------------------------------------------------------- scroll --- */\n\n.dshgg-scroll {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 2px;\n  min-height: 0;\n  padding: 2px 6px 10px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n}\n\n/* -------------------------------------------------------------- section --- */\n\n.dshgg-section {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n}\n\n.dshgg-section[data-section="graph"] {\n  margin-top: 2px;\n  padding-top: 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l1);\n}\n\n.dshgg-sectionHeader {\n  position: relative;\n  display: flex;\n  align-items: center;\n  gap: 2px;\n  height: 30px;\n  padding: 0 4px 0 2px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-sectionToggle {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 26px;\n  padding: 0 4px 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-sectionTitle {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sectionCount {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-sectionActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn svg {\n  width: 13px;\n  height: 13px;\n}\n\n.dshgg-sectionBody {\n  display: flex;\n  flex-direction: column;\n}\n\n@media (hover: hover) {\n  .dshgg-sectionHeader:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n/* ----------------------------------------------------------------- rows --- */\n\n.dshgg-row {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n  padding-right: 6px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-fileRow,\n.dshgg-folderRow {\n  cursor: pointer;\n  user-select: none;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover,\n  .dshgg-folderRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-fileRow:focus-visible,\n.dshgg-folderRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-status {\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n  text-align: center;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-status[data-status="M"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="A"],\n.dshgg-status[data-status="U"] {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-status[data-status="D"] {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-status[data-status="R"],\n.dshgg-status[data-status="C"] {\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-status[data-status="T"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="!"] {\n  color: var(--dsw-alias-state-error-secondary);\n}\n\n.dshgg-fileName,\n.dshgg-folderName {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileName[data-obsolete="true"] {\n  color: var(--dsw-alias-label-secondary);\n  text-decoration: line-through;\n}\n\n.dshgg-fileArrow {\n  flex: none;\n  max-width: 38%;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 0;\n  opacity: 0;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover .dshgg-fileActions {\n    opacity: 1;\n  }\n}\n\n.dshgg-fileRow:focus-within .dshgg-fileActions {\n  opacity: 1;\n}\n\n.dshgg-fileActions .dshgg-iconBtn {\n  width: 22px;\n  height: 22px;\n  padding: 4px;\n}\n\n.dshgg-fileActions .dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n/* ---------------------------------------------------------------- graph --- */\n\n.dshgg-graphRow {\n  display: flex;\n  flex: none;\n  align-items: flex-start;\n  gap: 8px;\n  height: 40px;\n  min-width: 0;\n  padding: 0 6px 0 4px;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n@media (hover: hover) {\n  .dshgg-graphRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-graphRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-graphSvg {\n  display: block;\n  flex: none;\n  overflow: visible;\n}\n\n/* One lane color per palette slot; the layout module paints the same slot for\n * every line and node so a branch keeps its color for as long as it is drawn. */\n.dshgg-graphEdge,\n.dshgg-graphNode {\n  --dshgg-lane-color: var(--dsw-alias-label-secondary);\n}\n\n.dshgg-graphEdge[data-lane="0"],\n.dshgg-graphNode[data-lane="0"] {\n  --dshgg-lane-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);\n}\n\n.dshgg-graphEdge[data-lane="1"],\n.dshgg-graphNode[data-lane="1"] {\n  --dshgg-lane-color: var(--dsw-alias-state-done-primary);\n}\n\n.dshgg-graphEdge[data-lane="2"],\n.dshgg-graphNode[data-lane="2"] {\n  --dshgg-lane-color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-graphEdge[data-lane="3"],\n.dshgg-graphNode[data-lane="3"] {\n  --dshgg-lane-color: var(--dsw-alias-state-warn-primary);\n}\n\n.dshgg-graphEdge[data-lane="4"],\n.dshgg-graphNode[data-lane="4"] {\n  --dshgg-lane-color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-graphEdge[data-lane="5"],\n.dshgg-graphNode[data-lane="5"] {\n  --dshgg-lane-color: var(--dsw-alias-chart-system);\n}\n\n.dshgg-graphEdge {\n  fill: none;\n  stroke: var(--dshgg-lane-color);\n  stroke-width: 1.5;\n  stroke-linecap: round;\n  stroke-linejoin: round;\n}\n\n.dshgg-graphNode {\n  fill: var(--dshgg-lane-color);\n}\n\n.dshgg-graphBody {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  min-width: 0;\n  padding: 4px 0 2px;\n}\n\n.dshgg-graphSubjectLine {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 20px;\n}\n\n.dshgg-graphSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphMeta {\n  display: flex;\n  align-items: center;\n  gap: 4px;\n  height: 14px;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n}\n\n.dshgg-graphMeta span {\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphHash {\n  font-family: var(--ds-font-family-code);\n}\n\n.dshgg-refs {\n  display: inline-flex;\n  flex: 0 1 auto;\n  gap: 4px;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.dshgg-ref {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  max-width: 112px;\n  height: 16px;\n  padding: 0 6px;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 10px;\n  font-weight: 500;\n  line-height: 16px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  border-radius: 999px;\n}\n\n.dshgg-ref[data-kind="head"] {\n  color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);\n  background: color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 12%, transparent);\n}\n\n.dshgg-ref[data-kind="branch"] {\n  color: var(--dsw-alias-label-secondary);\n  background: var(--dsw-alias-bg-module-platform);\n}\n\n.dshgg-ref[data-kind="tag"] {\n  color: var(--dsw-alias-state-warn-label);\n  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent);\n}\n\n.dshgg-ref[data-kind="remote"] {\n  color: var(--dsw-alias-label-tertiary);\n}\n\n/* --------------------------------------------------------- commit detail --- */\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l1);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* ------------------------------------------------------------- confirm --- */\n\n.dshgg-confirm {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 10px;\n  padding: 10px 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-confirmText {\n  flex: 1;\n  min-width: 0;\n}\n\n.dshgg-confirmTitle {\n  font: var(--dsw-font-xs-strong-13);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmDesc {\n  margin-top: 3px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n}\n\n/* ---------------------------------------------------------- branch menu --- */\n\n.dshgg-menu {\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 0;\n  z-index: 20;\n  min-width: 220px;\n  max-width: min(320px, 70vw);\n  max-height: 320px;\n  padding: 4px;\n  overflow-y: auto;\n  background: var(--dsw-specific-menu);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  backdrop-filter: var(--dsw-menu-backdrop-filter);\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-menuItem {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  min-height: 32px;\n  padding: 5px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n.dshgg-menuItem:disabled {\n  color: var(--dsw-alias-label-primary);\n  cursor: default;\n}\n\n@media (hover: hover) {\n  .dshgg-menuItem:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-menuItem:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.dshgg-menuCheck {\n  display: inline-flex;\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-menuCheck svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-menuLabel {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* --------------------------------------------------------------- titles --- */\n\n.dshgg-title {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n}\n\n.dshgg-titleText {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* ----------------------------------------------------------------- diff --- */\n\n.dshgg-diffRoot {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n}\n\n.dshgg-diffHeader {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-width: 0;\n  height: 38px;\n  padding: 0 6px 0 10px;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-diffPath {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 1px;\n  min-width: 0;\n}\n\n.dshgg-diffName {\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffFrom {\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffBadge {\n  flex: none;\n  height: 20px;\n  padding: 0 7px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxxs-strong-11);\n  line-height: 20px;\n  white-space: nowrap;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-diffBadge[data-kind="staged"],\n.dshgg-diffBadge[data-kind="untracked"] {\n  color: var(--dsw-alias-state-success-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);\n}\n\n.dshgg-diffBadge[data-kind="commit"] {\n  color: var(--dsw-alias-state-business-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);\n}\n\n.dshgg-diffStats {\n  display: inline-flex;\n  flex: none;\n  gap: 6px;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-diffAdd {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-diffDel {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-diffBody {\n  flex: 1;\n  min-height: 0;\n  padding: 4px 0 16px;\n  overflow: auto;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 20px;\n}\n\n.dshgg-hunkHeader {\n  padding: 4px 10px 2px;\n  margin-top: 4px;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre;\n}\n\n.dshgg-diffLine {\n  display: grid;\n  grid-template-columns: 40px 40px 14px minmax(0, 1fr);\n  min-width: max-content;\n  min-height: 20px;\n}\n\n.dshgg-gutter {\n  padding-right: 6px;\n  color: var(--dsw-alias-label-tertiary);\n  font-variant-numeric: tabular-nums;\n  text-align: right;\n  user-select: none;\n}\n\n.dshgg-marker {\n  color: var(--dsw-alias-label-tertiary);\n  font-weight: 500;\n  text-align: center;\n  user-select: none;\n}\n\n.dshgg-code {\n  min-width: 0;\n  padding: 0 10px;\n  white-space: pre;\n}\n\n.dshgg-diffLine[data-type="+"] {\n  background: var(--dsw-alias-file-diff-added-bg);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-added-gutter);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="-"] {\n  background: var(--dsw-alias-file-diff-deleted-bg);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-deleted-gutter);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffNote {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 8px;\n  padding: 16px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xs-13);\n}\n\n/* --------------------------------------------------------------- motion --- */\n\n@media (prefers-reduced-motion: reduce) {\n  .dshgg-iconBtn[data-spinning="true"] svg {\n    animation: none;\n  }\n\n  .dshgg-chevron {\n    transition: none;\n  }\n}\n';
 
 // src/client/styles.js
 if (typeof document !== "undefined" && document.querySelector(`style[data-plugin=${JSON.stringify(PACKAGE_ID)}]`) === null) {

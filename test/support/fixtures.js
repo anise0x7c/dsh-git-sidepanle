@@ -43,7 +43,7 @@ export const HISTORY = {
       authoredAt: now - 120,
       refs: 'HEAD -> main, origin/main',
       subject: 'Fix the sidebar',
-      graph: '*',
+      parents: ['b'.repeat(40)],
     },
     {
       oid: 'b'.repeat(40),
@@ -52,7 +52,7 @@ export const HISTORY = {
       authoredAt: now - 7200,
       refs: 'tag: v1.0',
       subject: 'Initial commit',
-      graph: '| *',
+      parents: [],
     },
   ],
 }

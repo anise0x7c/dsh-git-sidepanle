@@ -41,15 +41,22 @@ export function BranchHeader(props) {
         disabled: repo === null || props.busy !== null,
         'aria-haspopup': 'menu',
         'aria-expanded': props.branchMenu,
-        title: repo === null ? t('noRepo.title') : t('branch.menu'),
+        'aria-label': props.branchLabel ?? t('title'),
+        title: repo === null
+          ? t('noRepo.title')
+          : repo.upstream === undefined || repo.upstream === null
+            ? t('branch.menu')
+            : `${t('branch.upstream', { name: repo.upstream })} \u00b7 ${t('branch.menu')}`,
       },
       h(GitBranchIcon, { size: 14 }),
-      h('span', { className: 'dshgg-branchName' }, props.branchLabel ?? t('loading')),
+      props.branchLabel === undefined || props.branchLabel === null
+        ? null
+        : h('span', { className: 'dshgg-branchName' }, props.branchLabel),
       props.ahead > 0 ? h('span', { className: 'dshgg-sync', title: t('branch.ahead', { n: props.ahead }) }, h('span', null, '\u2191'), String(props.ahead)) : null,
       props.behind > 0 ? h('span', { className: 'dshgg-sync', title: t('branch.behind', { n: props.behind }) }, h('span', null, '\u2193'), String(props.behind)) : null,
-      repo?.upstream !== undefined && repo?.upstream !== null
-        ? h('span', { className: 'dshgg-upstream', title: t('branch.upstream', { name: repo.upstream }) }, repo.upstream)
-        : null,
+      repo?.upstream === undefined || repo?.upstream === null
+        ? null
+        : h('span', { className: 'dshgg-upstream', title: t('branch.upstream', { name: repo.upstream }) }, repo.upstream),
       h(ChevronDownIcon, { size: 12 })),
     props.branchMenu ? h(BranchMenu, {
       t,

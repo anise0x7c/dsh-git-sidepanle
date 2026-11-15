@@ -1,14 +1,18 @@
 /**
  * The commit-history section: its loading note, failure banner, empty note and
- * the commit rows with their copy-menu targets.
+ * the commit rows with their tree graph, ref labels and copy-menu targets.
  */
 
-import { createElement } from 'react'
-import { errorText, formatAgo, parseRefs } from '../../git/format.js'
+import { createElement, useMemo } from 'react'
+import { computeGraph, graphRowGeometry } from '../../git/graph.js'
+import { distinctRefs, errorText, formatAgo, parseRefs } from '../../git/format.js'
 import { Banner } from '../feedback.js'
 import { Section } from '../Section.js'
 
 const h = createElement
+
+/** Ref labels shown before the rest collapse into a count chip. */
+const VISIBLE_REFS = 2
 
 /**
  * @param {object} props - graph section props.
@@ -25,12 +29,13 @@ const h = createElement
  */
 export function GraphSection(props) {
   const t = props.t
-  const commits = props.commits
+  const commits = Array.isArray(props.commits) ? props.commits : null
+  const layout = useMemo(() => computeGraph(commits ?? []), [commits])
   const menu = props.menu
   const trigger = menu === undefined ? null : menu.trigger
   const rows = []
   if (props.loading === true && commits === null) {
-    rows.push(h('div', { key: 'loading', className: 'dshgg-menuNote' }, t('graph.loading')))
+    rows.push(h('div', { key: 'loading', className: 'dshgg-note' }, t('graph.loading')))
   } else if (props.failure !== null) {
     rows.push(h(Banner, {
       key: 'error',
@@ -40,12 +45,16 @@ export function GraphSection(props) {
       onRetry: props.onRetry,
     }))
   } else if (commits === null || commits.length === 0) {
-    rows.push(h('div', { key: 'empty', className: 'dshgg-menuNote' }, t('graph.empty')))
+    rows.push(h('div', { key: 'empty', className: 'dshgg-note' }, t('graph.empty')))
   } else {
-    for (const commit of commits) {
+    for (let index = 0; index < commits.length; index += 1) {
+      const commit = commits[index]
+      const row = layout.rows[index]
       rows.push(h(GraphRow, {
         key: commit.oid,
         commit,
+        row,
+        geometry: graphRowGeometry(row, layout.laneCount),
         t,
         onSelect: props.onSelect,
         menuTrigger: trigger,
@@ -66,11 +75,14 @@ export function GraphSection(props) {
 }
 
 /**
- * One commit row: graph prefix, subject, meta line and ref labels.
- * Activating the row opens the commit's details; the row stays a focus stop and
- * keeps its context-menu gesture.
+ * One commit row: the tree-graph cell, the subject with ref labels, and the
+ * hash, author and relative time beneath it. Activating the row opens the
+ * commit's details; the row stays a focus stop and keeps its context-menu
+ * gesture.
  * @param {object} props - row props.
  * @param {object} props.commit - commit record.
+ * @param {object} props.row - laid-out graph row for this commit.
+ * @param {object} props.geometry - SVG geometry for the row.
  * @param {Function} props.t - locale binder.
  * @param {Function} [props.onSelect] - open this commit's details.
  * @param {Function|null} props.menuTrigger - host trigger binding.
@@ -79,9 +91,10 @@ export function GraphSection(props) {
  */
 function GraphRow(props) {
   const commit = props.commit
+  const geometry = props.geometry
   const t = props.t
-  const refs = parseRefs(commit.refs)
-  const visibleRefs = refs.slice(0, 3)
+  const refs = distinctRefs(parseRefs(commit.refs))
+  const visibleRefs = refs.slice(0, VISIBLE_REFS)
   const hidden = refs.length - visibleRefs.length
   const menuTrigger = typeof props.menuTrigger === 'function' ? props.menuTrigger : null
   const open = () => {
@@ -101,21 +114,43 @@ function GraphRow(props) {
   const rowProps = menuTrigger === null || props.menuTarget === undefined
     ? interactive
     : menuTrigger(props.menuTarget, { ...interactive, 'aria-haspopup': 'menu' })
+  const subject = commit.subject === '' ? t('graph.noSubject') : commit.subject
   return h('div', {
     className: 'dshgg-graphRow',
-    title: `${commit.shortOid} ${commit.subject} \u00b7 ${t('menu.hint')}`,
+    title: `${commit.shortOid} ${subject} \u00b7 ${t('menu.hint')}`,
     ...rowProps,
   },
-  h('pre', { className: 'dshgg-graphPrefix' }, commit.graph === '' ? '*' : commit.graph),
+  h('svg', {
+    className: 'dshgg-graphSvg',
+    width: geometry.width,
+    height: geometry.height,
+    viewBox: `0 0 ${geometry.width} ${geometry.height}`,
+    'aria-hidden': 'true',
+    focusable: false,
+  },
+  geometry.edges.map((edge, index) => h('path', {
+    key: `edge:${index}`,
+    className: 'dshgg-graphEdge',
+    'data-lane': String(edge.color),
+    d: edge.d,
+  })),
+  h('circle', {
+    className: 'dshgg-graphNode',
+    'data-lane': String(props.row.color),
+    cx: geometry.node.cx,
+    cy: geometry.node.cy,
+    r: geometry.node.r,
+  })),
   h('div', { className: 'dshgg-graphBody' },
-    h('div', { className: 'dshgg-graphSubject' }, commit.subject === '' ? t('graph.noSubject') : commit.subject),
+    h('div', { className: 'dshgg-graphSubjectLine' },
+      h('span', { className: 'dshgg-graphSubject' }, subject),
+      visibleRefs.length === 0 ? null : h('span', { className: 'dshgg-refs' },
+        visibleRefs.map((ref, index) => h('span', { key: `${ref.label}:${index}`, className: 'dshgg-ref', 'data-kind': ref.kind, title: ref.label }, ref.label)),
+        hidden > 0 ? h('span', { key: 'more', className: 'dshgg-ref', 'data-kind': 'more', title: refs.slice(VISIBLE_REFS).map((ref) => ref.label).join(', ') }, `+${hidden}`) : null)),
     h('div', { className: 'dshgg-graphMeta' },
       h('span', { className: 'dshgg-graphHash' }, commit.shortOid),
       h('span', { className: 'dshgg-dot' }, '\u00b7'),
       h('span', null, commit.author),
       h('span', { className: 'dshgg-dot' }, '\u00b7'),
-      h('span', null, formatAgo(t, commit.authoredAt)),
-      visibleRefs.length === 0 ? null : h('span', { className: 'dshgg-refs' },
-        visibleRefs.map((ref, index) => h('span', { key: `${ref.label}:${index}`, className: 'dshgg-ref', 'data-kind': ref.kind, title: ref.label }, ref.label)),
-        hidden > 0 ? h('span', { key: 'more', className: 'dshgg-ref', title: refs.slice(3).map((ref) => ref.label).join(', ') }, `+${hidden}`) : null))))
+      h('span', null, formatAgo(t, commit.authoredAt)))))
 }

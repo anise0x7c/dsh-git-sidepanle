@@ -26,7 +26,7 @@ export function FolderRow(props) {
     : menuTrigger(props.menuTarget, { ...keyboard, 'aria-haspopup': 'menu', title: props.menuHint })
   return h('div', {
     className: 'dshgg-row dshgg-folderRow',
-    style: { paddingLeft: `${4 + props.depth * 10}px` },
+    style: { paddingLeft: `${6 + props.depth * 14}px` },
     role: 'button',
     tabIndex: 0,
     'aria-expanded': props.open,
@@ -87,7 +87,7 @@ export function FileRow(props) {
     : menuTrigger(props.menuTarget, { ...keyboard, 'aria-haspopup': 'menu' })
   return h('div', {
     className: 'dshgg-row dshgg-fileRow',
-    style: { paddingLeft: `${4 + props.depth * 10}px` },
+    style: { paddingLeft: `${6 + props.depth * 14}px` },
     role: 'button',
     tabIndex: 0,
     'aria-label': `${props.t(statusKey(letter))} ${entry.path}`,

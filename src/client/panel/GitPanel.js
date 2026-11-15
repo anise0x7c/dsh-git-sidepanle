@@ -113,7 +113,7 @@ export function GitPanel(props) {
   }
 
   const branchLabel = repo === null
-    ? null
+    ? (loading && status === null ? t('loading') : null)
     : repo.detached === true
       ? t('branch.detached')
       : repo.unborn === true

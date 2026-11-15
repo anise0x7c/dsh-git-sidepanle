@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import {
   STATUS_LETTERS,
   baseName,
+  distinctRefs,
   errorText,
   formatAgo,
   isStaged,
@@ -222,6 +223,36 @@ describe('parseRefs', () => {
       { label: 'origin/feature/x', kind: 'remote' },
     ])
     assert.deepEqual(parseRefs('main, '), [{ label: 'main', kind: 'branch' }])
+  })
+})
+
+describe('distinctRefs', () => {
+  test('drops a remote-tracking spelling of a shown local branch', () => {
+    assert.deepEqual(distinctRefs(parseRefs('HEAD -> main, origin/main')), [{ label: 'main', kind: 'head' }])
+    assert.deepEqual(distinctRefs(parseRefs('main, origin/main, tag: v1.0')), [
+      { label: 'main', kind: 'branch' },
+      { label: 'v1.0', kind: 'tag' },
+    ])
+  })
+
+  test('drops the remote spelling of a slash-named branch', () => {
+    assert.deepEqual(
+      distinctRefs(parseRefs('feature/graph-lanes, origin/feature/graph-lanes')),
+      [{ label: 'feature/graph-lanes', kind: 'remote' }],
+    )
+  })
+
+  test('keeps a remote-tracking label when no other ref names that branch', () => {
+    assert.deepEqual(distinctRefs(parseRefs('origin/main')), [{ label: 'origin/main', kind: 'remote' }])
+    assert.deepEqual(distinctRefs(parseRefs('HEAD -> feature/x')), [{ label: 'feature/x', kind: 'head' }])
+  })
+
+  test('keeps distinct refs and their order', () => {
+    assert.deepEqual(distinctRefs(parseRefs('HEAD -> main, tag: v1.0, origin/release')), [
+      { label: 'main', kind: 'head' },
+      { label: 'v1.0', kind: 'tag' },
+      { label: 'origin/release', kind: 'remote' },
+    ])
   })
 })
 
