@@ -4,8 +4,9 @@
 
 `@local/dsh-git-graph` — a DSH bundle that adds a VS Code-style Git
 source-control surface to the Web GUI's right Sidebar: staged/unstaged/merge
-changes as a folder tree, a commit box, unified diff tabs, a commit graph,
-branch switching, and right-click menus.
+changes as a folder tree, a commit box, unified diff tabs, a commit graph
+whose commits open a details view of the files they changed, branch switching,
+and right-click menus.
 
 - One bundle, two halves: Host (`index.js` + `src/host/**`, plain Node ESM) and
   browser (`src/client/**`, bundled into the DSH client artifact `client.js`).
@@ -13,7 +14,7 @@ branch switching, and right-click menus.
   the browser half. Tests run on the Node built-in test runner (`npm test`,
   Node ≥ 22).
 - Behavior truth lives in `.litespec/specs/git-sidebar/spec.md`
-  (13 requirements). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
+  (14 requirements). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
   `docs/DETAIL.zh.md` (Chinese). Architecture: `docs/ARCHITECTURE.md`.
   `docs/REFACTOR-PLAN.md` records the 0.3.0 split that produced the current
   layout — read it for rationale, not as a to-do list.
@@ -45,7 +46,7 @@ branch switching, and right-click menus.
 
 ```bash
 npm install        # once: fetches the esbuild build dependency
-npm test           # pretest builds client.js, then 159 tests must stay green
+npm test           # pretest builds client.js, then 178 tests must stay green
 npm run build      # write client.js + client.js.map from src/client/**
 npm run dev        # watch mode: rebuild on save; the open page hot-reloads
 npm run check:build# fail when the committed artifact does not match the sources

@@ -25,9 +25,10 @@ src/
     http/trust.js            loopback / same-origin trust fence
     git/exec.js              runGit, gitOrThrow, repository root, path checks
     git/status.js            parseStatus, readStatus
-    git/history.js           readHistory
+    git/history.js           readHistory, readCommitDetails, parseCommitMeta,
+                             parseNameStatus
     git/branches.js          readBranches, branchExists
-    git/diff.js              readDiff, parseUnifiedDiff
+    git/diff.js              readDiff, readCommitDiff, parseUnifiedDiff
     session.js               resolveSessionDirectory
     errors.js                GitGraphError, normalizeFailure
     rpc.js                   dispatch table + RPC/health paths
@@ -51,9 +52,10 @@ src/
     panel/BranchMenu.js      branch picker
     panel/confirm.js         discard confirmation copy
     panel/menu.js            the panel's menu wiring
-    panel/hooks/*.js         useRepoStatus, useHistory, useBranches,
-                             useChangeActions, useMenuCommands
-    panel/views/*.js         BranchHeader, CommitBox, ChangeGroups, GraphSection
+    panel/hooks/*.js         useRepoStatus, useHistory, useCommitDetails,
+                             useBranches, useChangeActions, useMenuCommands
+    panel/views/*.js         BranchHeader, CommitBox, CommitDetails,
+                             ChangeGroups, GraphSection
     panel/GitPanel.js        assembles hooks + views
     diff/DiffPanel.js        diff tab body
     diff/render.js           unified diff renderer
@@ -91,7 +93,10 @@ hooks do. Do not introduce project-to-project cycles.
 2. `useRepoStatus` builds the command caller (one `fetch` per command to
    `/api/dsh-git-graph/rpc`), loads `status` and polls every 5 s while the tab
    is visible and no modal or command is in flight.
-3. `useHistory` and `useBranches` load on mount and on demand.
+3. `useHistory` and `useBranches` load on mount and on demand;
+   `useCommitDetails` loads a commit's metadata and file list when a graph row
+   is activated, and the details view replaces the change list until the user
+   goes back.
 4. `useChangeActions` wraps stage/unstage/discard/commit/checkout in one busy
    lock: it sets the failure banner, refreshes status silently and refreshes the
    graph when a commit moved it.
@@ -109,7 +114,10 @@ a loopback `Host`, carry `x-dsh-git-graph: 1`, present no proxy headers
 (`x-forwarded-for`, `cf-connecting-ip`), and carry same-origin markers
 (`sec-fetch-site: same-origin`, matching `Origin` when present). Git never runs
 through a shell; the browser only sends session ids and repository-relative
-paths. `rpc.js` dispatches to the `git/*` readers and maps failures to
+paths and full commit identifiers. `rpc.js` dispatches to the `git/*` readers —
+`status`, `history`, `commit-details`, `branches`, `stage`, `unstage`,
+`discard`, `commit`, `checkout`, and `diff` (either a working-tree comparison or
+a commit-scoped comparison) — and maps failures to
 `{ok:false, error:{code, message}}`.
 
 ## Build contract (browser half)
@@ -140,7 +148,7 @@ A `link:`-installed profile serves the file directly, so a browser-half change
 needs no Host restart: DSH polls the artifact and swaps the plugin in the open
 page. Host-half changes need a Host restart.
 
-The artifact is a pretty-printed bundle (about 2,100 lines, 96 KiB) rather than
+The artifact is a pretty-printed bundle (about 2,300 lines, 104 KiB) rather than
 a thin wrapper: esbuild bundles the whole browser half into it so the loader
 still sees exactly one artifact per package. Review and blame the sources, never
 the generated diff; the source map points back at `src/client/**` for DevTools

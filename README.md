@@ -2,8 +2,9 @@
 
 A VS Code-style Git source-control sidebar for the DeepSeek Harness Web GUI.
 It adds a **Source control** tab to the right Sidebar: staged/unstaged/merge
-changes as a folder tree, a commit box, unified diff tabs, a commit graph,
-branch switching, and right-click menus for every row.
+changes as a folder tree, a commit box, unified diff tabs, a commit graph
+whose commits open a details view of the files they changed, branch switching,
+and right-click menus for every row.
 
 - Host half (`index.js` + `src/host/**`): a guarded local JSON-RPC route that
   runs Git in the Session's working directory.
@@ -16,7 +17,7 @@ branch switching, and right-click menus for every row.
 
 ```bash
 npm install      # once: esbuild, the only dev dependency
-npm test         # builds client.js, then runs all 159 tests
+npm test         # builds client.js, then runs all 178 tests
 ```
 
 `client.js` and `client.js.map` are generated and committed; edit `src/` and run
