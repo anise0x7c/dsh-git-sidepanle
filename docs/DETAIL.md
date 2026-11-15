@@ -2,6 +2,8 @@
 
 A VS Code-style source-control surface for the right Sidebar. It reads the Git repository that contains the current Session's working directory and lets you review and act on it without leaving the Web GUI.
 
+The panel is drawn with the host's own theme tokens, type scale, and component conventions, so it follows light and dark themes and matches the Sidebar's rows, headers, controls, and menus.
+
 ## Open it
 
 Open the right Sidebar (the expand control at the conversation header's right corner), then pick **Source control** on the guide page. The same page opens with the sidebar toggle shortcut: `Ctrl+Shift+G` on Windows and Linux, `Cmd+Shift+G` on macOS.
@@ -13,7 +15,7 @@ The Git tab and its diff tabs live in the right Sidebar's normal docking surface
 - **Branch header**: the checked-out branch, detached or unborn state, upstream tracking, and ahead/behind counts. Pick the header to switch to another local branch.
 - **Commit box**: a multi-line message with `Ctrl+Enter` (`Cmd+Enter` on macOS) to commit. Staged changes only; when nothing is staged, committing offers to stage every change first. A failed commit keeps the message and the staged files.
 - **Merge changes / Staged changes / Changes**: VS Code's three change groups, each a collapsible folder tree. Every row carries a status letter (`M` modified, `A` added, `D` deleted, `R` renamed, `U` untracked, `!` conflicted). Hover a row for its stage, unstage, or discard action.
-- **Graph**: recent commits across local branches, tags, and remote-tracking branches, with graph lanes, ref labels, author, and relative time. Up to 60 commits are shown.
+- **Graph**: recent commits across local branches, tags, and remote-tracking branches, drawn as a tree: every commit is a node on a colored branch lane, first-parent lines run straight, and merges fan out and join with curved connectors. Each row carries its ref labels (HEAD, branches, tags; a remote-tracking label that only repeats a shown branch is folded away), the subject, short ID, author, and relative time. Up to 60 commits are shown.
 - **Commit details**: click a commit row in the graph (or focus it and press `Enter` / `Space`) to replace the change list with that commit's details: short ID, subject, author, relative time, message body, and a folder tree of the files the commit changed, with status letters and rename sources. Click a changed file to open its commit-scoped diff. The back control returns to the change list and graph without touching the repository. A commit that changed nothing relative to its first parent says so, a failure is reported with retry, and at most 1,000 changed files are listed.
 - **Diff tab**: click any changed file. Staged entries compare the index with the committed version, unstaged entries compare the working tree with the index, and untracked entries render as additions. A file opened from a commit's details compares that commit with its first parent — the empty tree for a root commit — and the header names the commit; a pure rename is explained instead of showing an empty diff. Binary and oversized files are identified rather than decoded.
 

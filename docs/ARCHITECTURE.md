@@ -25,8 +25,8 @@ src/
     http/trust.js            loopback / same-origin trust fence
     git/exec.js              runGit, gitOrThrow, repository root, path checks
     git/status.js            parseStatus, readStatus
-    git/history.js           readHistory, readCommitDetails, parseCommitMeta,
-                             parseNameStatus
+    git/history.js           readHistory, parseHistory, readCommitDetails,
+                             parseCommitMeta, parseNameStatus
     git/branches.js          readBranches, branchExists
     git/diff.js              readDiff, readCommitDiff, parseUnifiedDiff
     session.js               resolveSessionDirectory
@@ -41,6 +41,7 @@ src/
     data/caller.js           createCaller, makeFailure (the only fetch layer)
     git/format.js            status letters, staging state, names, refs, time
     git/tree.js              buildTree, collectTreePaths
+    git/graph.js             computeGraph, graphRowGeometry (pure lane layout)
     menu/bus.js              command bus + the shared panel subscription point
     menu/trigger.js          row -> host trigger props adapter
     menu/clipboard.js        absolute paths, clipboard copy
@@ -55,7 +56,7 @@ src/
     panel/hooks/*.js         useRepoStatus, useHistory, useCommitDetails,
                              useBranches, useChangeActions, useMenuCommands
     panel/views/*.js         BranchHeader, CommitBox, CommitDetails,
-                             ChangeGroups, GraphSection
+                             ChangeGroups, GraphSection (SVG commit tree)
     panel/GitPanel.js        assembles hooks + views
     diff/DiffPanel.js        diff tab body
     diff/render.js           unified diff renderer
@@ -77,7 +78,7 @@ test/
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
-panel/views/* -> { panel/controls, icons, git/format }
+panel/views/* -> { panel/controls, icons, git/format, git/graph }
 pure layer (git/*, menu/actions, constants, locale/*, icons) -> no React, no ctx
 host: http/* -> nothing; git/* -> git/exec; rpc -> all; index -> rpc + http/*
 ```
@@ -85,6 +86,19 @@ host: http/* -> nothing; git/* -> git/exec; rpc -> all; index -> rpc + http/*
 The pure layer must stay importable in Node without a DOM — that is what makes
 `test/unit/` possible. Views never call `fetch` or the command caller; only
 hooks do. Do not introduce project-to-project cycles.
+
+## Presentation
+
+All styling lives in `src/client/styles.css` and uses host theme tokens only:
+`--dsw-*` for colors, borders, surfaces, elevation, radii and focus, the
+`--dsw-font-*` scale for type, `--ds-font-family-code` for code, and the shared
+`--dsh-scrollbar-*` rebinds on elevated surfaces. The commit graph's six lane
+colors are alias tokens (business blue, violet, success, warn, error, chart
+neutral), so light and dark need no second palette. Sizes reuse the host's
+measured sidebar conventions — 28px list rows, 30px section headers, 38px pane
+toolbar and diff header, 0.5px hairlines, `--dsw-radius-*` — rather than a
+parallel design scale. No decorative motion: only the refresh spinner and the
+chevron rotation, both disabled under `prefers-reduced-motion`.
 
 ## Data flow
 

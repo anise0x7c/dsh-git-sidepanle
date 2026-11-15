@@ -38,7 +38,7 @@ and right-click menus.
 | `test/host.test.mjs` | Real loopback server + real Git fixture repositories |
 | `test/client.test.mjs` | Bundle factory/registration assertions without a DOM |
 | `test/ui.test.mjs` | Rendered panel behavior over `test/support/mini-react.mjs` |
-| `test/unit/` | Pure-function tests: Host parsers, browser formatting/tree/locale/menu actions |
+| `test/unit/` | Pure-function tests: Host parsers, browser formatting/tree/graph/locale/menu actions |
 | `test/support/` | Fake ctx + menu stand-in, fixtures, mini React |
 | `icon.svg`, `docs/`, `CHANGELOG.md` | Artwork and documentation |
 
@@ -46,7 +46,7 @@ and right-click menus.
 
 ```bash
 npm install        # once: fetches the esbuild build dependency
-npm test           # pretest builds client.js, then 178 tests must stay green
+npm test           # pretest builds client.js, then the suite must stay green
 npm run build      # write client.js + client.js.map from src/client/**
 npm run dev        # watch mode: rebuild on save; the open page hot-reloads
 npm run check:build# fail when the committed artifact does not match the sources
@@ -99,7 +99,7 @@ The build is part of the contract, not a convenience: `client.js` and
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
-panel/views/* -> { panel/controls, icons, git/format }
+panel/views/* -> { panel/controls, icons, git/format, git/graph }
 pure layer (git/*, menu/actions, constants, locale/*, icons) -> no React, no ctx
 host: http/* -> nothing; git/* -> git/exec; rpc -> all; index -> rpc + http/*
 ```
@@ -162,8 +162,9 @@ hooks do. Do not introduce project-to-project cycles.
 - Keep `docs/DETAIL.md` and `docs/DETAIL.zh.md` in sync; document behavior, not
   implementation. Update `docs/ARCHITECTURE.md` when module boundaries move and
   `CHANGELOG.md` for every released version.
-- Commit style: imperative single-line subject, no type prefix; a short body
-  when the reason is not obvious. Bump patch for fixes, minor for features.
+- Commit style: Conventional Commits (`feat(scope): ...`, `fix(scope): ...`,
+  `docs: ...`, `chore(release): ...`), imperative subject, a short body when the
+  reason is not obvious. Bump patch for fixes, minor for features.
 
 ## Style
 

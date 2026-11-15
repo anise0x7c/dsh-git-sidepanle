@@ -17,7 +17,7 @@ and right-click menus for every row.
 
 ```bash
 npm install      # once: esbuild, the only dev dependency
-npm test         # builds client.js, then runs all 178 tests
+npm test         # builds client.js, then runs the test suite
 ```
 
 `client.js` and `client.js.map` are generated and committed; edit `src/` and run
