@@ -18,5 +18,11 @@ export function DiffTabTitle(props) {
   const tabInfo = props.useTabInfo()
   const params = tabInfo.tab.navigation?.params ?? {}
   const name = typeof params.path === 'string' && params.path !== '' ? baseName(params.path) : tabInfo.tab.title
-  return h('span', { className: 'dshgg-title' }, h(FileIcon, { size: 14 }), h('span', { className: 'dshgg-titleText' }, name))
+  // A commit diff names the commit after the file so two revisions of the same
+  // file stay distinguishable in the tab strip.
+  const shortOid = typeof params.shortOid === 'string' && params.shortOid !== ''
+    ? params.shortOid
+    : typeof params.commit === 'string' && params.commit !== '' ? params.commit.slice(0, 7) : ''
+  const label = shortOid === '' ? name : `${name} \u00b7 ${shortOid}`
+  return h('span', { className: 'dshgg-title' }, h(FileIcon, { size: 14 }), h('span', { className: 'dshgg-titleText' }, label))
 }

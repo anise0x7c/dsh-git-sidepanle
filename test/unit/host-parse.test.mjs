@@ -13,6 +13,7 @@ import { GitGraphError } from '../../src/host/errors.js'
 import { resolveRepositoryPath, resolveRepositoryPaths } from '../../src/host/git/exec.js'
 import { parseStatus } from '../../src/host/git/status.js'
 import { parseUnifiedDiff } from '../../src/host/git/diff.js'
+import { parseCommitMeta, parseNameStatus } from '../../src/host/git/history.js'
 
 const NUL = '\0'
 /** 40-character object ids, the shape real porcelain output carries. */
@@ -410,5 +411,78 @@ describe('resolveRepositoryPaths', () => {
     const failure = captureFailure(() => resolveRepositoryPaths(ROOT, many))
     assert.equal(failure.code, 'bad-request')
     assert.equal(failure.status, 400)
+  })
+})
+
+
+describe('parseCommitMeta', () => {
+  /**
+   * Build one `git log --format` record the way the Host commands it.
+   * @param {object} fields - record fields.
+   * @returns {string} NUL-separated record with Git's trailing newline.
+   */
+  function record({ oid = OID_A, shortOid = 'aaaaaaa', author = 'Ann', authoredAt = 1700000000, refs = '', parents = '', subject = 'Fix the sidebar', body = '' } = {}) {
+    return [oid, shortOid, author, String(authoredAt), refs, parents, subject, body].join(NUL) + '\n'
+  }
+
+  test('reads every field and keeps multi-line bodies', () => {
+    const parsed = parseCommitMeta(record({
+      refs: 'HEAD -> main, tag: v1',
+      parents: `${OID_B} ${OID_C}`,
+      body: 'Body line one\nBody line two',
+    }))
+    assert.deepEqual(parsed, {
+      oid: OID_A,
+      shortOid: 'aaaaaaa',
+      author: 'Ann',
+      authoredAt: 1700000000,
+      refs: 'HEAD -> main, tag: v1',
+      parents: [OID_B, OID_C],
+      subject: 'Fix the sidebar',
+      body: 'Body line one\nBody line two',
+    })
+  })
+
+  test('reports a root commit with no parents and an empty body', () => {
+    const parsed = parseCommitMeta(record({ parents: '', body: '' }))
+    assert.deepEqual(parsed.parents, [])
+    assert.equal(parsed.body, '')
+  })
+
+  test('refuses malformed or non-commit records', () => {
+    assert.equal(parseCommitMeta(''), null)
+    assert.equal(parseCommitMeta('not a record'), null)
+    assert.equal(parseCommitMeta(record({ oid: 'HEAD' })), null)
+  })
+})
+
+describe('parseNameStatus', () => {
+  test('reads modified, added, deleted, renamed, and copied entries', () => {
+    const payload = [
+      'M', 'src/a.txt',
+      'A', 'src/new.txt',
+      'D', 'gone.txt',
+      'R100', 'old.txt', 'renamed.txt',
+      'C075', 'src/from.js', 'src/to.js',
+      'T', 'script.sh',
+      '',
+    ].join(NUL)
+    assert.deepEqual(parseNameStatus(payload), [
+      { path: 'src/a.txt', letter: 'M' },
+      { path: 'src/new.txt', letter: 'A' },
+      { path: 'gone.txt', letter: 'D' },
+      { path: 'renamed.txt', origPath: 'old.txt', letter: 'R' },
+      { path: 'src/to.js', origPath: 'src/from.js', letter: 'C' },
+      { path: 'script.sh', letter: 'T' },
+    ])
+  })
+
+  test('returns no files for empty output', () => {
+    assert.deepEqual(parseNameStatus(''), [])
+    assert.deepEqual(parseNameStatus(NUL), [])
+  })
+
+  test('stops cleanly when a rename record is cut short', () => {
+    assert.deepEqual(parseNameStatus(['R100', 'old.txt', ''].join(NUL)), [])
   })
 })

@@ -132,3 +132,13 @@
 .dshgg-diffLine[data-type="-"] .dshgg-marker{color:var(--dsw-alias-file-diff-deleted-marker)}
 .dshgg-diffNote{padding:16px;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-family);font-size:12.5px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .dshgg-emptyLine{min-height:18px}
+.dshgg-commitView{display:flex;flex-direction:column;flex:none;padding-top:2px}
+.dshgg-commitToolbar{display:flex;align-items:center;gap:6px;padding:3px 8px 2px;min-width:0}
+.dshgg-commitHash{flex:none;padding:0 5px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code);font-size:10.5px;line-height:16px}
+.dshgg-commitSubject{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:600}
+.dshgg-commitMeta{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:1px 8px 6px;color:var(--dsw-alias-label-secondary);font-size:11px;overflow-wrap:anywhere}
+.dshgg-commitBody{margin:0 8px 6px;padding:6px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:5px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:var(--ds-font-family-code);font-size:11.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;max-height:150px;overflow:auto}
+.dshgg-commitFilesHeader{display:flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-top:1px solid var(--dsw-alias-border-l1);font-size:11px;font-weight:700;letter-spacing:.02em}
+.dshgg-commitNote{padding:7px 8px;color:var(--dsw-alias-label-secondary);font-size:12px}
+.dshgg-graphRow{cursor:pointer}
+.dshgg-diffBadge[data-kind="commit"]{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}

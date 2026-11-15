@@ -156,5 +156,6 @@ export function errorText(t, failure) {
   if (code === 'forbidden') return t('error.forbidden')
   if (code === 'not-a-repository') return t('noRepo.title')
   if (code === 'discard-unborn') return t('error.discardUnborn')
+  if (code === 'unknown-commit') return t('error.unknownCommit')
   return failure.message || t('error.unknown')
 }

@@ -15,12 +15,14 @@ import { confirmActionLabel, confirmDescription, confirmTitle } from './confirm.
 import { createMenuTargets, usePanelRefs } from './menu.js'
 import { useBranches } from './hooks/useBranches.js'
 import { useChangeActions } from './hooks/useChangeActions.js'
+import { useCommitDetails } from './hooks/useCommitDetails.js'
 import { useHistory } from './hooks/useHistory.js'
 import { useMenuCommands } from './hooks/useMenuCommands.js'
 import { useRepoStatus } from './hooks/useRepoStatus.js'
 import { BranchHeader } from './views/BranchHeader.js'
 import { ChangeGroups } from './views/ChangeGroups.js'
 import { CommitBox } from './views/CommitBox.js'
+import { CommitDetails } from './views/CommitDetails.js'
 import { GraphSection } from './views/GraphSection.js'
 
 const h = createElement
@@ -66,6 +68,12 @@ export function GitPanel(props) {
     confirm, setConfirm, perform, stage, unstage, requestCommit, confirmAction,
   } = actions
   const { branchMenu, branches, branchLoading, branchFailure, loadBranches, toggleBranchMenu, checkout } = useBranches({ call, refs, perform })
+  const commitState = useCommitDetails({ call, refs })
+  const selectedCommit = commitState.selected
+  const commitTree = useMemo(
+    () => buildTree((commitState.details?.files ?? []).map((file) => ({ ...file, kind: 'commit' }))),
+    [commitState.details],
+  )
 
   const openDiff = useCallback((entry, mode) => {
     tab.actions.openTab(DIFF_KIND, {
@@ -80,6 +88,20 @@ export function GitPanel(props) {
     })
   }, [tab.actions, repoRoot])
 
+  const openCommitDiff = useCallback((entry) => {
+    if (selectedCommit === null) return
+    tab.actions.openTab(DIFF_KIND, {
+      params: {
+        path: entry.path,
+        commit: selectedCommit.oid,
+        shortOid: selectedCommit.shortOid,
+        status: entry.letter,
+        origPath: entry.origPath,
+        cwd: repoRoot ?? undefined,
+      },
+    })
+  }, [tab.actions, repoRoot, selectedCommit])
+
   const toggleSection = (id) => setOpenSections((current) => ({ ...current, [id]: current[id] !== true }))
   const toggleFolder = (path) => setCollapsed((current) => ({ ...current, [path]: current[path] !== true }))
 
@@ -87,6 +109,7 @@ export function GitPanel(props) {
     setActionFailure(null)
     void loadStatus({ silent: true })
     void loadGraph()
+    if (selectedCommit !== null) commitState.retryCommit()
   }
 
   const branchLabel = repo === null
@@ -156,7 +179,23 @@ export function GitPanel(props) {
     return null
   }
 
-  const body = renderState() ?? h(Fragment, null,
+  const commitBody = selectedCommit === null ? null : h(CommitDetails, {
+    t,
+    summary: selectedCommit,
+    details: commitState.details,
+    loading: commitState.loading,
+    failure: commitState.failure,
+    tree: commitTree,
+    collapsed,
+    onToggleFolder: toggleFolder,
+    onBack: commitState.closeCommit,
+    onRetry: commitState.retryCommit,
+    onOpenFile: openCommitDiff,
+    menuTrigger,
+    treeTarget: targets.treeTarget,
+  })
+
+  const body = renderState() ?? (commitBody ?? h(Fragment, null,
     h(ChangeGroups, {
       t,
       clean,
@@ -185,11 +224,12 @@ export function GitPanel(props) {
       loading: graphLoading,
       failure: graphFailure,
       open: openSections.graph === true,
+      onSelect: commitState.selectCommit,
       onToggle: () => toggleSection('graph'),
       onRetry: () => { void loadGraph() },
       menu: graphMenu,
     }),
-  )
+  ))
 
   const commitHint = stagedFiles.length > 0 ? t('commit.hint') : t('commit.hintNone')
   const placeholder = repo === null ? t('commit.placeholder', { branch: '' }) : t('commit.placeholder', { branch: branchLabel ?? '' })
@@ -212,7 +252,7 @@ export function GitPanel(props) {
       onRetryBranches: () => { void loadBranches() },
       onRefresh: refreshAll,
     }),
-    repo === null ? null : h(CommitBox, {
+    repo === null || selectedCommit !== null ? null : h(CommitBox, {
       t,
       message,
       hint: commitHint,

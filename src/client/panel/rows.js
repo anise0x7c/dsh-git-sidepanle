@@ -43,7 +43,10 @@ export function FileRow(props) {
   const letter = props.letter
   const name = baseName(entry.path)
   const actionButtons = []
-  if (props.mode === 'staged') {
+  if (props.mode === 'commit') {
+    // Historical rows have no staging or discarding actions: the commit is
+    // already recorded, so the row only opens its diff.
+  } else if (props.mode === 'staged') {
     actionButtons.push(h(IconButton, {
       key: 'unstage',
       label: props.t('actions.unstage'),
@@ -100,6 +103,10 @@ export function FileRow(props) {
 
 export function renderTree(nodes, depth, context) {
   const rows = []
+  // Change rows register their own target kinds; the commit-details view
+  // passes past-commit kinds so its copy-only menus never offer staging.
+  const fileKind = context.fileKind ?? 'file'
+  const folderKind = context.folderKind ?? 'folder'
   const target = (kind, detail) => (context.menuTarget === undefined ? undefined : context.menuTarget(kind, detail))
   for (const node of nodes) {
     if (node.type === 'folder') {
@@ -112,13 +119,13 @@ export function renderTree(nodes, depth, context) {
         onToggle: () => context.onToggleFolder(node.path),
         menuTrigger: context.menuTrigger,
         menuHint: context.menuHint,
-        menuTarget: target('folder', { section: context.mode, path: node.path, paths: collectTreePaths(node) }),
+        menuTarget: target(folderKind, { section: context.mode, path: node.path, paths: collectTreePaths(node) }),
       }))
       if (open) rows.push(...renderTree(node.children, depth + 1, context))
       continue
     }
     rows.push(h(FileRow, {
-      key: `file:${node.entry.kind}:${node.entry.path}:${node.entry.x}:${node.entry.y}`,
+      key: `file:${node.entry.kind}:${node.entry.path}:${node.entry.x}:${node.entry.y}:${node.entry.letter ?? ''}`,
       entry: node.entry,
       letter: node.entry.letter ?? '',
       depth,
@@ -130,7 +137,7 @@ export function renderTree(nodes, depth, context) {
       onUnstage: context.onUnstage,
       onDiscard: context.onDiscard,
       menuTrigger: context.menuTrigger,
-      menuTarget: target('file', { section: context.mode, path: node.entry.path }),
+      menuTarget: target(fileKind, { section: context.mode, path: node.entry.path }),
     }))
   }
   return rows

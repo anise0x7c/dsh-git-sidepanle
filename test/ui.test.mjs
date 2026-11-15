@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { createHarness } from './support/mini-react.mjs'
 import { createFakeContext, loadClientBundle, translate } from './support/fake-ctx.js'
 import { createMenuMock } from './support/fake-menu.js'
-import { BRANCHES, createRepo, createStatus, HISTORY, STATUS } from './support/fixtures.js'
+import { BRANCHES, COMMIT_DETAILS, createRepo, createStatus, HISTORY, STATUS } from './support/fixtures.js'
 
 let registration
 
@@ -30,6 +30,7 @@ async function mountGit(options = {}) {
     status: options.status ?? STATUS,
     history: options.history ?? HISTORY,
     branches: options.branches ?? BRANCHES,
+    'commit-details': options.commitDetails ?? COMMIT_DETAILS,
   }
   const harness = createHarness({
     fetch: async (_url, init) => {
@@ -270,6 +271,109 @@ test('a changed file opens a diff tab with its addressing parameters', async () 
   await mounted.harness.dispose()
 })
 
+test('clicking a commit shows its files and a file opens the commit diff', async () => {
+  const mounted = await mountGit()
+  const graphRow = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-graphRow'))[0]
+  assert.ok(graphRow, 'no graph row rendered')
+  mounted.harness.click(graphRow)
+  await mounted.harness.flush()
+
+  const detailsCall = mounted.calls.find((call) => call.op === 'commit-details')
+  assert.equal(detailsCall?.oid, 'a'.repeat(40))
+  const text = mounted.harness.text()
+  assert.match(text, /commitDetails\.files/)
+  assert.match(text, /Fix the sidebar/)
+  assert.match(text, /Ann/)
+  assert.match(text, /A longer explanation of the fix\./)
+  assert.match(text, /\.js/)
+  assert.match(text, /app\.js/)
+  assert.match(text, /added\.js/)
+  assert.match(text, /renamed\.js/)
+  assert.match(text, /old\.js/)
+  assert.match(text, /gone\.md/)
+  assert.ok(buttonByLabel(mounted.harness, 'commitDetails.back'))
+  assert.equal(mounted.harness.findAll((element) => element.type === 'textarea').length, 0, 'the commit box is hidden while details are open')
+
+  const fileRows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js')
+  assert.equal(fileRows.length, 1, 'the changed file is listed once')
+  mounted.harness.click(fileRows[0])
+  const opened = mounted.openedTabs.at(-1)
+  assert.equal(opened.kind, 'git-diff')
+  assert.equal(opened.options.params.path, 'src/app.js')
+  assert.equal(opened.options.params.commit, 'a'.repeat(40))
+  assert.equal(opened.options.params.shortOid, 'aaaaaaa')
+  assert.equal(opened.options.params.status, 'M')
+
+  mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
+  await mounted.harness.flush()
+  const after = mounted.harness.text()
+  assert.match(after, /sections\.changes/)
+  assert.doesNotMatch(after, /commitDetails\.files/)
+  await mounted.harness.dispose()
+})
+
+test('a commit row opens its details with the keyboard', async () => {
+  const mounted = await mountGit()
+  const graphRow = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-graphRow'))[0]
+  mounted.harness.keydown(graphRow, { key: 'Enter' })
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'commit-details').length, 1)
+  assert.match(mounted.harness.text(), /commitDetails\.files/)
+  await mounted.harness.dispose()
+})
+
+test('a commit without file changes says so', async () => {
+  const commitDetails = {
+    commit: COMMIT_DETAILS.commit,
+    files: [],
+    truncated: false,
+  }
+  const mounted = await mountGit({ commitDetails })
+  const graphRow = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-graphRow'))[0]
+  mounted.harness.click(graphRow)
+  await mounted.harness.flush()
+  assert.match(mounted.harness.text(), /commitDetails\.empty/)
+  assert.equal(mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow')).length, 0)
+  await mounted.harness.dispose()
+})
+
+test('a failed commit read reports the failure and retries', async () => {
+  const mounted = await mountGit({ failOp: 'commit-details' })
+  const graphRow = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-graphRow'))[0]
+  mounted.harness.click(graphRow)
+  await mounted.harness.flush()
+  assert.match(mounted.harness.text(), /error\.title/)
+  assert.match(mounted.harness.text(), /git said no/)
+  const before = mounted.calls.filter((call) => call.op === 'commit-details').length
+  mounted.harness.click(buttonByText(mounted.harness, 'retry'))
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'commit-details').length, before + 1)
+  mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
+  await mounted.harness.flush()
+  assert.match(mounted.harness.text(), /sections\.changes/)
+  await mounted.harness.dispose()
+})
+
+test('past-commit files offer copy-only context menus', async () => {
+  const mounted = await mountGit()
+  const graphRow = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-graphRow'))[0]
+  mounted.harness.click(graphRow)
+  await mounted.harness.flush()
+  const fileRows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js')
+  assert.equal(fileRows.length, 1)
+  mounted.harness.contextmenu(fileRows[0], { clientX: 7, clientY: 8 })
+  assert.equal(mounted.menu.opens.length, 1, 'a past-commit file binds a menu target')
+  const target = mounted.menu.opens[0].target
+  assert.equal(target.value.kind, 'commitFile')
+  assert.equal(target.value.path, 'src/app.js')
+  assert.equal(target.value.cwd, '/repo')
+  assert.deepEqual(menuActions(mounted.components, target).map((action) => action.id), [
+    menuActionId('copy-relative'),
+    menuActionId('copy-path'),
+  ])
+  await mounted.harness.dispose()
+})
+
 test('a missing repository renders the explanation instead of actions', async () => {
   const mounted = await mountGit({ status: createStatus({ repo: null, cwd: '/tmp/plain', files: [] }) })
   const text = mounted.harness.text()
@@ -342,6 +446,101 @@ test('the diff tab renders unified diff hunks from the Host', async () => {
   assert.match(text, /@@ -1,2 \+1,2 @@/)
   assert.match(text, /TWO/)
   assert.ok(calls.some((call) => call.op === 'diff' && call.path === 'src/app.js'))
+  await harness.dispose()
+})
+
+test('the diff tab is scoped to a commit and labels it', async () => {
+  const commit = 'a'.repeat(40)
+  const diffPayload = {
+    path: 'src/app.js',
+    commit,
+    binary: false,
+    truncated: false,
+    additions: 1,
+    deletions: 0,
+    hunks: [{
+      header: '@@ -1,1 +1,2 @@',
+      oldStart: 1,
+      oldCount: 1,
+      newStart: 1,
+      newCount: 2,
+      lines: [{ t: ' ', text: 'one' }, { t: '+', text: 'TWO' }],
+    }],
+  }
+  const calls = []
+  const harness = createHarness({
+    fetch: async (_url, init) => {
+      const request = JSON.parse(init.body)
+      calls.push(request)
+      return { ok: true, status: 200, json: async () => ({ ok: true, value: request.op === 'diff' ? diffPayload : STATUS }) }
+    },
+    component: null,
+    props: {},
+  })
+  const components = loadComponents(harness)
+  const tab = {
+    id: 'tab-3',
+    title: 'Diff',
+    visible: true,
+    signal: new AbortController().signal,
+    actions: { openTab: () => {}, openResource: () => {}, close: () => {}, bindCommands: () => () => {} },
+    navigation: { params: { path: 'src/app.js', commit, shortOid: 'aaaaaaa', status: 'M', cwd: '/repo' }, revision: 1 },
+  }
+  harness.setComponent(components.diff, {
+    sessionId: 'session-1',
+    t: translate,
+    useTabInfo: () => ({ sidebar: { expanded: true }, panel: { id: 'pane-1', isFloating: false }, tab }),
+  })
+  await harness.render()
+  const text = harness.text()
+  assert.match(text, /diff\.commit/)
+  assert.match(text, /TWO/)
+  assert.equal(harness.findAll((element) => element.props?.['data-kind'] === 'commit').length, 1, 'the badge identifies the commit scope')
+  const diffCall = calls.find((call) => call.op === 'diff')
+  assert.equal(diffCall?.commit, commit)
+  assert.equal(diffCall?.path, 'src/app.js')
+  assert.notEqual(diffCall?.staged, true)
+  await harness.dispose()
+})
+
+test('a pure rename diff explains the rename instead of showing an empty diff', async () => {
+  const diffPayload = {
+    path: 'src/renamed.js',
+    commit: 'a'.repeat(40),
+    binary: false,
+    truncated: false,
+    additions: 0,
+    deletions: 0,
+    renameFrom: 'src/old.js',
+    renameTo: 'src/renamed.js',
+    hunks: [],
+  }
+  const harness = createHarness({
+    fetch: async (_url, init) => {
+      const request = JSON.parse(init.body)
+      return { ok: true, status: 200, json: async () => ({ ok: true, value: diffPayload }) }
+    },
+    component: null,
+    props: {},
+  })
+  const components = loadComponents(harness)
+  const tab = {
+    id: 'tab-4',
+    title: 'Diff',
+    visible: true,
+    signal: new AbortController().signal,
+    actions: { openTab: () => {}, openResource: () => {}, close: () => {}, bindCommands: () => () => {} },
+    navigation: { params: { path: 'src/renamed.js', commit: 'a'.repeat(40), shortOid: 'aaaaaaa', origPath: 'src/old.js', status: 'R' }, revision: 1 },
+  }
+  harness.setComponent(components.diff, {
+    sessionId: 'session-1',
+    t: translate,
+    useTabInfo: () => ({ sidebar: { expanded: true }, panel: { id: 'pane-1', isFloating: false }, tab }),
+  })
+  await harness.render()
+  const text = harness.text()
+  assert.match(text, /diff\.renamed/)
+  assert.match(text, /diff\.from/, 'the header still names the original path')
   await harness.dispose()
 })
 

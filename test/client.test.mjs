@@ -154,6 +154,15 @@ test('components render without a browser and expose stable markup entry points'
   const diffTitleElement = diffTitle({ t: translate, useTabInfo })
   assert.equal(diffTitleElement.type, 'span')
 
+  // A commit-scoped diff names the commit in the tab title, so two revisions
+  // of the same file do not read as the same tab.
+  const commitTab = {
+    ...tab,
+    navigation: { address: 'sidebar://git-diff', params: { path: 'src/app.js', commit: 'a'.repeat(40), shortOid: 'aaaaaaa' }, revision: 1 },
+  }
+  const commitTitleElement = diffTitle({ t: translate, useTabInfo: () => ({ sidebar: {}, panel: {}, tab: commitTab }) })
+  assert.match(JSON.stringify(commitTitleElement), /aaaaaaa/)
+
   // A diff tab that restored without navigation parameters shows its picker prompt.
   const restoredTab = { ...tab, navigation: { address: 'sidebar://git-diff', params: undefined, revision: 0 } }
   const restored = diffPanel({ sessionId: 'session-1', t: translate, useTabInfo: () => ({ sidebar: {}, panel: {}, tab: restoredTab }) })

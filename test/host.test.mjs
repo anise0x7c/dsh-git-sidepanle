@@ -241,6 +241,116 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
   assert.equal(badOp.body.error.code, 'unknown-operation')
 })
 
+test('a commit reports its metadata and changed files, and its files diff against the first parent', async () => {
+  const history = (await call('history')).body.value
+  const head = history.commits.find((commit) => commit.subject === 'change alpha and add beta')
+  assert.ok(head, 'the second commit is in the history')
+
+  const details = await call('commit-details', { oid: head.oid })
+  assert.equal(details.body.ok, true)
+  assert.equal(details.body.value.commit.oid, head.oid)
+  assert.equal(details.body.value.commit.shortOid, head.shortOid)
+  assert.equal(details.body.value.commit.subject, 'change alpha and add beta')
+  assert.equal(details.body.value.commit.author, 'Git Graph Test')
+  assert.equal(details.body.value.commit.parents.length, 1)
+  assert.equal(details.body.value.truncated, false)
+  const changed = details.body.value.files
+  assert.deepEqual(
+    changed.map((file) => [file.letter, file.path]).sort(),
+    [['A', 'beta.txt'], ['M', 'alpha.txt']],
+  )
+
+  const commitDiff = await call('diff', { path: 'alpha.txt', commit: head.oid })
+  assert.equal(commitDiff.body.ok, true)
+  assert.equal(commitDiff.body.value.commit, head.oid)
+  assert.equal(commitDiff.body.value.additions, 1)
+  assert.equal(commitDiff.body.value.deletions, 1)
+  assert.ok(commitDiff.body.value.hunks.length > 0)
+
+  const root = history.commits.find((commit) => commit.subject === 'initial commit')
+  assert.ok(root, 'the root commit is in the history')
+  const rootDetails = await call('commit-details', { oid: root.oid })
+  assert.deepEqual(rootDetails.body.value.commit.parents, [])
+  assert.deepEqual(rootDetails.body.value.files, [{ path: 'alpha.txt', letter: 'A' }])
+  const rootDiff = await call('diff', { path: 'alpha.txt', commit: root.oid })
+  assert.equal(rootDiff.body.ok, true)
+  assert.equal(rootDiff.body.value.additions, 2)
+  assert.equal(rootDiff.body.value.deletions, 0)
+
+  const missing = await call('commit-details', { oid: 'f'.repeat(40) })
+  assert.equal(missing.body.ok, false)
+  assert.equal(missing.body.error.code, 'unknown-commit')
+  assert.equal(missing.status, 404)
+
+  for (const oid of ['HEAD', head.shortOid, head.oid.toUpperCase()]) {
+    const refused = await call('commit-details', { oid })
+    assert.equal(refused.body.ok, false, `commit-details accepted ${oid}`)
+    assert.equal(refused.body.error.code, 'bad-request')
+    const refusedDiff = await call('diff', { path: 'alpha.txt', commit: oid })
+    assert.equal(refusedDiff.body.error.code, 'bad-request')
+  }
+})
+
+test('commit details follow the first parent for renames, deletions, and merges', async () => {
+  const timeline = await mkdtemp(join(tmpRoot, 'timeline-'))
+  await git(timeline, 'init', '-q', '-b', 'main')
+  await git(timeline, 'config', 'user.name', 'Git Graph Test')
+  await git(timeline, 'config', 'user.email', 'git-graph@example.test')
+  await mkdir(join(timeline, 'src'), { recursive: true })
+  await writeFile(join(timeline, 'src', 'alpha.txt'), 'one\n')
+  await writeFile(join(timeline, 'keep.txt'), 'kept\n')
+  await writeFile(join(timeline, 'doomed.txt'), 'bye\n')
+  await git(timeline, 'add', '-A')
+  await git(timeline, 'commit', '-qm', 'first commit')
+
+  await git(timeline, 'mv', 'keep.txt', 'renamed.txt')
+  await git(timeline, 'rm', '-q', 'doomed.txt')
+  await writeFile(join(timeline, 'src', 'alpha.txt'), 'one\ntwo\n')
+  await writeFile(join(timeline, 'src', 'new.txt'), 'new\n')
+  await git(timeline, 'add', '-A')
+  await git(timeline, 'commit', '-qm', 'rename, delete, and add')
+  const second = (await git(timeline, 'rev-parse', 'HEAD')).trim()
+
+  await git(timeline, 'checkout', '-q', '-b', 'feature')
+  await writeFile(join(timeline, 'feature.txt'), 'feature\n')
+  await git(timeline, 'add', '-A')
+  await git(timeline, 'commit', '-qm', 'feature work')
+  await git(timeline, 'checkout', '-q', 'main')
+  await writeFile(join(timeline, 'main.txt'), 'main\n')
+  await git(timeline, 'add', '-A')
+  await git(timeline, 'commit', '-qm', 'main work')
+  await git(timeline, 'merge', '-q', '--no-ff', 'feature', '-m', 'merge feature')
+  const merge = (await git(timeline, 'rev-parse', 'HEAD')).trim()
+
+  await withSessionServer(timeline, async (baseUrl) => {
+    const details = await callAt(baseUrl, 'commit-details', { oid: second })
+    assert.equal(details.body.ok, true)
+    const files = details.body.value.files
+    assert.deepEqual(
+      files.map((file) => [file.letter, file.path]).sort(),
+      [['A', 'src/new.txt'], ['D', 'doomed.txt'], ['M', 'src/alpha.txt'], ['R', 'renamed.txt']],
+    )
+    const renamed = files.find((file) => file.letter === 'R')
+    assert.equal(renamed.origPath, 'keep.txt')
+    assert.equal(details.body.value.commit.parents.length, 1)
+
+    const renameDiff = await callAt(baseUrl, 'diff', { path: 'renamed.txt', commit: second, origPath: 'keep.txt' })
+    assert.equal(renameDiff.body.ok, true)
+    assert.equal(renameDiff.body.value.renameFrom, 'keep.txt')
+    assert.equal(renameDiff.body.value.renameTo, 'renamed.txt')
+    assert.equal(renameDiff.body.value.additions, 0)
+
+    const deleteDiff = await callAt(baseUrl, 'diff', { path: 'doomed.txt', commit: second })
+    assert.equal(deleteDiff.body.ok, true)
+    assert.equal(deleteDiff.body.value.deletions, 1)
+
+    const mergeDetails = await callAt(baseUrl, 'commit-details', { oid: merge })
+    assert.equal(mergeDetails.body.ok, true)
+    assert.equal(mergeDetails.body.value.commit.parents.length, 2)
+    assert.deepEqual(mergeDetails.body.value.files, [{ path: 'feature.txt', letter: 'A' }])
+  })
+})
+
 test('discard restores tracked files and deletes untracked files', async () => {
   await writeFile(join(repo, 'alpha.txt'), 'one\nchanged again\n')
   await writeFile(join(repo, 'gamma.txt'), 'temporary\n')

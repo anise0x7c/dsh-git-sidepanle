@@ -34,6 +34,14 @@ export function GitBranchIcon(props) {
   ])
 }
 
+export function ArrowLeftIcon(props) {
+  const size = props?.size ?? 14
+  return svgIcon(size, [
+    h('path', { key: 'a', d: 'M13 8H4' }),
+    h('path', { key: 'b', d: 'M7.5 3.5 3 8l4.5 4.5' }),
+  ])
+}
+
 export function ChevronRightIcon(props) {
   const size = props?.size ?? 12
   return svgIcon(size, h('path', { d: 'M6 3.5 10.5 8 6 12.5' }), { className: props?.className })

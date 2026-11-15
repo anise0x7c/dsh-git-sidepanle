@@ -71,6 +71,32 @@ export function createBranches(names, current = names[0]) {
 export const BRANCHES = createBranches(['main', 'feature/sidebar'])
 
 /**
+ * Default `commit-details` response for the head commit of `HISTORY`.
+ *
+ * It carries one entry of each interesting family: modified, added, deleted,
+ * and renamed with its original path.
+ */
+export const COMMIT_DETAILS = {
+  commit: {
+    oid: 'a'.repeat(40),
+    shortOid: 'aaaaaaa',
+    author: 'Ann',
+    authoredAt: now - 120,
+    refs: 'HEAD -> main, origin/main',
+    parents: ['b'.repeat(40)],
+    subject: 'Fix the sidebar',
+    body: 'A longer explanation of the fix.',
+  },
+  files: [
+    { path: 'src/app.js', letter: 'M' },
+    { path: 'src/added.js', letter: 'A' },
+    { path: 'src/renamed.js', origPath: 'src/old.js', letter: 'R' },
+    { path: 'docs/gone.md', letter: 'D' },
+  ],
+  truncated: false,
+}
+
+/**
  * Build a repository record from the shared one.
  * @param {object} overrides - fields to replace (`cwd`, `upstream`, ...).
  * @returns {object} repository record.

@@ -11,7 +11,13 @@ export function renderDiff(t, diff) {
   if (diff === null || diff === undefined) return h('div', { className: 'dshgg-diffNote' }, t('diff.empty'))
   if (diff.binary === true) return h('div', { className: 'dshgg-diffNote' }, t('diff.binary'))
   const hunks = Array.isArray(diff.hunks) ? diff.hunks : []
-  if (hunks.length === 0) return h('div', { className: 'dshgg-diffNote' }, t('diff.empty'))
+  if (hunks.length === 0) {
+    // A pure rename has no line changes; Git reports the two paths instead.
+    if (typeof diff.renameFrom === 'string' && typeof diff.renameTo === 'string') {
+      return h('div', { className: 'dshgg-diffNote' }, t('diff.renamed', { path: diff.renameFrom }))
+    }
+    return h('div', { className: 'dshgg-diffNote' }, t('diff.empty'))
+  }
   const rows = []
   let rendered = 0
   let clipped = false

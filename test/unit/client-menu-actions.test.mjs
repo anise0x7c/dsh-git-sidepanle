@@ -384,6 +384,32 @@ describe('resolveMenuActions for commit and diff targets', () => {
   })
 })
 
+describe('resolveMenuActions for past-commit files', () => {
+  test('offers the path copies and no staging or discarding commands', () => {
+    const file = actionsFor({ sessionId: SESSION, panelId: PANEL, kind: 'commitFile', section: 'commit', path: 'src/app.js', cwd: '/repo' })
+    assert.deepEqual(publishedIds(file), [
+      `${MENU_CONTRIBUTION_ID}/copy-relative`,
+      `${MENU_CONTRIBUTION_ID}/copy-path`,
+    ])
+    assert.deepEqual(labelsOf(file), [t('menu.copyRelativePath'), t('menu.copyPath')])
+    assert.equal(file.some((action) => ['stage', 'unstage', 'discard'].includes(action.id)), false)
+
+    const folder = actionsFor({ sessionId: SESSION, panelId: PANEL, kind: 'commitFolder', section: 'commit', path: 'src', cwd: '/repo' })
+    assert.deepEqual(publishedIds(folder), [
+      `${MENU_CONTRIBUTION_ID}/copy-relative`,
+      `${MENU_CONTRIBUTION_ID}/copy-path`,
+    ])
+  })
+
+  test('omits the absolute copy without a repository root and refuses a missing path', () => {
+    assert.deepEqual(publishedIds(actionsFor({ sessionId: SESSION, kind: 'commitFile', path: 'src/app.js' })), [
+      `${MENU_CONTRIBUTION_ID}/copy-relative`,
+    ])
+    assert.deepEqual(actionsFor({ sessionId: SESSION, kind: 'commitFile', path: '' }), [])
+    assert.deepEqual(actionsFor({ sessionId: SESSION, kind: 'commitFolder' }), [])
+  })
+})
+
 describe('resolveMenuActions busy state', () => {
   test('disables mutating file actions but keeps the copy commands active', () => {
     const actions = actionsFor(fileValue({ busy: true }))

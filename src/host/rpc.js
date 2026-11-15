@@ -10,9 +10,9 @@ import { existsSync } from 'node:fs'
 import { lstat, unlink } from 'node:fs/promises'
 import { GitGraphError } from './errors.js'
 import { branchExists, readBranches } from './git/branches.js'
-import { readDiff } from './git/diff.js'
+import { readDiff, readCommitDiff } from './git/diff.js'
 import { findRepositoryRoot, gitOrThrow, resolveRepositoryPath, resolveRepositoryPaths, runGit } from './git/exec.js'
-import { readHistory } from './git/history.js'
+import { readCommitDetails, readHistory } from './git/history.js'
 import { readStatus } from './git/status.js'
 import { resolveSessionDirectory } from './session.js'
 
@@ -21,6 +21,7 @@ export const RPC_PATH = '/api/dsh-git-graph/rpc'
 export const HEALTH_PATH = '/api/dsh-git-graph/health'
 
 const COMMIT_TIMEOUT_MS = 120_000
+const FULL_OID = /^[0-9a-f]{40}$/
 
 /**
  * Dispatch one operation inside the repository containing a Session's directory.
@@ -40,6 +41,12 @@ export async function dispatch(ctx, payload) {
   switch (op) {
     case 'history':
       return { commits: await readHistory(root) }
+    case 'commit-details': {
+      if (typeof payload.oid !== 'string' || !FULL_OID.test(payload.oid)) {
+        throw new GitGraphError('bad-request', 'A full commit identifier is required.', 400)
+      }
+      return readCommitDetails(root, payload.oid)
+    }
     case 'branches':
       return { branches: await readBranches(root) }
     case 'stage': {
@@ -122,6 +129,13 @@ export async function dispatch(ctx, payload) {
     }
     case 'diff': {
       if (typeof payload.path !== 'string') throw new GitGraphError('bad-request', 'A file path is required.', 400)
+      if (payload.commit !== undefined) {
+        if (typeof payload.commit !== 'string' || !FULL_OID.test(payload.commit)) {
+          throw new GitGraphError('bad-request', 'A full commit identifier is required.', 400)
+        }
+        const origPath = typeof payload.origPath === 'string' && payload.origPath !== '' ? payload.origPath : undefined
+        return readCommitDiff(root, payload.path, payload.commit, origPath)
+      }
       return readDiff(root, payload.path, payload.staged === true, payload.untracked === true)
     }
     default:

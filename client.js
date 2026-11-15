@@ -99,7 +99,12 @@ function renderDiff(t, diff) {
   if (diff === null || diff === void 0) return h("div", { className: "dshgg-diffNote" }, t("diff.empty"));
   if (diff.binary === true) return h("div", { className: "dshgg-diffNote" }, t("diff.binary"));
   const hunks = Array.isArray(diff.hunks) ? diff.hunks : [];
-  if (hunks.length === 0) return h("div", { className: "dshgg-diffNote" }, t("diff.empty"));
+  if (hunks.length === 0) {
+    if (typeof diff.renameFrom === "string" && typeof diff.renameTo === "string") {
+      return h("div", { className: "dshgg-diffNote" }, t("diff.renamed", { path: diff.renameFrom }));
+    }
+    return h("div", { className: "dshgg-diffNote" }, t("diff.empty"));
+  }
   const rows = [];
   let rendered = 0;
   let clipped = false;
@@ -209,6 +214,7 @@ function errorText(t, failure) {
   if (code === "forbidden") return t("error.forbidden");
   if (code === "not-a-repository") return t("noRepo.title");
   if (code === "discard-unborn") return t("error.discardUnborn");
+  if (code === "unknown-commit") return t("error.unknownCommit");
   return failure.message || t("error.unknown");
 }
 
@@ -239,6 +245,13 @@ function GitBranchIcon(props) {
     h2("circle", { key: "c", cx: 11.5, cy: 6.5, r: 1.6 }),
     h2("path", { key: "d", d: "M4.5 5.1v5.8" }),
     h2("path", { key: "e", d: "M11.5 8.1c0 2.1-2.4 3-7 3.4" })
+  ]);
+}
+function ArrowLeftIcon(props) {
+  const size = props?.size ?? 14;
+  return svgIcon(size, [
+    h2("path", { key: "a", d: "M13 8H4" }),
+    h2("path", { key: "b", d: "M7.5 3.5 3 8l4.5 4.5" })
   ]);
 }
 function ChevronRightIcon(props) {
@@ -383,6 +396,7 @@ function DiffPanel(props) {
   const [state, setState] = (0, import_react5.useState)({ phase: "loading", diff: null, failure: null });
   const [reload, setReload] = (0, import_react5.useState)(0);
   const hasTarget = typeof params.path === "string" && params.path !== "";
+  const commit = typeof params.commit === "string" && params.commit !== "" ? params.commit : null;
   (0, import_react5.useEffect)(() => {
     if (!hasTarget) {
       setState({ phase: "empty", diff: null, failure: null });
@@ -393,7 +407,8 @@ function DiffPanel(props) {
     call("diff", {
       path: params.path,
       staged: params.staged === true,
-      untracked: params.untracked === true
+      untracked: params.untracked === true,
+      ...commit === null ? {} : { commit, origPath: params.origPath }
     }).then((diff) => {
       if (!cancelled) setState({ phase: "ready", diff, failure: null });
     }).catch((failure) => {
@@ -402,9 +417,9 @@ function DiffPanel(props) {
     return () => {
       cancelled = true;
     };
-  }, [call, hasTarget, params.path, params.staged, params.untracked, revision, reload]);
-  const badgeKind = params.untracked === true ? "untracked" : params.staged === true ? "staged" : "unstaged";
-  const badgeLabel = badgeKind === "untracked" ? t("diff.untracked") : badgeKind === "staged" ? t("diff.staged") : t("diff.unstaged");
+  }, [call, hasTarget, params.path, params.staged, params.untracked, params.origPath, commit, revision, reload]);
+  const badgeKind = commit !== null ? "commit" : params.untracked === true ? "untracked" : params.staged === true ? "staged" : "unstaged";
+  const badgeLabel = commit !== null ? t("diff.commit", { hash: typeof params.shortOid === "string" && params.shortOid !== "" ? params.shortOid : commit.slice(0, 7) }) : badgeKind === "untracked" ? t("diff.untracked") : badgeKind === "staged" ? t("diff.staged") : t("diff.unstaged");
   const headerMenu = menuTrigger === null || !hasTarget ? null : menuTrigger(menuTarget(sessionId, "diff", { path: params.path, cwd: params.cwd }), { tabIndex: -1, "aria-haspopup": "menu", title: t("menu.hint") });
   const header = hasTarget ? h5(
     "div",
@@ -609,6 +624,15 @@ function resolveMenuActions(value, t, notify) {
     }
     return actions;
   }
+  if (value.kind === "commitFile" || value.kind === "commitFolder") {
+    const path = value.path;
+    if (typeof path !== "string" || path === "") return [];
+    const actions = [menuAction("copy-relative", t("menu.copyRelativePath"), copy(path, "menu.copiedRelativePath"))];
+    if (typeof value.cwd === "string" && value.cwd !== "") {
+      actions.push(menuAction("copy-path", t("menu.copyPath"), copy(absolutePath(value.cwd, path), "menu.copiedPath")));
+    }
+    return actions;
+  }
   if (value.kind === "diff") {
     const path = value.path;
     if (typeof path !== "string" || path === "") return [];
@@ -622,7 +646,7 @@ function resolveMenuActions(value, t, notify) {
 }
 
 // src/client/panel/GitPanel.js
-var import_react19 = require("react");
+var import_react21 = require("react");
 
 // src/client/git/tree.js
 function buildTree(entries) {
@@ -877,13 +901,69 @@ function useChangeActions({ call, t, refs, files, stagedFiles, loadStatus, loadG
   };
 }
 
-// src/client/panel/hooks/useHistory.js
+// src/client/panel/hooks/useCommitDetails.js
 var import_react9 = require("react");
+function summaryOf(commit) {
+  return {
+    oid: commit.oid,
+    shortOid: commit.shortOid,
+    subject: commit.subject,
+    author: commit.author,
+    authoredAt: commit.authoredAt
+  };
+}
+function useCommitDetails({ call, refs }) {
+  const [selected, setSelected] = (0, import_react9.useState)(null);
+  const [details, setDetails] = (0, import_react9.useState)(null);
+  const [loading, setLoading] = (0, import_react9.useState)(false);
+  const [failure, setFailure] = (0, import_react9.useState)(null);
+  const requestToken = (0, import_react9.useRef)(0);
+  const loadCommit = (0, import_react9.useCallback)(async (commit) => {
+    requestToken.current += 1;
+    const token = requestToken.current;
+    setLoading(true);
+    setFailure(null);
+    setDetails(null);
+    try {
+      const value = await call("commit-details", { oid: commit.oid });
+      if (!refs.mounted.current || requestToken.current !== token) return;
+      setDetails({
+        commit: value?.commit ?? null,
+        files: Array.isArray(value?.files) ? value.files : [],
+        truncated: value?.truncated === true
+      });
+    } catch (error) {
+      if (!refs.mounted.current || requestToken.current !== token) return;
+      setFailure(error);
+    } finally {
+      if (refs.mounted.current && requestToken.current === token) setLoading(false);
+    }
+  }, [call, refs]);
+  const selectCommit = (0, import_react9.useCallback)((commit) => {
+    if (commit === null || commit === void 0) return;
+    setSelected(summaryOf(commit));
+    void loadCommit(commit);
+  }, [loadCommit]);
+  const closeCommit = (0, import_react9.useCallback)(() => {
+    requestToken.current += 1;
+    setSelected(null);
+    setDetails(null);
+    setFailure(null);
+    setLoading(false);
+  }, []);
+  const retryCommit = (0, import_react9.useCallback)(() => {
+    if (selected !== null) void loadCommit(selected);
+  }, [loadCommit, selected]);
+  return { selected, details, loading, failure, selectCommit, closeCommit, retryCommit };
+}
+
+// src/client/panel/hooks/useHistory.js
+var import_react10 = require("react");
 function useHistory({ call, refs }) {
-  const [graph, setGraph] = (0, import_react9.useState)(null);
-  const [graphLoading, setGraphLoading] = (0, import_react9.useState)(false);
-  const [graphFailure, setGraphFailure] = (0, import_react9.useState)(null);
-  const loadGraph = (0, import_react9.useCallback)(async () => {
+  const [graph, setGraph] = (0, import_react10.useState)(null);
+  const [graphLoading, setGraphLoading] = (0, import_react10.useState)(false);
+  const [graphFailure, setGraphFailure] = (0, import_react10.useState)(null);
+  const loadGraph = (0, import_react10.useCallback)(async () => {
     if (refs.mounted.current) setGraphLoading(true);
     try {
       const value = await call("history");
@@ -898,17 +978,17 @@ function useHistory({ call, refs }) {
       if (refs.mounted.current) setGraphLoading(false);
     }
   }, [call, refs]);
-  (0, import_react9.useEffect)(() => {
+  (0, import_react10.useEffect)(() => {
     void loadGraph();
   }, [loadGraph]);
   return { graph, graphLoading, graphFailure, loadGraph };
 }
 
 // src/client/panel/hooks/useMenuCommands.js
-var import_react10 = require("react");
+var import_react11 = require("react");
 function useMenuCommands() {
-  const optionsRef = (0, import_react10.useRef)(null);
-  (0, import_react10.useEffect)(() => panelCommands.subscribe((command) => {
+  const optionsRef = (0, import_react11.useRef)(null);
+  (0, import_react11.useEffect)(() => panelCommands.subscribe((command) => {
     const options = optionsRef.current;
     if (options !== null) dispatch(options, command);
   }), []);
@@ -990,13 +1070,13 @@ function dispatch(options, command) {
 }
 
 // src/client/panel/hooks/useRepoStatus.js
-var import_react11 = require("react");
+var import_react12 = require("react");
 function useRepoStatus({ sessionId, useContextMenu, visible, refs }) {
   const { call, menuTrigger, panelId } = usePanelMenu({ sessionId, useContextMenu });
-  const [status, setStatus] = (0, import_react11.useState)(null);
-  const [loading, setLoading] = (0, import_react11.useState)(true);
-  const [loadFailure, setLoadFailure] = (0, import_react11.useState)(null);
-  const loadStatus = (0, import_react11.useCallback)(async (options = {}) => {
+  const [status, setStatus] = (0, import_react12.useState)(null);
+  const [loading, setLoading] = (0, import_react12.useState)(true);
+  const [loadFailure, setLoadFailure] = (0, import_react12.useState)(null);
+  const loadStatus = (0, import_react12.useCallback)(async (options = {}) => {
     if (refs.inFlight.current) return;
     refs.inFlight.current = true;
     if (options.silent !== true) setLoading(true);
@@ -1013,10 +1093,10 @@ function useRepoStatus({ sessionId, useContextMenu, visible, refs }) {
       if (refs.mounted.current) setLoading(false);
     }
   }, [call, refs]);
-  (0, import_react11.useEffect)(() => {
+  (0, import_react12.useEffect)(() => {
     void loadStatus();
   }, [loadStatus]);
-  (0, import_react11.useEffect)(() => {
+  (0, import_react12.useEffect)(() => {
     if (!visible) return void 0;
     const timer = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
@@ -1029,11 +1109,11 @@ function useRepoStatus({ sessionId, useContextMenu, visible, refs }) {
 }
 
 // src/client/panel/views/BranchHeader.js
-var import_react13 = require("react");
+var import_react14 = require("react");
 
 // src/client/panel/BranchMenu.js
-var import_react12 = require("react");
-var h6 = import_react12.createElement;
+var import_react13 = require("react");
+var h6 = import_react13.createElement;
 function BranchMenu(props) {
   const t = props.t;
   let content;
@@ -1069,7 +1149,7 @@ function BranchMenu(props) {
 }
 
 // src/client/panel/views/BranchHeader.js
-var h7 = import_react13.createElement;
+var h7 = import_react14.createElement;
 function BranchHeader(props) {
   const t = props.t;
   const repo = props.repo;
@@ -1118,11 +1198,11 @@ function BranchHeader(props) {
 }
 
 // src/client/panel/views/ChangeGroups.js
-var import_react16 = require("react");
+var import_react17 = require("react");
 
 // src/client/panel/rows.js
-var import_react14 = require("react");
-var h8 = import_react14.createElement;
+var import_react15 = require("react");
+var h8 = import_react15.createElement;
 function FolderRow(props) {
   const keyboard = {
     onKeyDown: (event) => {
@@ -1158,7 +1238,8 @@ function FileRow(props) {
   const letter = props.letter;
   const name = baseName(entry.path);
   const actionButtons = [];
-  if (props.mode === "staged") {
+  if (props.mode === "commit") {
+  } else if (props.mode === "staged") {
     actionButtons.push(h8(IconButton, {
       key: "unstage",
       label: props.t("actions.unstage"),
@@ -1224,6 +1305,8 @@ function FileRow(props) {
 }
 function renderTree(nodes, depth, context) {
   const rows = [];
+  const fileKind = context.fileKind ?? "file";
+  const folderKind = context.folderKind ?? "folder";
   const target = (kind, detail) => context.menuTarget === void 0 ? void 0 : context.menuTarget(kind, detail);
   for (const node of nodes) {
     if (node.type === "folder") {
@@ -1236,13 +1319,13 @@ function renderTree(nodes, depth, context) {
         onToggle: () => context.onToggleFolder(node.path),
         menuTrigger: context.menuTrigger,
         menuHint: context.menuHint,
-        menuTarget: target("folder", { section: context.mode, path: node.path, paths: collectTreePaths(node) })
+        menuTarget: target(folderKind, { section: context.mode, path: node.path, paths: collectTreePaths(node) })
       }));
       if (open) rows.push(...renderTree(node.children, depth + 1, context));
       continue;
     }
     rows.push(h8(FileRow, {
-      key: `file:${node.entry.kind}:${node.entry.path}:${node.entry.x}:${node.entry.y}`,
+      key: `file:${node.entry.kind}:${node.entry.path}:${node.entry.x}:${node.entry.y}:${node.entry.letter ?? ""}`,
       entry: node.entry,
       letter: node.entry.letter ?? "",
       depth,
@@ -1254,15 +1337,15 @@ function renderTree(nodes, depth, context) {
       onUnstage: context.onUnstage,
       onDiscard: context.onDiscard,
       menuTrigger: context.menuTrigger,
-      menuTarget: target("file", { section: context.mode, path: node.entry.path })
+      menuTarget: target(fileKind, { section: context.mode, path: node.entry.path })
     }));
   }
   return rows;
 }
 
 // src/client/panel/Section.js
-var import_react15 = require("react");
-var h9 = import_react15.createElement;
+var import_react16 = require("react");
+var h9 = import_react16.createElement;
 function Section(props) {
   const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
@@ -1296,7 +1379,7 @@ function Section(props) {
 }
 
 // src/client/panel/views/ChangeGroups.js
-var h10 = import_react16.createElement;
+var h10 = import_react17.createElement;
 function ChangeGroups(props) {
   const t = props.t;
   const sectionActions = {
@@ -1347,7 +1430,7 @@ function ChangeGroups(props) {
     mode: "changes"
   };
   return h10(
-    import_react16.Fragment,
+    import_react17.Fragment,
     null,
     props.mergeFiles.length === 0 ? null : h10(Section, {
       id: "merge",
@@ -1403,8 +1486,8 @@ function ChangeGroups(props) {
 }
 
 // src/client/panel/views/CommitBox.js
-var import_react17 = require("react");
-var h11 = import_react17.createElement;
+var import_react18 = require("react");
+var h11 = import_react18.createElement;
 function CommitBox(props) {
   const t = props.t;
   return h11(
@@ -1440,9 +1523,89 @@ function CommitBox(props) {
   );
 }
 
+// src/client/panel/views/CommitDetails.js
+var import_react19 = require("react");
+var h12 = import_react19.createElement;
+function CommitDetails(props) {
+  const t = props.t;
+  const summary = props.summary ?? {};
+  const commit = props.details?.commit ?? summary;
+  const subject = typeof commit.subject === "string" && commit.subject !== "" ? commit.subject : t("graph.noSubject");
+  const author = typeof commit.author === "string" ? commit.author : "";
+  const body = typeof commit.body === "string" ? commit.body : "";
+  const hasDetails = props.details !== null && props.details !== void 0;
+  const files = hasDetails ? props.details.files : [];
+  const treeContext = {
+    collapsed: props.collapsed,
+    t,
+    busy: false,
+    onToggleFolder: props.onToggleFolder,
+    onOpen: props.onOpenFile,
+    onStage: () => {
+    },
+    onUnstage: () => {
+    },
+    onDiscard: () => {
+    },
+    menuTrigger: props.menuTrigger,
+    menuTarget: props.treeTarget,
+    menuHint: t("menu.hint"),
+    mode: "commit",
+    fileKind: "commitFile",
+    folderKind: "commitFolder"
+  };
+  let filesBody;
+  if (props.loading === true && !hasDetails) {
+    filesBody = h12("div", { key: "loading", className: "dshgg-commitNote" }, t("commitDetails.loading"));
+  } else if (props.failure !== null && props.failure !== void 0) {
+    filesBody = h12(Banner, {
+      key: "error",
+      title: t("error.title"),
+      detail: errorText(t, props.failure),
+      retryLabel: t("retry"),
+      onRetry: props.onRetry
+    });
+  } else if (files.length === 0) {
+    filesBody = h12("div", { key: "empty", className: "dshgg-commitNote" }, t("commitDetails.empty"));
+  } else {
+    filesBody = renderTree(props.tree, 0, treeContext);
+  }
+  return h12(
+    "div",
+    { className: "dshgg-commitView", "data-commit": commit.oid ?? "" },
+    h12(
+      "div",
+      { className: "dshgg-commitToolbar" },
+      h12(IconButton, {
+        label: t("commitDetails.back"),
+        title: t("commitDetails.back"),
+        onClick: props.onBack
+      }, h12(ArrowLeftIcon, { size: 14 })),
+      h12("span", { className: "dshgg-commitHash", title: typeof commit.oid === "string" ? commit.oid : "" }, typeof commit.shortOid === "string" ? commit.shortOid : ""),
+      h12("span", { className: "dshgg-commitSubject", title: subject }, subject)
+    ),
+    h12(
+      "div",
+      { className: "dshgg-commitMeta" },
+      author === "" ? null : h12("span", { key: "author" }, author),
+      author === "" ? null : h12("span", { key: "dot", className: "dshgg-dot" }, "·"),
+      h12("span", { key: "time" }, formatAgo(t, Number(commit.authoredAt) || 0))
+    ),
+    body === "" ? null : h12("pre", { className: "dshgg-commitBody" }, body),
+    h12(
+      "div",
+      { className: "dshgg-commitFilesHeader" },
+      h12("span", { className: "dshgg-sectionTitle" }, t("commitDetails.files")),
+      files.length === 0 ? null : h12("span", { className: "dshgg-sectionCount" }, String(files.length))
+    ),
+    hasDetails && props.details.truncated === true ? h12("div", { className: "dshgg-commitNote" }, t("commitDetails.truncated", { n: files.length })) : null,
+    filesBody
+  );
+}
+
 // src/client/panel/views/GraphSection.js
-var import_react18 = require("react");
-var h12 = import_react18.createElement;
+var import_react20 = require("react");
+var h13 = import_react20.createElement;
 function GraphSection(props) {
   const t = props.t;
   const commits = props.commits;
@@ -1450,9 +1613,9 @@ function GraphSection(props) {
   const trigger = menu === void 0 ? null : menu.trigger;
   const rows = [];
   if (props.loading === true && commits === null) {
-    rows.push(h12("div", { key: "loading", className: "dshgg-menuNote" }, t("graph.loading")));
+    rows.push(h13("div", { key: "loading", className: "dshgg-menuNote" }, t("graph.loading")));
   } else if (props.failure !== null) {
-    rows.push(h12(Banner, {
+    rows.push(h13(Banner, {
       key: "error",
       title: t("error.title"),
       detail: errorText(t, props.failure),
@@ -1460,19 +1623,20 @@ function GraphSection(props) {
       onRetry: props.onRetry
     }));
   } else if (commits === null || commits.length === 0) {
-    rows.push(h12("div", { key: "empty", className: "dshgg-menuNote" }, t("graph.empty")));
+    rows.push(h13("div", { key: "empty", className: "dshgg-menuNote" }, t("graph.empty")));
   } else {
     for (const commit of commits) {
-      rows.push(h12(GraphRow, {
+      rows.push(h13(GraphRow, {
         key: commit.oid,
         commit,
         t,
+        onSelect: props.onSelect,
         menuTrigger: trigger,
         menuTarget: menu === void 0 || trigger === null ? void 0 : menu.commitTarget(commit)
       }));
     }
   }
-  return h12(Section, {
+  return h13(Section, {
     id: "graph",
     title: t("sections.graph"),
     count: commits === null ? void 0 : commits.length,
@@ -1490,32 +1654,46 @@ function GraphRow(props) {
   const visibleRefs = refs.slice(0, 3);
   const hidden = refs.length - visibleRefs.length;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
-  const menuProps = menuTrigger === null || props.menuTarget === void 0 ? null : menuTrigger(props.menuTarget, { tabIndex: 0, "aria-haspopup": "menu" });
-  return h12(
+  const open = () => {
+    if (typeof props.onSelect === "function") props.onSelect(commit);
+  };
+  const interactive = {
+    role: "button",
+    tabIndex: 0,
+    onClick: open,
+    onKeyDown: (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        open();
+      }
+    }
+  };
+  const rowProps = menuTrigger === null || props.menuTarget === void 0 ? interactive : menuTrigger(props.menuTarget, { ...interactive, "aria-haspopup": "menu" });
+  return h13(
     "div",
     {
       className: "dshgg-graphRow",
       title: `${commit.shortOid} ${commit.subject} · ${t("menu.hint")}`,
-      ...menuProps ?? {}
+      ...rowProps
     },
-    h12("pre", { className: "dshgg-graphPrefix" }, commit.graph === "" ? "*" : commit.graph),
-    h12(
+    h13("pre", { className: "dshgg-graphPrefix" }, commit.graph === "" ? "*" : commit.graph),
+    h13(
       "div",
       { className: "dshgg-graphBody" },
-      h12("div", { className: "dshgg-graphSubject" }, commit.subject === "" ? t("graph.noSubject") : commit.subject),
-      h12(
+      h13("div", { className: "dshgg-graphSubject" }, commit.subject === "" ? t("graph.noSubject") : commit.subject),
+      h13(
         "div",
         { className: "dshgg-graphMeta" },
-        h12("span", { className: "dshgg-graphHash" }, commit.shortOid),
-        h12("span", { className: "dshgg-dot" }, "·"),
-        h12("span", null, commit.author),
-        h12("span", { className: "dshgg-dot" }, "·"),
-        h12("span", null, formatAgo(t, commit.authoredAt)),
-        visibleRefs.length === 0 ? null : h12(
+        h13("span", { className: "dshgg-graphHash" }, commit.shortOid),
+        h13("span", { className: "dshgg-dot" }, "·"),
+        h13("span", null, commit.author),
+        h13("span", { className: "dshgg-dot" }, "·"),
+        h13("span", null, formatAgo(t, commit.authoredAt)),
+        visibleRefs.length === 0 ? null : h13(
           "span",
           { className: "dshgg-refs" },
-          visibleRefs.map((ref, index) => h12("span", { key: `${ref.label}:${index}`, className: "dshgg-ref", "data-kind": ref.kind, title: ref.label }, ref.label)),
-          hidden > 0 ? h12("span", { key: "more", className: "dshgg-ref", title: refs.slice(3).map((ref) => ref.label).join(", ") }, `+${hidden}`) : null
+          visibleRefs.map((ref, index) => h13("span", { key: `${ref.label}:${index}`, className: "dshgg-ref", "data-kind": ref.kind, title: ref.label }, ref.label)),
+          hidden > 0 ? h13("span", { key: "more", className: "dshgg-ref", title: refs.slice(3).map((ref) => ref.label).join(", ") }, `+${hidden}`) : null
         )
       )
     )
@@ -1523,7 +1701,7 @@ function GraphRow(props) {
 }
 
 // src/client/panel/GitPanel.js
-var h13 = import_react19.createElement;
+var h14 = import_react21.createElement;
 function GitPanel(props) {
   const t = props.t;
   const tab = props.useTabInfo().tab;
@@ -1533,16 +1711,16 @@ function GitPanel(props) {
   const statusState = useRepoStatus({ sessionId: props.sessionId, useContextMenu: props.useContextMenu, visible, refs });
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const { graph, graphLoading, graphFailure, loadGraph } = useHistory({ call, refs });
-  const [openSections, setOpenSections] = (0, import_react19.useState)({ merge: true, staged: true, changes: true, graph: true });
-  const [collapsed, setCollapsed] = (0, import_react19.useState)({});
+  const [openSections, setOpenSections] = (0, import_react21.useState)({ merge: true, staged: true, changes: true, graph: true });
+  const [collapsed, setCollapsed] = (0, import_react21.useState)({});
   const repo = status?.repo ?? null;
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
   const files = status?.files ?? [];
-  const mergeFiles = (0, import_react19.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
-  const stagedFiles = (0, import_react19.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
-  const changedFiles = (0, import_react19.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
-  const treeCache = (0, import_react19.useMemo)(() => ({
+  const mergeFiles = (0, import_react21.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
+  const stagedFiles = (0, import_react21.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
+  const changedFiles = (0, import_react21.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
+  const treeCache = (0, import_react21.useMemo)(() => ({
     merge: buildTree(mergeFiles.map((entry) => ({ ...entry, letter: "!" }))),
     staged: buildTree(stagedFiles.map((entry) => ({ ...entry, letter: statusLetter(entry.x) }))),
     changes: buildTree(changedFiles.map((entry) => ({ ...entry, letter: entry.untracked === true ? "U" : statusLetter(entry.y) })))
@@ -1566,7 +1744,13 @@ function GitPanel(props) {
     confirmAction
   } = actions;
   const { branchMenu, branches, branchLoading, branchFailure, loadBranches, toggleBranchMenu, checkout } = useBranches({ call, refs, perform });
-  const openDiff = (0, import_react19.useCallback)((entry, mode) => {
+  const commitState = useCommitDetails({ call, refs });
+  const selectedCommit = commitState.selected;
+  const commitTree = (0, import_react21.useMemo)(
+    () => buildTree((commitState.details?.files ?? []).map((file) => ({ ...file, kind: "commit" }))),
+    [commitState.details]
+  );
+  const openDiff = (0, import_react21.useCallback)((entry, mode) => {
     tab.actions.openTab(DIFF_KIND, {
       params: {
         path: entry.path,
@@ -1578,12 +1762,26 @@ function GitPanel(props) {
       }
     });
   }, [tab.actions, repoRoot]);
+  const openCommitDiff = (0, import_react21.useCallback)((entry) => {
+    if (selectedCommit === null) return;
+    tab.actions.openTab(DIFF_KIND, {
+      params: {
+        path: entry.path,
+        commit: selectedCommit.oid,
+        shortOid: selectedCommit.shortOid,
+        status: entry.letter,
+        origPath: entry.origPath,
+        cwd: repoRoot ?? void 0
+      }
+    });
+  }, [tab.actions, repoRoot, selectedCommit]);
   const toggleSection = (id) => setOpenSections((current) => ({ ...current, [id]: current[id] !== true }));
   const toggleFolder = (path) => setCollapsed((current) => ({ ...current, [path]: current[path] !== true }));
   const refreshAll = () => {
     setActionFailure(null);
     void loadStatus({ silent: true });
     void loadGraph();
+    if (selectedCommit !== null) commitState.retryCommit();
   };
   const branchLabel = repo === null ? null : repo.detached === true ? t("branch.detached") : repo.unborn === true ? t("branch.unborn") : repo.branch;
   const ahead = repo?.ahead ?? 0;
@@ -1610,45 +1808,60 @@ function GitPanel(props) {
   };
   const renderState = () => {
     if (loading && status === null) {
-      return h13(EmptyState, {
-        icon: h13(GitBranchIcon, { size: 26 }),
+      return h14(EmptyState, {
+        icon: h14(GitBranchIcon, { size: 26 }),
         title: t("loading")
       });
     }
     if (loadFailure !== null && status === null) {
       if (loadFailure.code === "git-unavailable") {
-        return h13(EmptyState, {
-          icon: h13(AlertIcon, { size: 26 }),
+        return h14(EmptyState, {
+          icon: h14(AlertIcon, { size: 26 }),
           title: t("gitUnavailable.title"),
           desc: t("gitUnavailable.desc"),
-          action: h13("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
+          action: h14("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
             void loadStatus();
           } }, t("retry"))
         });
       }
-      return h13(EmptyState, {
-        icon: h13(AlertIcon, { size: 26 }),
+      return h14(EmptyState, {
+        icon: h14(AlertIcon, { size: 26 }),
         title: t("error.title"),
         desc: errorText(t, loadFailure),
-        action: h13("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
+        action: h14("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
           void loadStatus();
         } }, t("retry"))
       });
     }
     if (status !== null && repo === null) {
-      return h13(EmptyState, {
-        icon: h13(GitBranchIcon, { size: 26 }),
+      return h14(EmptyState, {
+        icon: h14(GitBranchIcon, { size: 26 }),
         title: t("noRepo.title"),
         desc: t("noRepo.desc", { path: sessionDirectory ?? "" }),
-        action: h13("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: refreshAll }, t("refresh"))
+        action: h14("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: refreshAll }, t("refresh"))
       });
     }
     return null;
   };
-  const body = renderState() ?? h13(
-    import_react19.Fragment,
+  const commitBody = selectedCommit === null ? null : h14(CommitDetails, {
+    t,
+    summary: selectedCommit,
+    details: commitState.details,
+    loading: commitState.loading,
+    failure: commitState.failure,
+    tree: commitTree,
+    collapsed,
+    onToggleFolder: toggleFolder,
+    onBack: commitState.closeCommit,
+    onRetry: commitState.retryCommit,
+    onOpenFile: openCommitDiff,
+    menuTrigger,
+    treeTarget: targets.treeTarget
+  });
+  const body = renderState() ?? (commitBody ?? h14(
+    import_react21.Fragment,
     null,
-    h13(ChangeGroups, {
+    h14(ChangeGroups, {
       t,
       clean,
       mergeFiles,
@@ -1670,25 +1883,26 @@ function GitPanel(props) {
       sectionTarget: targets.sectionTarget,
       treeTarget: targets.treeTarget
     }),
-    h13(GraphSection, {
+    h14(GraphSection, {
       t,
       commits: graph,
       loading: graphLoading,
       failure: graphFailure,
       open: openSections.graph === true,
+      onSelect: commitState.selectCommit,
       onToggle: () => toggleSection("graph"),
       onRetry: () => {
         void loadGraph();
       },
       menu: graphMenu
     })
-  );
+  ));
   const commitHint = stagedFiles.length > 0 ? t("commit.hint") : t("commit.hintNone");
   const placeholder = repo === null ? t("commit.placeholder", { branch: "" }) : t("commit.placeholder", { branch: branchLabel ?? "" });
-  return h13(
+  return h14(
     "div",
     { className: "dshgg-root", "data-dsh-git-graph": "" },
-    h13(BranchHeader, {
+    h14(BranchHeader, {
       t,
       wrapRef: refs.wrap,
       repo,
@@ -1707,7 +1921,7 @@ function GitPanel(props) {
       },
       onRefresh: refreshAll
     }),
-    repo === null ? null : h13(CommitBox, {
+    repo === null || selectedCommit !== null ? null : h14(CommitBox, {
       t,
       message,
       hint: commitHint,
@@ -1716,7 +1930,7 @@ function GitPanel(props) {
       onChange: setMessage,
       onCommit: requestCommit
     }),
-    loadFailure !== null && status !== null ? h13(Banner, {
+    loadFailure !== null && status !== null ? h14(Banner, {
       title: t("error.title"),
       detail: errorText(t, loadFailure),
       retryLabel: t("retry"),
@@ -1726,46 +1940,48 @@ function GitPanel(props) {
       dismissLabel: t("action.dismiss"),
       onDismiss: () => setLoadFailure(null)
     }) : null,
-    actionFailure !== null ? h13(Banner, {
+    actionFailure !== null ? h14(Banner, {
       title: t("error.title"),
       detail: errorText(t, actionFailure),
       dismissLabel: t("action.dismiss"),
       onDismiss: () => setActionFailure(null)
     }) : null,
-    notice !== null ? h13("div", { className: "dshgg-notice", role: "status" }, notice) : null,
-    h13("div", { className: "dshgg-scroll" }, body),
-    confirm !== null ? h13(
+    notice !== null ? h14("div", { className: "dshgg-notice", role: "status" }, notice) : null,
+    h14("div", { className: "dshgg-scroll" }, body),
+    confirm !== null ? h14(
       "div",
       { className: "dshgg-confirm", role: "alertdialog", "aria-label": confirmTitle(t, confirm) },
-      h13(
+      h14(
         "div",
         { className: "dshgg-confirmText" },
-        h13("div", { className: "dshgg-confirmTitle" }, confirmTitle(t, confirm)),
-        confirmDescription(t, confirm) === "" ? null : h13("div", { className: "dshgg-confirmDesc" }, confirmDescription(t, confirm))
+        h14("div", { className: "dshgg-confirmTitle" }, confirmTitle(t, confirm)),
+        confirmDescription(t, confirm) === "" ? null : h14("div", { className: "dshgg-confirmDesc" }, confirmDescription(t, confirm))
       ),
-      h13(
+      h14(
         "div",
         { className: "dshgg-confirmActions" },
-        h13("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", disabled: busy !== null, onClick: () => setConfirm(null) }, t("action.cancel")),
-        h13("button", { type: "button", className: "dshgg-btn dshgg-btnPrimary", disabled: busy !== null, onClick: confirmAction }, confirmActionLabel(t, confirm))
+        h14("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", disabled: busy !== null, onClick: () => setConfirm(null) }, t("action.cancel")),
+        h14("button", { type: "button", className: "dshgg-btn dshgg-btnPrimary", disabled: busy !== null, onClick: confirmAction }, confirmActionLabel(t, confirm))
       )
     ) : null
   );
 }
 
 // src/client/titles.js
-var import_react20 = require("react");
-var h14 = import_react20.createElement;
+var import_react22 = require("react");
+var h15 = import_react22.createElement;
 function GitTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;
-  return h14("span", { className: "dshgg-title" }, h14(GitBranchIcon, { size: 14 }), h14("span", { className: "dshgg-titleText" }, title));
+  return h15("span", { className: "dshgg-title" }, h15(GitBranchIcon, { size: 14 }), h15("span", { className: "dshgg-titleText" }, title));
 }
 function DiffTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const params = tabInfo.tab.navigation?.params ?? {};
   const name = typeof params.path === "string" && params.path !== "" ? baseName(params.path) : tabInfo.tab.title;
-  return h14("span", { className: "dshgg-title" }, h14(FileIcon, { size: 14 }), h14("span", { className: "dshgg-titleText" }, name));
+  const shortOid = typeof params.shortOid === "string" && params.shortOid !== "" ? params.shortOid : typeof params.commit === "string" && params.commit !== "" ? params.commit.slice(0, 7) : "";
+  const label = shortOid === "" ? name : `${name} · ${shortOid}`;
+  return h15("span", { className: "dshgg-title" }, h15(FileIcon, { size: 14 }), h15("span", { className: "dshgg-titleText" }, label));
 }
 
 // src/client/locale/en.js
@@ -1832,6 +2048,7 @@ var en = {
   "action.cancel": "Cancel",
   "action.dismiss": "Dismiss",
   "error.discardUnborn": "Changes cannot be discarded before the first commit.",
+  "error.unknownCommit": "That commit is no longer available.",
   "status.modified": "Modified",
   "status.added": "Added",
   "status.deleted": "Deleted",
@@ -1849,6 +2066,11 @@ var en = {
   "graph.loading": "Loading commits…",
   "graph.empty": "No commits yet",
   "graph.noSubject": "(no message)",
+  "commitDetails.back": "Back to changes",
+  "commitDetails.loading": "Loading the commit files…",
+  "commitDetails.files": "Changed files",
+  "commitDetails.empty": "This commit has no file changes.",
+  "commitDetails.truncated": "Only the first {n} changed files are shown.",
   "diff.title": "Diff",
   "diff.loading": "Loading diff…",
   "diff.empty": "No changes to show.",
@@ -1858,6 +2080,8 @@ var en = {
   "diff.unstaged": "Unstaged",
   "diff.untracked": "Untracked",
   "diff.from": "from {path}",
+  "diff.commit": "Commit {hash}",
+  "diff.renamed": "Renamed from {path}; the content is unchanged.",
   "diff.pick": "Pick a changed file in Source control to see its diff.",
   "diff.sourceControl": "Open source control",
   "diff.error": "Could not load this diff.",
@@ -1936,6 +2160,7 @@ var zh = {
   "action.cancel": "取消",
   "action.dismiss": "关闭",
   "error.discardUnborn": "首次提交前无法放弃更改。",
+  "error.unknownCommit": "该提交已不存在。",
   "status.modified": "已修改",
   "status.added": "已添加",
   "status.deleted": "已删除",
@@ -1953,6 +2178,11 @@ var zh = {
   "graph.loading": "正在加载提交…",
   "graph.empty": "尚无提交",
   "graph.noSubject": "（无提交信息）",
+  "commitDetails.back": "返回更改列表",
+  "commitDetails.loading": "正在加载该提交的文件…",
+  "commitDetails.files": "更改的文件",
+  "commitDetails.empty": "该提交没有文件更改。",
+  "commitDetails.truncated": "仅显示前 {n} 个更改的文件。",
   "diff.title": "差异",
   "diff.loading": "正在加载差异…",
   "diff.empty": "没有可显示的更改。",
@@ -1962,6 +2192,8 @@ var zh = {
   "diff.unstaged": "未暂存",
   "diff.untracked": "未跟踪",
   "diff.from": "来自 {path}",
+  "diff.commit": "提交 {hash}",
+  "diff.renamed": "文件从 {path} 重命名，内容没有变化。",
   "diff.pick": "请在源代码管理中点击一个更改文件以查看差异。",
   "diff.sourceControl": "打开源代码管理",
   "diff.error": "无法加载该差异。",
@@ -1977,7 +2209,7 @@ var zh = {
 };
 
 // src/client/styles.css
-var styles_default = '.dshgg-root{display:flex;flex-direction:column;flex:1 1 auto;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px;line-height:1.45;background:transparent}\n.dshgg-toolbar{display:flex;align-items:center;gap:6px;padding:6px 8px;min-height:36px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1)}\n.dshgg-spacer{flex:1}\n.dshgg-branchWrap{position:relative;display:flex;min-width:0}\n.dshgg-branchChip{display:flex;align-items:center;gap:5px;min-width:0;max-width:100%;height:24px;padding:0 6px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}\n.dshgg-branchChip:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l1)}\n.dshgg-branchChip:disabled{cursor:default;color:var(--dsw-alias-label-secondary)}\n.dshgg-branchName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}\n.dshgg-upstream{display:inline-flex;align-items:center;gap:2px;color:var(--dsw-alias-label-secondary);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-sync{display:inline-flex;align-items:center;gap:1px;color:var(--dsw-alias-label-secondary);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-chevron{flex:none;transition:transform .12s ease}\n.dshgg-chevron[data-open="true"]{transform:rotate(90deg)}\n.dshgg-iconBtn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none}\n.dshgg-iconBtn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}\n.dshgg-iconBtn:disabled{opacity:.4;cursor:default}\n.dshgg-iconBtn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-iconBtn[data-spinning="true"] svg{animation:dshgg-spin 1s linear infinite}\n@keyframes dshgg-spin{to{transform:rotate(360deg)}}\n.dshgg-commitBox{display:flex;flex-direction:column;gap:6px;padding:8px 8px 9px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1)}\n.dshgg-commitMessage{width:100%;box-sizing:border-box;min-height:54px;max-height:40vh;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:5px;background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:1.5;resize:vertical;outline:none}\n.dshgg-commitMessage::placeholder{color:var(--dsw-alias-label-tertiary)}\n.dshgg-commitMessage:focus{border-color:var(--dsw-alias-state-business-primary)}\n.dshgg-commitMessage:disabled{opacity:.6}\n.dshgg-commitRow{display:flex;align-items:center;gap:8px}\n.dshgg-commitHint{flex:1;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:25px;padding:0 11px;border:1px solid transparent;border-radius:5px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex:none}\n.dshgg-btn:disabled{opacity:.45;cursor:default}\n.dshgg-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}\n.dshgg-btnPrimary{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}\n.dshgg-btnPrimary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}\n.dshgg-btnGhost{background:transparent;border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);font-weight:500}\n.dshgg-btnGhost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-banner{display:flex;align-items:flex-start;gap:8px;margin:6px 8px 0;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;font-size:12px}\n.dshgg-banner[data-kind="error"]{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}\n.dshgg-bannerText{flex:1;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}\n.dshgg-bannerDetail{margin-top:3px;color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code);font-size:11px;max-height:96px;overflow:auto;white-space:pre-wrap}\n.dshgg-bannerActions{display:flex;align-items:center;gap:4px;flex:none}\n.dshgg-linkBtn{padding:0;border:none;background:none;color:var(--dsw-alias-state-business-primary);font:inherit;font-size:12px;cursor:pointer}\n.dshgg-linkBtn:hover{text-decoration:underline}\n.dshgg-notice{margin:6px 8px 0;padding:6px 9px;border:1px solid var(--dsw-alias-state-success-primary);border-radius:6px;color:var(--dsw-alias-state-success-primary);font-size:12px}\n.dshgg-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;padding-bottom:8px}\n.dshgg-state{display:flex;flex-direction:column;align-items:center;gap:6px;padding:34px 18px;text-align:center}\n.dshgg-stateIcon{color:var(--dsw-alias-label-tertiary);display:flex}\n.dshgg-stateTitle{margin:2px 0 0;font-size:13px;font-weight:600}\n.dshgg-stateDesc{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;max-width:320px;overflow-wrap:anywhere}\n.dshgg-stateAction{margin-top:8px}\n.dshgg-section{display:flex;flex-direction:column;flex:none}\n.dshgg-sectionHeader{display:flex;align-items:center;gap:2px;height:24px;padding:0 6px 0 2px;position:relative}\n.dshgg-sectionToggle{display:flex;align-items:center;gap:5px;min-width:0;flex:1;height:100%;padding:0 4px;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:11px;font-weight:700;letter-spacing:.02em;cursor:pointer}\n.dshgg-sectionToggle:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-sectionToggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-sectionTitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-sectionCount{color:var(--dsw-alias-label-secondary);font-weight:500;font-variant-numeric:tabular-nums}\n.dshgg-sectionActions{display:flex;align-items:center;gap:1px;flex:none}\n.dshgg-sectionBody{display:flex;flex-direction:column}\n.dshgg-row{display:flex;align-items:center;gap:6px;height:23px;padding-right:4px;flex:none;min-width:0}\n.dshgg-fileRow{cursor:pointer;user-select:none}\n.dshgg-fileRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-fileRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-status{flex:none;width:14px;text-align:center;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}\n.dshgg-status[data-status="M"]{color:var(--dsw-alias-state-warn-primary)}\n.dshgg-status[data-status="A"],.dshgg-status[data-status="U"]{color:var(--dsw-alias-state-success-primary)}\n.dshgg-status[data-status="D"]{color:var(--dsw-alias-state-error-primary)}\n.dshgg-status[data-status="R"],.dshgg-status[data-status="C"]{color:var(--dsw-alias-state-business-primary)}\n.dshgg-status[data-status="T"]{color:var(--dsw-alias-state-warn-primary)}\n.dshgg-status[data-status="!"]{color:var(--dsw-alias-state-error-primary);font-size:12px}\n.dshgg-fileName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}\n.dshgg-fileName[data-obsolete="true"]{color:var(--dsw-alias-label-secondary);text-decoration:line-through}\n.dshgg-fileArrow{flex:none;color:var(--dsw-alias-label-tertiary);font-size:11px;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-fileActions{display:flex;align-items:center;gap:0;flex:none;opacity:0}\n.dshgg-fileRow:hover .dshgg-fileActions,.dshgg-fileRow:focus-within .dshgg-fileActions{opacity:1}\n.dshgg-fileActions .dshgg-iconBtn{width:20px;height:20px}\n.dshgg-folderRow{cursor:pointer;user-select:none;color:var(--dsw-alias-label-primary)}\n.dshgg-folderRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-folderRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-folderName{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-clean{display:flex;flex-direction:column;align-items:center;gap:5px;padding:26px 16px 20px;text-align:center;color:var(--dsw-alias-label-secondary)}\n.dshgg-cleanIcon{color:var(--dsw-alias-state-success-primary);display:flex}\n.dshgg-cleanTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}\n.dshgg-cleanDesc{font-size:12px}\n.dshgg-graphRow{display:flex;gap:6px;padding:2px 8px 2px 4px;min-width:0;align-items:flex-start;border-radius:0}\n.dshgg-graphRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-graphRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-graphPrefix{margin:0;flex:none;font-family:var(--ds-font-family-code);font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);white-space:pre;user-select:none}\n.dshgg-graphBody{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}\n.dshgg-graphSubject{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary)}\n.dshgg-graphMeta{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:11px;color:var(--dsw-alias-label-secondary);min-width:0}\n.dshgg-graphHash{font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-tertiary)}\n.dshgg-dot{color:var(--dsw-alias-label-tertiary)}\n.dshgg-refs{display:inline-flex;gap:3px;flex-wrap:wrap}\n.dshgg-ref{display:inline-flex;align-items:center;gap:3px;padding:0 5px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:10px;line-height:15px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-ref[data-kind="head"]{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);font-weight:600}\n.dshgg-ref[data-kind="branch"]{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}\n.dshgg-ref[data-kind="tag"]{color:var(--dsw-alias-state-warn-primary);border-color:var(--dsw-alias-state-warn-primary)}\n.dshgg-confirm{display:flex;align-items:center;gap:10px;margin:0;padding:8px 10px;flex:none;border-top:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1)}\n.dshgg-confirmText{flex:1;min-width:0}\n.dshgg-confirmTitle{font-size:12.5px;font-weight:600;overflow-wrap:anywhere}\n.dshgg-confirmDesc{margin-top:2px;font-size:11.5px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}\n.dshgg-confirmActions{display:flex;align-items:center;gap:6px;flex:none}\n.dshgg-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:min(320px,70vw);max-height:320px;overflow-y:auto;padding:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-overlay);box-shadow:0 8px 24px rgba(0,0,0,.18)}\n.dshgg-menuItem{display:flex;align-items:center;gap:6px;width:100%;height:26px;padding:0 7px;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}\n.dshgg-menuItem:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-menuItem:disabled{cursor:default;font-weight:600}\n.dshgg-menuItem:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-menuCheck{display:inline-flex;width:12px;flex:none;color:var(--dsw-alias-state-business-primary)}\n.dshgg-menuLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-menuNote{padding:7px 8px;color:var(--dsw-alias-label-secondary);font-size:12px}\n.dshgg-title{display:inline-flex;align-items:center;gap:5px;min-width:0}\n.dshgg-titleText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffRoot{display:flex;flex-direction:column;flex:1 1 auto;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px}\n.dshgg-diffHeader{display:flex;align-items:center;gap:6px;padding:5px 8px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1);min-width:0}\n.dshgg-diffPath{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}\n.dshgg-diffName{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffFrom{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffStats{flex:none;display:inline-flex;gap:4px;font-family:var(--ds-font-family-code);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-diffAdd{color:var(--dsw-alias-code-diff-added)}\n.dshgg-diffDel{color:var(--dsw-alias-code-diff-deleted)}\n.dshgg-diffBadge{flex:none;padding:0 6px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-secondary)}\n.dshgg-diffBadge[data-kind="staged"]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}\n.dshgg-diffBadge[data-kind="untracked"]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}\n.dshgg-diffBody{flex:1;min-height:0;overflow:auto;font-family:var(--ds-font-family-code);font-size:12px;line-height:18px;padding-bottom:10px}\n.dshgg-hunkHeader{padding:2px 10px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);font-size:11.5px;white-space:pre;border-top:1px solid var(--dsw-alias-border-l1);border-bottom:1px solid var(--dsw-alias-border-l1);margin-top:2px}\n.dshgg-diffLine{display:grid;grid-template-columns:44px 44px 16px minmax(0,1fr);min-width:max-content}\n.dshgg-gutter{padding-right:6px;text-align:right;color:var(--dsw-alias-label-tertiary);user-select:none;font-variant-numeric:tabular-nums;font-size:11px;border-right:1px solid var(--dsw-alias-border-l1)}\n.dshgg-marker{text-align:center;user-select:none;color:var(--dsw-alias-label-tertiary);font-weight:700}\n.dshgg-code{padding:0 10px;white-space:pre;min-width:0}\n.dshgg-diffLine[data-type="+"]{background:var(--dsw-alias-file-diff-added-bg)}\n.dshgg-diffLine[data-type="+"] .dshgg-gutter{background:var(--dsw-alias-file-diff-added-gutter)}\n.dshgg-diffLine[data-type="+"] .dshgg-marker{color:var(--dsw-alias-file-diff-added-marker)}\n.dshgg-diffLine[data-type="-"]{background:var(--dsw-alias-file-diff-deleted-bg)}\n.dshgg-diffLine[data-type="-"] .dshgg-gutter{background:var(--dsw-alias-file-diff-deleted-gutter)}\n.dshgg-diffLine[data-type="-"] .dshgg-marker{color:var(--dsw-alias-file-diff-deleted-marker)}\n.dshgg-diffNote{padding:16px;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-family);font-size:12.5px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}\n.dshgg-emptyLine{min-height:18px}\n';
+var styles_default = '.dshgg-root{display:flex;flex-direction:column;flex:1 1 auto;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px;line-height:1.45;background:transparent}\n.dshgg-toolbar{display:flex;align-items:center;gap:6px;padding:6px 8px;min-height:36px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1)}\n.dshgg-spacer{flex:1}\n.dshgg-branchWrap{position:relative;display:flex;min-width:0}\n.dshgg-branchChip{display:flex;align-items:center;gap:5px;min-width:0;max-width:100%;height:24px;padding:0 6px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}\n.dshgg-branchChip:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l1)}\n.dshgg-branchChip:disabled{cursor:default;color:var(--dsw-alias-label-secondary)}\n.dshgg-branchName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}\n.dshgg-upstream{display:inline-flex;align-items:center;gap:2px;color:var(--dsw-alias-label-secondary);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-sync{display:inline-flex;align-items:center;gap:1px;color:var(--dsw-alias-label-secondary);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-chevron{flex:none;transition:transform .12s ease}\n.dshgg-chevron[data-open="true"]{transform:rotate(90deg)}\n.dshgg-iconBtn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none}\n.dshgg-iconBtn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}\n.dshgg-iconBtn:disabled{opacity:.4;cursor:default}\n.dshgg-iconBtn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-iconBtn[data-spinning="true"] svg{animation:dshgg-spin 1s linear infinite}\n@keyframes dshgg-spin{to{transform:rotate(360deg)}}\n.dshgg-commitBox{display:flex;flex-direction:column;gap:6px;padding:8px 8px 9px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1)}\n.dshgg-commitMessage{width:100%;box-sizing:border-box;min-height:54px;max-height:40vh;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:5px;background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:1.5;resize:vertical;outline:none}\n.dshgg-commitMessage::placeholder{color:var(--dsw-alias-label-tertiary)}\n.dshgg-commitMessage:focus{border-color:var(--dsw-alias-state-business-primary)}\n.dshgg-commitMessage:disabled{opacity:.6}\n.dshgg-commitRow{display:flex;align-items:center;gap:8px}\n.dshgg-commitHint{flex:1;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:25px;padding:0 11px;border:1px solid transparent;border-radius:5px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex:none}\n.dshgg-btn:disabled{opacity:.45;cursor:default}\n.dshgg-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}\n.dshgg-btnPrimary{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}\n.dshgg-btnPrimary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}\n.dshgg-btnGhost{background:transparent;border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);font-weight:500}\n.dshgg-btnGhost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-banner{display:flex;align-items:flex-start;gap:8px;margin:6px 8px 0;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;font-size:12px}\n.dshgg-banner[data-kind="error"]{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}\n.dshgg-bannerText{flex:1;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}\n.dshgg-bannerDetail{margin-top:3px;color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code);font-size:11px;max-height:96px;overflow:auto;white-space:pre-wrap}\n.dshgg-bannerActions{display:flex;align-items:center;gap:4px;flex:none}\n.dshgg-linkBtn{padding:0;border:none;background:none;color:var(--dsw-alias-state-business-primary);font:inherit;font-size:12px;cursor:pointer}\n.dshgg-linkBtn:hover{text-decoration:underline}\n.dshgg-notice{margin:6px 8px 0;padding:6px 9px;border:1px solid var(--dsw-alias-state-success-primary);border-radius:6px;color:var(--dsw-alias-state-success-primary);font-size:12px}\n.dshgg-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;padding-bottom:8px}\n.dshgg-state{display:flex;flex-direction:column;align-items:center;gap:6px;padding:34px 18px;text-align:center}\n.dshgg-stateIcon{color:var(--dsw-alias-label-tertiary);display:flex}\n.dshgg-stateTitle{margin:2px 0 0;font-size:13px;font-weight:600}\n.dshgg-stateDesc{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;max-width:320px;overflow-wrap:anywhere}\n.dshgg-stateAction{margin-top:8px}\n.dshgg-section{display:flex;flex-direction:column;flex:none}\n.dshgg-sectionHeader{display:flex;align-items:center;gap:2px;height:24px;padding:0 6px 0 2px;position:relative}\n.dshgg-sectionToggle{display:flex;align-items:center;gap:5px;min-width:0;flex:1;height:100%;padding:0 4px;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:11px;font-weight:700;letter-spacing:.02em;cursor:pointer}\n.dshgg-sectionToggle:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-sectionToggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-sectionTitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-sectionCount{color:var(--dsw-alias-label-secondary);font-weight:500;font-variant-numeric:tabular-nums}\n.dshgg-sectionActions{display:flex;align-items:center;gap:1px;flex:none}\n.dshgg-sectionBody{display:flex;flex-direction:column}\n.dshgg-row{display:flex;align-items:center;gap:6px;height:23px;padding-right:4px;flex:none;min-width:0}\n.dshgg-fileRow{cursor:pointer;user-select:none}\n.dshgg-fileRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-fileRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-status{flex:none;width:14px;text-align:center;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}\n.dshgg-status[data-status="M"]{color:var(--dsw-alias-state-warn-primary)}\n.dshgg-status[data-status="A"],.dshgg-status[data-status="U"]{color:var(--dsw-alias-state-success-primary)}\n.dshgg-status[data-status="D"]{color:var(--dsw-alias-state-error-primary)}\n.dshgg-status[data-status="R"],.dshgg-status[data-status="C"]{color:var(--dsw-alias-state-business-primary)}\n.dshgg-status[data-status="T"]{color:var(--dsw-alias-state-warn-primary)}\n.dshgg-status[data-status="!"]{color:var(--dsw-alias-state-error-primary);font-size:12px}\n.dshgg-fileName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}\n.dshgg-fileName[data-obsolete="true"]{color:var(--dsw-alias-label-secondary);text-decoration:line-through}\n.dshgg-fileArrow{flex:none;color:var(--dsw-alias-label-tertiary);font-size:11px;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-fileActions{display:flex;align-items:center;gap:0;flex:none;opacity:0}\n.dshgg-fileRow:hover .dshgg-fileActions,.dshgg-fileRow:focus-within .dshgg-fileActions{opacity:1}\n.dshgg-fileActions .dshgg-iconBtn{width:20px;height:20px}\n.dshgg-folderRow{cursor:pointer;user-select:none;color:var(--dsw-alias-label-primary)}\n.dshgg-folderRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-folderRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-folderName{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-clean{display:flex;flex-direction:column;align-items:center;gap:5px;padding:26px 16px 20px;text-align:center;color:var(--dsw-alias-label-secondary)}\n.dshgg-cleanIcon{color:var(--dsw-alias-state-success-primary);display:flex}\n.dshgg-cleanTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}\n.dshgg-cleanDesc{font-size:12px}\n.dshgg-graphRow{display:flex;gap:6px;padding:2px 8px 2px 4px;min-width:0;align-items:flex-start;border-radius:0}\n.dshgg-graphRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-graphRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-graphPrefix{margin:0;flex:none;font-family:var(--ds-font-family-code);font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);white-space:pre;user-select:none}\n.dshgg-graphBody{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}\n.dshgg-graphSubject{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary)}\n.dshgg-graphMeta{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:11px;color:var(--dsw-alias-label-secondary);min-width:0}\n.dshgg-graphHash{font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-tertiary)}\n.dshgg-dot{color:var(--dsw-alias-label-tertiary)}\n.dshgg-refs{display:inline-flex;gap:3px;flex-wrap:wrap}\n.dshgg-ref{display:inline-flex;align-items:center;gap:3px;padding:0 5px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:10px;line-height:15px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-ref[data-kind="head"]{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);font-weight:600}\n.dshgg-ref[data-kind="branch"]{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}\n.dshgg-ref[data-kind="tag"]{color:var(--dsw-alias-state-warn-primary);border-color:var(--dsw-alias-state-warn-primary)}\n.dshgg-confirm{display:flex;align-items:center;gap:10px;margin:0;padding:8px 10px;flex:none;border-top:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1)}\n.dshgg-confirmText{flex:1;min-width:0}\n.dshgg-confirmTitle{font-size:12.5px;font-weight:600;overflow-wrap:anywhere}\n.dshgg-confirmDesc{margin-top:2px;font-size:11.5px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}\n.dshgg-confirmActions{display:flex;align-items:center;gap:6px;flex:none}\n.dshgg-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:min(320px,70vw);max-height:320px;overflow-y:auto;padding:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-overlay);box-shadow:0 8px 24px rgba(0,0,0,.18)}\n.dshgg-menuItem{display:flex;align-items:center;gap:6px;width:100%;height:26px;padding:0 7px;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}\n.dshgg-menuItem:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-menuItem:disabled{cursor:default;font-weight:600}\n.dshgg-menuItem:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-menuCheck{display:inline-flex;width:12px;flex:none;color:var(--dsw-alias-state-business-primary)}\n.dshgg-menuLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-menuNote{padding:7px 8px;color:var(--dsw-alias-label-secondary);font-size:12px}\n.dshgg-title{display:inline-flex;align-items:center;gap:5px;min-width:0}\n.dshgg-titleText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffRoot{display:flex;flex-direction:column;flex:1 1 auto;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px}\n.dshgg-diffHeader{display:flex;align-items:center;gap:6px;padding:5px 8px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1);min-width:0}\n.dshgg-diffPath{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}\n.dshgg-diffName{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffFrom{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffStats{flex:none;display:inline-flex;gap:4px;font-family:var(--ds-font-family-code);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-diffAdd{color:var(--dsw-alias-code-diff-added)}\n.dshgg-diffDel{color:var(--dsw-alias-code-diff-deleted)}\n.dshgg-diffBadge{flex:none;padding:0 6px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-secondary)}\n.dshgg-diffBadge[data-kind="staged"]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}\n.dshgg-diffBadge[data-kind="untracked"]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}\n.dshgg-diffBody{flex:1;min-height:0;overflow:auto;font-family:var(--ds-font-family-code);font-size:12px;line-height:18px;padding-bottom:10px}\n.dshgg-hunkHeader{padding:2px 10px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);font-size:11.5px;white-space:pre;border-top:1px solid var(--dsw-alias-border-l1);border-bottom:1px solid var(--dsw-alias-border-l1);margin-top:2px}\n.dshgg-diffLine{display:grid;grid-template-columns:44px 44px 16px minmax(0,1fr);min-width:max-content}\n.dshgg-gutter{padding-right:6px;text-align:right;color:var(--dsw-alias-label-tertiary);user-select:none;font-variant-numeric:tabular-nums;font-size:11px;border-right:1px solid var(--dsw-alias-border-l1)}\n.dshgg-marker{text-align:center;user-select:none;color:var(--dsw-alias-label-tertiary);font-weight:700}\n.dshgg-code{padding:0 10px;white-space:pre;min-width:0}\n.dshgg-diffLine[data-type="+"]{background:var(--dsw-alias-file-diff-added-bg)}\n.dshgg-diffLine[data-type="+"] .dshgg-gutter{background:var(--dsw-alias-file-diff-added-gutter)}\n.dshgg-diffLine[data-type="+"] .dshgg-marker{color:var(--dsw-alias-file-diff-added-marker)}\n.dshgg-diffLine[data-type="-"]{background:var(--dsw-alias-file-diff-deleted-bg)}\n.dshgg-diffLine[data-type="-"] .dshgg-gutter{background:var(--dsw-alias-file-diff-deleted-gutter)}\n.dshgg-diffLine[data-type="-"] .dshgg-marker{color:var(--dsw-alias-file-diff-deleted-marker)}\n.dshgg-diffNote{padding:16px;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-family);font-size:12.5px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}\n.dshgg-emptyLine{min-height:18px}\n.dshgg-commitView{display:flex;flex-direction:column;flex:none;padding-top:2px}\n.dshgg-commitToolbar{display:flex;align-items:center;gap:6px;padding:3px 8px 2px;min-width:0}\n.dshgg-commitHash{flex:none;padding:0 5px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code);font-size:10.5px;line-height:16px}\n.dshgg-commitSubject{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:600}\n.dshgg-commitMeta{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:1px 8px 6px;color:var(--dsw-alias-label-secondary);font-size:11px;overflow-wrap:anywhere}\n.dshgg-commitBody{margin:0 8px 6px;padding:6px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:5px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:var(--ds-font-family-code);font-size:11.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;max-height:150px;overflow:auto}\n.dshgg-commitFilesHeader{display:flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-top:1px solid var(--dsw-alias-border-l1);font-size:11px;font-weight:700;letter-spacing:.02em}\n.dshgg-commitNote{padding:7px 8px;color:var(--dsw-alias-label-secondary);font-size:12px}\n.dshgg-graphRow{cursor:pointer}\n.dshgg-diffBadge[data-kind="commit"]{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}\n';
 
 // src/client/styles.js
 if (typeof document !== "undefined" && document.querySelector(`style[data-plugin=${JSON.stringify(PACKAGE_ID)}]`) === null) {

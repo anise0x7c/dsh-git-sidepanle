@@ -142,6 +142,16 @@ export function resolveMenuActions(value, t, notify) {
     return actions
   }
 
+  if (value.kind === 'commitFile' || value.kind === 'commitFolder') {
+    const path = value.path
+    if (typeof path !== 'string' || path === '') return []
+    const actions = [menuAction('copy-relative', t('menu.copyRelativePath'), copy(path, 'menu.copiedRelativePath'))]
+    if (typeof value.cwd === 'string' && value.cwd !== '') {
+      actions.push(menuAction('copy-path', t('menu.copyPath'), copy(absolutePath(value.cwd, path), 'menu.copiedPath')))
+    }
+    return actions
+  }
+
   if (value.kind === 'diff') {
     const path = value.path
     if (typeof path !== 'string' || path === '') return []

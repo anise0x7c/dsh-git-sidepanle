@@ -29,6 +29,7 @@ export function DiffPanel(props) {
   const [reload, setReload] = useState(0)
 
   const hasTarget = typeof params.path === 'string' && params.path !== ''
+  const commit = typeof params.commit === 'string' && params.commit !== '' ? params.commit : null
 
   useEffect(() => {
     if (!hasTarget) {
@@ -41,16 +42,21 @@ export function DiffPanel(props) {
       path: params.path,
       staged: params.staged === true,
       untracked: params.untracked === true,
+      ...(commit === null ? {} : { commit, origPath: params.origPath }),
     }).then((diff) => {
       if (!cancelled) setState({ phase: 'ready', diff, failure: null })
     }).catch((failure) => {
       if (!cancelled) setState({ phase: 'error', diff: null, failure })
     })
     return () => { cancelled = true }
-  }, [call, hasTarget, params.path, params.staged, params.untracked, revision, reload])
+  }, [call, hasTarget, params.path, params.staged, params.untracked, params.origPath, commit, revision, reload])
 
-  const badgeKind = params.untracked === true ? 'untracked' : params.staged === true ? 'staged' : 'unstaged'
-  const badgeLabel = badgeKind === 'untracked' ? t('diff.untracked') : badgeKind === 'staged' ? t('diff.staged') : t('diff.unstaged')
+  const badgeKind = commit !== null
+    ? 'commit'
+    : params.untracked === true ? 'untracked' : params.staged === true ? 'staged' : 'unstaged'
+  const badgeLabel = commit !== null
+    ? t('diff.commit', { hash: typeof params.shortOid === 'string' && params.shortOid !== '' ? params.shortOid : commit.slice(0, 7) })
+    : badgeKind === 'untracked' ? t('diff.untracked') : badgeKind === 'staged' ? t('diff.staged') : t('diff.unstaged')
   const headerMenu = menuTrigger === null || !hasTarget
     ? null
     : menuTrigger(menuTarget(sessionId, 'diff', { path: params.path, cwd: params.cwd }), { tabIndex: -1, 'aria-haspopup': 'menu', title: t('menu.hint') })

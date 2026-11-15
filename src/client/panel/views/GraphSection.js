@@ -19,6 +19,7 @@ const h = createElement
  * @param {boolean} props.open - whether the section is expanded.
  * @param {Function} props.onToggle - toggle the section.
  * @param {Function} props.onRetry - retry the history load.
+ * @param {Function} props.onSelect - open one commit's details.
  * @param {object} props.menu - menu wiring: trigger, sectionTarget, commitTarget.
  * @returns {object} the history section element.
  */
@@ -46,6 +47,7 @@ export function GraphSection(props) {
         key: commit.oid,
         commit,
         t,
+        onSelect: props.onSelect,
         menuTrigger: trigger,
         menuTarget: menu === undefined || trigger === null ? undefined : menu.commitTarget(commit),
       }))
@@ -65,9 +67,12 @@ export function GraphSection(props) {
 
 /**
  * One commit row: graph prefix, subject, meta line and ref labels.
+ * Activating the row opens the commit's details; the row stays a focus stop and
+ * keeps its context-menu gesture.
  * @param {object} props - row props.
  * @param {object} props.commit - commit record.
  * @param {Function} props.t - locale binder.
+ * @param {Function} [props.onSelect] - open this commit's details.
  * @param {Function|null} props.menuTrigger - host trigger binding.
  * @param {object} [props.menuTarget] - captured target for this row.
  * @returns {object} commit row element.
@@ -79,13 +84,27 @@ function GraphRow(props) {
   const visibleRefs = refs.slice(0, 3)
   const hidden = refs.length - visibleRefs.length
   const menuTrigger = typeof props.menuTrigger === 'function' ? props.menuTrigger : null
-  const menuProps = menuTrigger === null || props.menuTarget === undefined
-    ? null
-    : menuTrigger(props.menuTarget, { tabIndex: 0, 'aria-haspopup': 'menu' })
+  const open = () => {
+    if (typeof props.onSelect === 'function') props.onSelect(commit)
+  }
+  const interactive = {
+    role: 'button',
+    tabIndex: 0,
+    onClick: open,
+    onKeyDown: (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        open()
+      }
+    },
+  }
+  const rowProps = menuTrigger === null || props.menuTarget === undefined
+    ? interactive
+    : menuTrigger(props.menuTarget, { ...interactive, 'aria-haspopup': 'menu' })
   return h('div', {
     className: 'dshgg-graphRow',
     title: `${commit.shortOid} ${commit.subject} \u00b7 ${t('menu.hint')}`,
-    ...(menuProps ?? {}),
+    ...rowProps,
   },
   h('pre', { className: 'dshgg-graphPrefix' }, commit.graph === '' ? '*' : commit.graph),
   h('div', { className: 'dshgg-graphBody' },

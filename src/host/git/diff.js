@@ -7,6 +7,24 @@ import { resolveRepositoryPath, runGit } from './exec.js'
 
 const MAX_DIFF_BYTES = 2 * 1024 * 1024
 const MAX_UNTRACKED_BYTES = 512 * 1024
+const FULL_OID = /^[0-9a-f]{40}$/
+
+/**
+ * Run one Git diff command and parse its output.
+ * @param {string} root - repository root.
+ * @param {string[]} args - Git arguments after the subcommand.
+ * @returns {Promise<object>} parsed diff fields plus truncation.
+ */
+async function runDiff(root, args) {
+  const result = await runGit(root, args)
+  if (!result.ok) {
+    if (result.code === 'ENOENT') throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
+    throw new GitGraphError('git-command-failed', result.stderr.trim() || 'git diff failed', 409)
+  }
+  const truncated = result.stdout.length > MAX_DIFF_BYTES
+  const text = truncated ? result.stdout.slice(0, MAX_DIFF_BYTES) : result.stdout
+  return { truncated, ...parseUnifiedDiff(text) }
+}
 
 /**
  * Read one file comparison as a unified diff.
@@ -59,7 +77,7 @@ export async function readDiff(root, path, staged, untracked) {
       }],
     }
   }
-  const result = await runGit(root, [
+  const diff = await runDiff(root, [
     'diff',
     '--no-color',
     '--no-ext-diff',
@@ -69,13 +87,46 @@ export async function readDiff(root, path, staged, untracked) {
     '--',
     path,
   ])
-  if (!result.ok) {
-    if (result.code === 'ENOENT') throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
-    throw new GitGraphError('git-command-failed', result.stderr.trim() || 'git diff failed', 409)
+  return { path, staged, untracked: false, ...diff }
+}
+
+/**
+ * Read the diff one commit introduced into one file.
+ *
+ * The comparison is against the commit's first parent, or against the empty
+ * tree for a root commit, so a merge commit shows what it brought into the
+ * checked-out line of history. A rename's original path is included as a
+ * pathspec so Git can detect the pair instead of reading the new path alone as
+ * an addition.
+ * @param {string} root - repository root.
+ * @param {string} path - repository-relative path in the commit.
+ * @param {string} oid - full commit identifier.
+ * @param {string} [origPath] - repository-relative original path of a rename.
+ * @returns {Promise<object>} diff payload scoped to the commit.
+ */
+export async function readCommitDiff(root, path, oid, origPath) {
+  if (typeof oid !== 'string' || !FULL_OID.test(oid)) {
+    throw new GitGraphError('bad-request', 'A full commit identifier is required.', 400)
   }
-  const truncated = result.stdout.length > MAX_DIFF_BYTES
-  const text = truncated ? result.stdout.slice(0, MAX_DIFF_BYTES) : result.stdout
-  return { path, staged, untracked: false, truncated, ...parseUnifiedDiff(text) }
+  resolveRepositoryPath(root, path)
+  if (origPath !== undefined) resolveRepositoryPath(root, origPath)
+  const verified = await runGit(root, ['rev-parse', '--verify', '--quiet', `${oid}^{commit}`])
+  if (!verified.ok) {
+    if (verified.code === 'ENOENT') throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
+    throw new GitGraphError('unknown-commit', `No commit "${oid}" exists in this repository.`, 404)
+  }
+  const lineage = await runGit(root, ['rev-list', '--parents', '-n', '1', oid])
+  if (!lineage.ok) {
+    if (lineage.code === 'ENOENT') throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
+    throw new GitGraphError('git-command-failed', lineage.stderr.trim() || 'git rev-list failed', 409)
+  }
+  const parent = lineage.stdout.trim().split(' ')[1]
+  const paths = origPath === undefined || origPath === path ? [path] : [origPath, path]
+  const common = ['-M', '--no-color', '--no-ext-diff', '--no-textconv', '--unified=3']
+  const diff = parent === undefined
+    ? await runDiff(root, ['diff-tree', '-p', '--root', '--no-commit-id', ...common, oid, '--', ...paths])
+    : await runDiff(root, ['diff', ...common, parent, oid, '--', ...paths])
+  return { path, commit: oid, ...diff }
 }
 
 /**
@@ -86,7 +137,7 @@ export async function readDiff(root, path, staged, untracked) {
  * outside a hunk (such as `index` or `diff --git` lines) is skipped.
  *
  * @param {string} text - `git diff` output.
- * @returns {{ binary: boolean, additions: number, deletions: number, oldPath?: string, newPath?: string, hunks: object[] }} parsed diff.
+ * @returns {{ binary: boolean, additions: number, deletions: number, oldPath?: string, newPath?: string, renameFrom?: string, renameTo?: string, hunks: object[] }} parsed diff.
  */
 export function parseUnifiedDiff(text) {
   const lines = text.split('\n')
@@ -96,9 +147,19 @@ export function parseUnifiedDiff(text) {
   let deletions = 0
   let oldPath
   let newPath
+  let renameFrom
+  let renameTo
   for (const line of lines) {
     if (line.startsWith('diff --git ')) {
       current = null
+      continue
+    }
+    if (line.startsWith('rename from ')) {
+      renameFrom = line.slice('rename from '.length)
+      continue
+    }
+    if (line.startsWith('rename to ')) {
+      renameTo = line.slice('rename to '.length)
       continue
     }
     if (line.startsWith('--- ')) {
@@ -141,6 +202,8 @@ export function parseUnifiedDiff(text) {
     deletions,
     ...oldPath === undefined ? {} : { oldPath },
     ...newPath === undefined ? {} : { newPath },
+    ...renameFrom === undefined ? {} : { renameFrom },
+    ...renameTo === undefined ? {} : { renameTo },
     hunks,
   }
 }
