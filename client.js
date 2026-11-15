@@ -1975,7 +1975,7 @@ if (typeof document !== "undefined" && document.querySelector(`style[data-plugin
   document.head.appendChild(style);
 }
 
-// src/client/app.js
+// src/client/plugin.js
 var inject = ["slots", "locale", "sidebarRightTabs", "sidebarRight"];
 function apply(ctx) {
   const t = ctx.locale.bind(NS);

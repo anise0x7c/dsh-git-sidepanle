@@ -1,12 +1,12 @@
 /**
- * Browser half of the Git graph bundle.
+ * Plugin assembly for the browser half.
  *
- * This is the factory body carried over when the build was introduced; the
- * later stages of docs/REFACTOR-PLAN.md move each section into its own module
- * under src/client/. It registers two right-Sidebar tab types — the
- * source-control panel and its unified diff — plus the guide entry and toggle
- * shortcut. All repository work travels over the bundle's guarded Host route;
- * this file only assembles the plugin contributions.
+ * Registers the two right-Sidebar tab types — the source-control panel and its
+ * unified diff — the guide entry, the toggle shortcut and the context-menu
+ * contribution. `apply` owns every registration and side effect (through
+ * `ctx.effect`), so the bundle factory stays side-effect free. All repository
+ * work travels over the bundle's guarded Host route; the modules under
+ * src/client/ only render and ask for it.
  */
 import { DIFF_ID, DIFF_KIND, GIT_ID, GIT_KIND, GIT_SHORTCUT, MENU_CONTRIBUTION_ID, MENU_TARGET, NS } from './constants.js'
 import { DiffPanel } from './diff/DiffPanel.js'
@@ -17,10 +17,6 @@ import { DiffTabTitle, GitTabTitle } from './titles.js'
 import { en } from './locale/en.js'
 import { zh } from './locale/zh.js'
 import './styles.js'
-
-// ------------------------------------------------------------------
-// Plugin
-// ------------------------------------------------------------------
 
 const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight']
 

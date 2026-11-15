@@ -5,4 +5,4 @@
  * of the esbuild bundle: everything the browser half exports is reachable from
  * here.
  */
-export { inject, apply } from './client/app.js'
+export { inject, apply } from './client/plugin.js'
