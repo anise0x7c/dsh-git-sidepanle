@@ -1,0 +1,92 @@
+/**
+ * Shared Host response fixtures for the browser-half tests.
+ *
+ * These mirror the `status`, `history`, and `branches` RPC values the Host
+ * returns. Tests that need a variation build it from the shared repository
+ * record (`createRepo`) and the shared file list, so every default record stays
+ * identical across the suite.
+ */
+
+/** Seconds captured once per test process, so relative commit times stay stable. */
+const now = Math.floor(Date.now() / 1000)
+
+/** Repository record of a successful status call (`cwd` may sit below `root`). */
+export const REPO = {
+  root: '/repo',
+  cwd: '/repo',
+  branch: 'main',
+  detached: false,
+  unborn: false,
+  upstream: 'origin/main',
+  ahead: 2,
+  behind: 1,
+  headOid: '0123456789abcdef',
+}
+
+/** Default `status` response: an ordinary change, an untracked file, and a conflict. */
+export const STATUS = {
+  repo: REPO,
+  files: [
+    { kind: 'ordinary', x: 'M', y: 'M', path: 'src/app.js', conflict: false, untracked: false },
+    { kind: 'untracked', x: '?', y: '?', path: 'README.md', conflict: false, untracked: true },
+    { kind: 'unmerged', x: 'U', y: 'U', path: 'merge.txt', conflict: true, untracked: false },
+  ],
+}
+
+/** Default `history` response with one local/upstream commit and one tagged commit. */
+export const HISTORY = {
+  commits: [
+    {
+      oid: 'a'.repeat(40),
+      shortOid: 'aaaaaaa',
+      author: 'Ann',
+      authoredAt: now - 120,
+      refs: 'HEAD -> main, origin/main',
+      subject: 'Fix the sidebar',
+      graph: '*',
+    },
+    {
+      oid: 'b'.repeat(40),
+      shortOid: 'bbbbbbb',
+      author: 'Bob',
+      authoredAt: now - 7200,
+      refs: 'tag: v1.0',
+      subject: 'Initial commit',
+      graph: '| *',
+    },
+  ],
+}
+
+/**
+ * Build a branch-list response.
+ * @param {string[]} names - branch names in display order.
+ * @param {string} [current] - name rendered as current; defaults to the first.
+ * @returns {object} `branches` RPC value.
+ */
+export function createBranches(names, current = names[0]) {
+  return { branches: names.map((name) => ({ name, current: name === current })) }
+}
+
+/** Default `branches` response: the checked-out branch plus one other local branch. */
+export const BRANCHES = createBranches(['main', 'feature/sidebar'])
+
+/**
+ * Build a repository record from the shared one.
+ * @param {object} overrides - fields to replace (`cwd`, `upstream`, ...).
+ * @returns {object} repository record.
+ */
+export function createRepo(overrides = {}) {
+  return { ...REPO, ...overrides }
+}
+
+/**
+ * Build a `status` response.
+ * @param {object} [options] - overrides.
+ * @param {object|null} [options.repo] - repository record; null means "not a repository".
+ * @param {object[]} [options.files] - changed-file records.
+ * @param {string} [options.cwd] - top-level Session directory the Host reports.
+ * @returns {object} `status` RPC value.
+ */
+export function createStatus({ repo = REPO, files = [], cwd } = {}) {
+  return cwd === undefined ? { repo, files } : { repo, files, cwd }
+}

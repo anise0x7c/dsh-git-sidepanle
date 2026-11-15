@@ -8,128 +8,16 @@
 import { test, before } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHarness } from './support/mini-react.mjs'
-
-const now = Math.floor(Date.now() / 1000)
+import { createFakeContext, loadClientBundle, translate } from './support/fake-ctx.js'
+import { createMenuMock } from './support/fake-menu.js'
+import { BRANCHES, createRepo, createStatus, HISTORY, STATUS } from './support/fixtures.js'
 
 let registration
 
 before(async () => {
-  const styles = []
-  globalThis.window = {
-    __ModuleLoader__: {
-      load(value) { registration = value },
-    },
-  }
-  globalThis.document = {
-    querySelector() { return null },
-    addEventListener() {},
-    removeEventListener() {},
-    createElement() {
-      const attributes = {}
-      return {
-        dataset: {},
-        attributes,
-        setAttribute(name, value) { attributes[name] = value },
-        getAttribute(name) { return attributes[name] ?? null },
-        appendChild() {},
-        textContent: '',
-      }
-    },
-    head: { appendChild(tag) { styles.push(tag) } },
-  }
-  await import('../client.js')
+  ({ registration } = await loadClientBundle())
   assert.equal(typeof registration?.factory, 'function')
 })
-
-function translate(key) {
-  return key
-}
-
-const STATUS = {
-  repo: {
-    root: '/repo',
-    cwd: '/repo',
-    branch: 'main',
-    detached: false,
-    unborn: false,
-    upstream: 'origin/main',
-    ahead: 2,
-    behind: 1,
-    headOid: '0123456789abcdef',
-  },
-  files: [
-    { kind: 'ordinary', x: 'M', y: 'M', path: 'src/app.js', conflict: false, untracked: false },
-    { kind: 'untracked', x: '?', y: '?', path: 'README.md', conflict: false, untracked: true },
-    { kind: 'unmerged', x: 'U', y: 'U', path: 'merge.txt', conflict: true, untracked: false },
-  ],
-}
-
-const HISTORY = {
-  commits: [
-    {
-      oid: 'a'.repeat(40),
-      shortOid: 'aaaaaaa',
-      author: 'Ann',
-      authoredAt: now - 120,
-      refs: 'HEAD -> main, origin/main',
-      subject: 'Fix the sidebar',
-      graph: '*',
-    },
-    {
-      oid: 'b'.repeat(40),
-      shortOid: 'bbbbbbb',
-      author: 'Bob',
-      authoredAt: now - 7200,
-      refs: 'tag: v1.0',
-      subject: 'Initial commit',
-      graph: '| *',
-    },
-  ],
-}
-
-const BRANCHES = { branches: [{ name: 'main', current: true }, { name: 'feature/sidebar', current: false }] }
-
-/**
- * Stand-in for the host's shared context-menu trigger bindings.
- * Mirrors the shipped binding: existing handlers run first, a prevented event
- * keeps its owner, pointer positions come from the event, and keyboard
- * gestures use the row's lower edge.
- * @returns {{opens: object[], useContextMenu: () => object}} recorder and hook.
- */
-function createMenuMock() {
-  const opens = []
-  return {
-    opens,
-    useContextMenu: () => ({
-      getTriggerProps(target, handlers = {}) {
-        const show = (event, x, y) => {
-          if (event.defaultPrevented) return
-          event.preventDefault()
-          event.stopPropagation()
-          opens.push({ target, point: { x, y } })
-        }
-        return {
-          ...handlers,
-          tabIndex: handlers.tabIndex ?? 0,
-          onContextMenu(event) {
-            handlers.onContextMenu?.(event)
-            const rect = event.clientX === 0 && event.clientY === 0
-              ? event.currentTarget.getBoundingClientRect()
-              : undefined
-            show(event, rect?.left ?? event.clientX, rect?.bottom ?? event.clientY)
-          },
-          onKeyDown(event) {
-            handlers.onKeyDown?.(event)
-            if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return
-            if (!(event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey)) return
-            const rect = event.currentTarget.getBoundingClientRect()
-            show(event, rect.left, rect.bottom)
-          },
-        }
-      },
-    }),
-  }
-}
 
 /**
  * Build one harness, load the bundle components against it, and mount a panel.
@@ -193,40 +81,16 @@ function loadComponents(harness) {
     if (specifier === 'react') return harness.React
     throw new Error(`unexpected require("${specifier}")`)
   })
-  const registrations = []
-  const menuContributions = []
-  const notifications = []
-  const shared = {
-    effect(callback) { const cleanup = callback(); return () => { if (typeof cleanup === 'function') cleanup() } },
-    locale: { bind: () => translate, register: () => () => {} },
-    sidebarRightTabs: { register: () => () => {} },
-    slots: {
-      inject(_key, callback) { callback() },
-      register(options, component) { registrations.push({ options, component }); return () => {} },
-    },
-    sidebarRight: { commandTarget: () => undefined, openTabFromTarget: () => {} },
-  }
-  module.apply({
-    ...shared,
-    inject(services, callback) {
-      if (!services.includes('contextMenus')) return
-      callback({
-        ...shared,
-        contextMenus: {
-          register(contribution) { menuContributions.push(contribution); return () => {} },
-          notify(text, success) { notifications.push({ text, success }) },
-        },
-      })
-    },
-  })
-  const bySeat = new Map(registrations.map(({ options, component }) => [`${options.name}:${options.key}`, component]))
+  const fake = createFakeContext()
+  module.apply(fake.ctx)
+  const bySeat = new Map(fake.records.slots.map(({ options, component }) => [`${options.name}:${options.key}`, component]))
   return {
     git: bySeat.get('sidebar.right.pane.tab:@local/dsh-git-graph/git'),
     diff: bySeat.get('sidebar.right.pane.tab:@local/dsh-git-graph/diff'),
     gitTitle: bySeat.get('sidebar.right.pane.tab.title:@local/dsh-git-graph/git'),
     diffTitle: bySeat.get('sidebar.right.pane.tab.title:@local/dsh-git-graph/diff'),
-    contribution: menuContributions[0],
-    notifications,
+    contextMenus: fake.menu.contextMenus,
+    contributions: fake.menu.contributions,
   }
 }
 
@@ -334,10 +198,9 @@ test('the commit button follows the message and posts a commit', async () => {
 })
 
 test('committing with nothing staged offers to stage everything', async () => {
-  const status = {
-    repo: STATUS.repo,
+  const status = createStatus({
     files: [{ kind: 'ordinary', x: '.', y: 'M', path: 'src/app.js', conflict: false, untracked: false }],
-  }
+  })
   const mounted = await mountGit({ status })
   const textarea = mounted.harness.findAll((element) => element.type === 'textarea')[0]
   mounted.harness.change(textarea, 'commit everything')
@@ -394,7 +257,7 @@ test('a changed file opens a diff tab with its addressing parameters', async () 
 })
 
 test('a missing repository renders the explanation instead of actions', async () => {
-  const mounted = await mountGit({ status: { repo: null, cwd: '/tmp/plain', files: [] } })
+  const mounted = await mountGit({ status: createStatus({ repo: null, cwd: '/tmp/plain', files: [] }) })
   const text = mounted.harness.text()
   assert.match(text, /noRepo\.title/)
   assert.match(text, /noRepo\.desc/)
@@ -433,13 +296,12 @@ test('the diff tab renders unified diff hunks from the Host', async () => {
       ],
     }],
   }
-  const status = STATUS
   const calls = []
   const harness = createHarness({
     fetch: async (_url, init) => {
       const request = JSON.parse(init.body)
       calls.push(request)
-      return { ok: true, status: 200, json: async () => ({ ok: true, value: request.op === 'diff' ? diffPayload : status }) }
+      return { ok: true, status: 200, json: async () => ({ ok: true, value: request.op === 'diff' ? diffPayload : STATUS }) }
     },
     component: null,
     props: {},
@@ -469,23 +331,31 @@ test('the diff tab renders unified diff hunks from the Host', async () => {
   await harness.dispose()
 })
 
-/** Resolve the shared context-menu actions for a target captured by the mock.
+/** Contribution id of the bundle's context-menu provider. */
+const MENU_ID = 'git-graph.actions'
+
+/** A resolved action id as the shared registry publishes it. */
+const menuActionId = (id) => `${MENU_ID}/${id}`
+
+/** Resolve the actions the shared overlay would show for a captured trigger target.
  *
- * Mirrors the shipped registry, which calls a contribution with the captured
- * target's value rather than the `{ kind, value }` wrapper the trigger received.
- * Calling the contribution directly with the wrapper would hide the contract
- * mismatch that opened empty menus in the real page.
+ * The stand-in mirrors the shipped registry, which calls a contribution with the
+ * captured target's value rather than the `{ kind, value }` wrapper the trigger
+ * received. Calling the contribution directly with the wrapper would hide the
+ * contract mismatch that opened empty menus in the real page.
  */
 function menuActions(components, target) {
-  assert.equal(typeof components.contribution?.resolve, 'function', 'no context-menu contribution was registered')
-  return components.contribution.resolve(target.value, new AbortController().signal)
+  assert.equal(components.contributions.length, 1, 'no context-menu contribution was registered')
+  return components.contextMenus.resolve(target).source.getSnapshot()
 }
 
 /** Resolve and run one action id from a captured menu target. */
-function runMenuAction(components, target, id) {
-  const action = menuActions(components, target).find((candidate) => candidate.id === id)
+async function runMenuAction(components, target, id) {
+  const resolution = components.contextMenus.resolve(target)
+  const action = resolution.source.getSnapshot().find((candidate) => candidate.id === menuActionId(id))
   assert.ok(action, `no context-menu action "${id}"`)
-  return action.run()
+  resolution.select(action.id)
+  await new Promise((resolve) => setImmediate(resolve))
 }
 
 test('right-clicking a change binds its target without calling the Host', async () => {
@@ -503,8 +373,13 @@ test('right-clicking a change binds its target without calling the Host', async 
   assert.equal(target.value.path, 'src/app.js')
   assert.equal(target.value.cwd, '/repo')
   assert.equal(mounted.calls.length, before, 'opening a menu must not call the Host')
-  assert.deepEqual(menuActions(mounted.components, target).map((action) => action.id),
-    ['open', 'stage', 'discard', 'copy-relative', 'copy-path'])
+  assert.deepEqual(menuActions(mounted.components, target).map((action) => action.id), [
+    menuActionId('open'),
+    menuActionId('stage'),
+    menuActionId('discard'),
+    menuActionId('copy-relative'),
+    menuActionId('copy-path'),
+  ])
   await mounted.harness.dispose()
 })
 
@@ -564,7 +439,7 @@ test('a group header menu stages every change in the group', async () => {
   assert.equal(target.value.kind, 'section')
   assert.equal(target.value.section, 'changes')
   assert.deepEqual(menuActions(mounted.components, target).map((action) => action.id),
-    ['stage-all', 'discard-all', 'refresh'])
+    [menuActionId('stage-all'), menuActionId('discard-all'), menuActionId('refresh')])
   await runMenuAction(mounted.components, target, 'stage-all')
   await mounted.harness.flush()
   const stageCall = mounted.calls.find((call) => call.op === 'stage')
@@ -604,7 +479,8 @@ test('commit rows and the diff header bind their copy targets', async () => {
   assert.equal(commitTarget.value.kind, 'commit')
   assert.equal(commitTarget.value.oid, 'a'.repeat(40))
   assert.equal(commitTarget.value.subject, 'Fix the sidebar')
-  assert.deepEqual(menuActions(mounted.components, commitTarget).map((action) => action.id), ['copy-id', 'copy-message'])
+  assert.deepEqual(menuActions(mounted.components, commitTarget).map((action) => action.id),
+    [menuActionId('copy-id'), menuActionId('copy-message')])
   await mounted.harness.dispose()
 
   const harness = createHarness({
@@ -642,7 +518,8 @@ test('commit rows and the diff header bind their copy targets', async () => {
   assert.equal(diffTarget.value.kind, 'diff')
   assert.equal(diffTarget.value.path, 'src/app.js')
   assert.equal(diffTarget.value.cwd, '/repo')
-  assert.deepEqual(menuActions(components, diffTarget).map((action) => action.id), ['copy-relative', 'copy-path'])
+  assert.deepEqual(menuActions(components, diffTarget).map((action) => action.id),
+    [menuActionId('copy-relative'), menuActionId('copy-path')])
   await harness.dispose()
 })
 
@@ -658,20 +535,10 @@ test('without host context menus the inline controls keep working', async () => 
 })
 
 test('menu copies absolute paths from the repository root, not the Session directory', async () => {
-  const status = {
-    repo: {
-      root: '/repo',
-      cwd: '/repo/apps/web',
-      branch: 'main',
-      detached: false,
-      unborn: false,
-      upstream: null,
-      ahead: 0,
-      behind: 0,
-      headOid: '0123456789abcdef',
-    },
+  const status = createStatus({
+    repo: createRepo({ cwd: '/repo/apps/web', upstream: null, ahead: 0, behind: 0 }),
     files: [{ kind: 'ordinary', x: '.', y: 'M', path: 'apps/web/src/app.js', conflict: false, untracked: false }],
-  }
+  })
   const mounted = await mountGit({ status })
   const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'apps/web/src/app.js')
   mounted.harness.contextmenu(rows[rows.length - 1])
@@ -709,10 +576,9 @@ test('a menu command for a vanished change reports it instead of doing nothing',
 })
 
 test('a group discard uses the group confirmation wording', async () => {
-  const status = {
-    repo: STATUS.repo,
+  const status = createStatus({
     files: [{ kind: 'ordinary', x: '.', y: 'M', path: 'only.js', conflict: false, untracked: false }],
-  }
+  })
   const mounted = await mountGit({ status })
   const section = mounted.harness.findAll((element) => element.props?.['data-section'] === 'changes')[0]
   mounted.harness.contextmenu(section.children[0])
