@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-git-graph",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "A VS Code-style Git source-control sidebar for the DeepSeek Harness Web GUI",
   "type": "module",
@@ -46,7 +46,8 @@
     "dev": "node scripts/build-client.mjs --watch",
     "pretest": "node scripts/build-client.mjs",
     "test": "node --test test/*.test.mjs test/unit/*.test.mjs",
-    "check:build": "node scripts/build-client.mjs --check"
+    "check:build": "node scripts/build-client.mjs --check",
+    "verify:contract": "node scripts/verify-contract.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"

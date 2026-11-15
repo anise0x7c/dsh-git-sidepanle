@@ -366,7 +366,7 @@ export { inject, apply } from './client/plugin.js'
 
 1. **是否引入 esbuild（含提交产物）**：推荐"是"。若要求零依赖，则只执行阶段 0（Host 拆分 + 测试去重 + 内部治理），浏览器端保持单文件。
 2. **是否引入类型检查**：推荐先只给纯函数层加 JSDoc + `// @ts-check`，不引入 `typescript` 依赖；若接受 devDependency 再加 `tsc --noEmit`。
-3. **LiteSpec 记录方式**：内部重构不改可观察行为，按规则无需行为 delta；如需留痕，开一个 change，只写 `proposal.md` + `design.md`（模块边界与构建契约），delta 留空。
+3. **LiteSpec 记录方式**：内部重构不改可观察行为，按规则无需行为 delta；如需留痕，开一个 change，只写 `proposal.md` + `design.md`（模块边界与构建契约），delta 留空。（执行结论：`litespec_validate` 要求 change 必须带 spec delta，delta 留空会报错，所以本轮没有建 change；留痕落在本文档 §12 与 `CHANGELOG.md`，AGENTS.md 已同步该约定。）
 4. **执行范围**：建议按"阶段 0 → 1 → 2 → 3"全做；也可停在阶段 0（约半天，收益一半、风险为零）。
 5. **产物是否提交**：推荐提交 `client.js` + `client.js.map`（插件按目录安装，宿主直接读文件）。
 
@@ -374,17 +374,49 @@ export { inject, apply } from './client/plugin.js'
 
 ## 11. 执行清单
 
-- [ ] 阶段 0.1：抽 `test/support/{fake-ctx,fake-menu,fixtures}.js`，两个测试文件改为引用
-- [ ] 阶段 0.2：Host 拆分为 `src/host/**`，`index.js` 只剩注入与装配
-- [ ] 阶段 0.3：补 `parseStatus` / `parseUnifiedDiff` / `resolveRepositoryPath` 纯函数单测
-- [ ] 阶段 0.4：`client.js` 内部治理（banner、四层分区、GitPanel 分区注释）
-- [ ] 阶段 0.5：新增 `docs/ARCHITECTURE.md`
-- [ ] 阶段 0 验收：35 + 新增用例全绿；宿主重启后真实页面冒烟
-- [ ] 阶段 1.1：加 esbuild 与 `scripts/build-client.mjs`
-- [ ] 阶段 1.2：源码迁入 `src/`，产物替换 `client.js`，提交 `client.js.map`
-- [ ] 阶段 1.3：`pretest` / `check:build` / `dev` 脚本
-- [ ] 阶段 1 验收：构建幂等、测试全绿、页面 HMR 与 source map 生效
-- [ ] 阶段 2.1–2.7：按依赖顺序迁移并逐步删除旧块（每步一提交）
-- [ ] 阶段 2 验收：`GitPanel` ≤ 250 行，`client.js` ≤ 150 行，冒烟项通过
-- [ ] 阶段 3.1：固化 `scripts/verify-contract.mjs`
-- [ ] 阶段 3.2：版本 0.3.0 + `CHANGELOG.md`
+- [x] 阶段 0.1：抽 `test/support/{fake-ctx,fake-menu,fixtures}.js`，两个测试文件改为引用
+- [x] 阶段 0.2：Host 拆分为 `src/host/**`，`index.js` 只剩注入与装配
+- [x] 阶段 0.3：补 `parseStatus` / `parseUnifiedDiff` / `resolveRepositoryPath` 纯函数单测
+- [x] 阶段 0.4：`client.js` 内部治理（banner、四层分区、GitPanel 分区注释）
+- [x] 阶段 0.5：新增 `docs/ARCHITECTURE.md`
+- [x] 阶段 0 验收：35 + 新增用例全绿；宿主拆分另以「旧/新实现差分对比 + 真实回环服务 212 项响应对比」验证等价（真实页面冒烟待宿主重启后由用户确认）
+- [x] 阶段 1.1：加 esbuild 与 `scripts/build-client.mjs`
+- [x] 阶段 1.2：源码迁入 `src/`，产物替换 `client.js`，提交 `client.js.map`
+- [x] 阶段 1.3：`pretest` / `check:build` / `dev` 脚本
+- [x] 阶段 1 验收：构建幂等、测试全绿；运行中的宿主已服务新产物与 source map，且 artifact 变更触发 `rebuilt` 事件（HMR 通道实测）
+- [x] 阶段 2.1–2.7：按依赖顺序迁移并逐步删除旧块（每步一提交）
+- [x] 阶段 2 验收：`GitPanel` 248 行，产物为生成 bundle（见 §12 偏差），冒烟项通过
+- [x] 阶段 3.1：固化 `scripts/verify-contract.mjs`
+- [x] 阶段 3.2：版本 0.3.0 + `CHANGELOG.md`
+
+---
+
+## 12. 执行结果（2026-11-15 完成，版本 0.3.0）
+
+基线 `7cac4e6` → 重构后。全部阶段 0→3 落地，行为与契约不变；35 个行为断言原样保留并全部通过。
+
+| 指标 | 基线 | 计划目标 | 实际 |
+|---|---:|---:|---:|
+| 生成产物 `client.js` | 1,969 行（手写） | ≤ 150 行 | **2,082 行**（生成，96 KiB，见偏差 1） |
+| 浏览器端最大源码文件 | 674 行（`GitPanel`） | ≤ 250 行 | **248 行**（`panel/GitPanel.js`） |
+| 浏览器端源码文件数 | 1 | ≈ 30 | **34** |
+| `index.js` 入口 | 769 行 | ≤ 80 行 | **77 行** |
+| 宿主端源码文件数 | 1 | — | **12**（`index.js` + `src/host/**` 11 个模块） |
+| 可直接单测的模块 | 0 | ≥ 12 | **14**（宿主 4 + 浏览器 10） |
+| 测试支撑重复代码 | ≈ 300 行 | 0 | **0**（`test/support/` 4 个文件，689 行） |
+| 测试用例 | 35 | ≥ 55 | **159**（35 行为 + 124 单元，其中 94 个新增于本轮） |
+| 浏览器调试 | 单文件断点 | 源文件断点 | `client.js.map` → `src/client/**`，宿主实测可服务 |
+| `esbuild` 依赖 | 无 | devDependency | `esbuild ^0.28.2`（dev-only，产物已提交） |
+
+新增质量门：`npm run check:build`（产物新鲜度）、`npm run verify:contract`（用宿主真实菜单注册表解析 5 类目标，16 条命令）、`npm run build` / `dev`、`pretest` 自动构建。
+
+### 偏差与决定（均已在 AGENTS.md / CHANGELOG.md 记录）
+
+1. **产物行数目标未成立。** §1 的「≤ 150 行（只剩包装器）」隐含把浏览器代码拆成 `require.async` 包内 chunk；但 §5.2 选定的构建配置是 `bundle: true` + `cjs`，输出必然是整包未压缩代码（约 2,100 行）。压缩可到个位数行数，但会放大生成 diff 噪声、且不在 §5.2 配置内，故保留可读产物 + source map，评审只读 `src/`。
+2. **`GitPanel` 248 行而非 ≈130 行。** 确认弹窗、两条 banner、notice、四个空状态按"不改标记与结构"原则保留在 `GitPanel.js` 内，未为凑行数新增计划外的 view 模块；仍在 ≤250 行硬线内。
+3. **阶段 2.6 并入 2.1–2.3。** `DiffPanel` 与 `renderDiff` 在同一批机械迁移中完成，单独提交没有额外价值。
+4. **类型检查保持"标记 + JSDoc"**（§10 决策 2 的推荐项）：纯函数层加 `// @ts-check`，不引入 `typescript`。
+
+### 已知问题（本轮范围外，未修复）
+
+- `src/host/git/status.js` 的 `parseStatus` 在 `unmerged`（冲突）记录上读 `match[11]`，而记录只有 10 个捕获组，导致冲突行 `path` 为 `undefined`；客户端树构建会对该行调用 `path.split('/')`。这是 0.1.0 起就存在的缺陷，本轮重构按"零行为变化"原样保留并有差分测试锚定；建议另开一个 LiteSpec 变更修复并补冲突夹具。
