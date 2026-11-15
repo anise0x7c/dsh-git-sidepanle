@@ -3,6 +3,36 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## 0.4.0
+
+Commit details. Clicking a commit in the graph now shows what that commit
+changed instead of leaving history read-only:
+
+- Activating a commit row — pointer click, or Enter/Space on a focused row —
+  opens a details view in place of the change list. It shows the short
+  identifier, subject, author, relative time, message body, and the commit's
+  changed files as the same foldable folder tree the change groups use, with
+  status letters (added, modified, deleted, renamed, copied, type changed) and
+  the original path for renames. A back control returns to the changes without
+  touching the repository.
+- Clicking a changed file opens it in the existing unified-diff tab, scoped to
+  that commit: the diff is taken against the commit's first parent, or against
+  the empty tree for a root commit. The diff header names the commit, the tab
+  title carries the short identifier, and a pure rename is explained instead
+  of showing an empty diff. Merge commits compare against their first parent.
+- A commit that changed nothing relative to its first parent says so; a failed
+  read shows the Host error with retry. Up to 1,000 changed files are listed
+  and the view reports when the list was truncated.
+- Files and folders inside the details view offer a context menu with the
+  path-copy commands only; staging and discarding are not offered for history.
+- Host: new `commit-details` operation returning the metadata and
+  `--name-status` file list, and a `commit` scope on `diff`. Both require a full
+  40-character commit identifier and are compared against the first parent.
+  `parseCommitMeta` and `parseNameStatus` are pure and unit-tested.
+- Tests: 178 (was 161), including real-Git rename/delete/root/merge fixtures,
+  rendered-panel click-through, keyboard activation, commit-scoped diff tabs,
+  and past-commit menu resolution. Docs and both locale dictionaries updated.
+
 ## 0.3.1
 
 Fix the merge-conflict group. The Host status parser read a conflicted entry's
