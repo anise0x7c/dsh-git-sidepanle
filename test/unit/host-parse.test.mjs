@@ -13,7 +13,7 @@ import { GitGraphError } from '../../src/host/errors.js'
 import { resolveRepositoryPath, resolveRepositoryPaths } from '../../src/host/git/exec.js'
 import { parseStatus } from '../../src/host/git/status.js'
 import { parseUnifiedDiff } from '../../src/host/git/diff.js'
-import { parseCommitMeta, parseNameStatus } from '../../src/host/git/history.js'
+import { parseCommitMeta, parseHistory, parseNameStatus } from '../../src/host/git/history.js'
 
 const NUL = '\0'
 /** 40-character object ids, the shape real porcelain output carries. */
@@ -453,6 +453,83 @@ describe('parseCommitMeta', () => {
     assert.equal(parseCommitMeta(''), null)
     assert.equal(parseCommitMeta('not a record'), null)
     assert.equal(parseCommitMeta(record({ oid: 'HEAD' })), null)
+  })
+})
+
+describe('parseHistory', () => {
+  /**
+   * Build one `git log` history line in the shape the Host requests.
+   * @param {object} fields - record fields.
+   * @param {string} fields.oid - full commit id.
+   * @param {string} [fields.shortOid] - abbreviated id.
+   * @param {string} [fields.author] - author name.
+   * @param {string} [fields.authoredAt] - author timestamp.
+   * @param {string} [fields.refs] - decoration string.
+   * @param {string} [fields.parents] - space-separated parents.
+   * @param {string} [fields.subject] - subject line.
+   * @returns {string} one log line.
+   */
+  function logLine({ oid, shortOid = 'abc1234', author = 'Ann', authoredAt = '1700000000', refs = '', parents = '', subject = 'Fix it' }) {
+    return [oid, shortOid, author, authoredAt, refs, parents, subject].join('\t')
+  }
+
+  test('reads commits, their decorations, parents, and timestamps', () => {
+    const payload = [
+      logLine({ oid: OID_A, shortOid: 'aaaaaaa', author: 'Ann', authoredAt: '1700000123', refs: 'HEAD -> main, origin/main', parents: `${OID_B} ${OID_C}`, subject: 'Merge the sidebar work' }),
+      logLine({ oid: OID_B, refs: 'tag: v1.0', parents: OID_C, subject: 'Sidebar work' }),
+      logLine({ oid: OID_C, parents: '', subject: 'Initial commit' }),
+    ].join('\n')
+    assert.deepEqual(parseHistory(payload), [
+      {
+        oid: OID_A,
+        shortOid: 'aaaaaaa',
+        author: 'Ann',
+        authoredAt: 1700000123,
+        refs: 'HEAD -> main, origin/main',
+        parents: [OID_B, OID_C],
+        subject: 'Merge the sidebar work',
+      },
+      {
+        oid: OID_B,
+        shortOid: 'abc1234',
+        author: 'Ann',
+        authoredAt: 1700000000,
+        refs: 'tag: v1.0',
+        parents: [OID_C],
+        subject: 'Sidebar work',
+      },
+      {
+        oid: OID_C,
+        shortOid: 'abc1234',
+        author: 'Ann',
+        authoredAt: 1700000000,
+        refs: '',
+        parents: [],
+        subject: 'Initial commit',
+      },
+    ])
+  })
+
+  test('returns no commits for empty output', () => {
+    assert.deepEqual(parseHistory(''), [])
+    assert.deepEqual(parseHistory('\n'), [])
+  })
+
+  test('skips malformed lines instead of failing the read', () => {
+    const payload = [
+      'not a commit record',
+      logLine({ oid: 'short' }),
+      [OID_A, 'abc1234', 'Ann'].join('\t'),
+      logLine({ oid: OID_B, subject: 'kept' }),
+    ].join('\n')
+    assert.deepEqual(parseHistory(payload).map((commit) => commit.oid), [OID_B])
+  })
+
+  test('keeps a tab inside the subject in the subject field', () => {
+    const payload = logLine({ oid: OID_A, parents: OID_B, subject: 'before\tafter' })
+    const [commit] = parseHistory(payload)
+    assert.equal(commit.subject, 'before\tafter')
+    assert.deepEqual(commit.parents, [OID_B])
   })
 })
 

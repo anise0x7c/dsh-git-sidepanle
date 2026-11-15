@@ -234,7 +234,9 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
   assert.equal(history.body.value.commits.length, 2)
   assert.equal(history.body.value.commits[0].subject, 'change alpha and add beta')
   assert.equal(history.body.value.commits[0].refs.includes('main'), true)
-  assert.match(history.body.value.commits[0].graph, /^\*/)
+  assert.deepEqual(history.body.value.commits[0].parents, [history.body.value.commits[1].oid])
+  assert.deepEqual(history.body.value.commits[1].parents, [])
+  assert.equal('graph' in history.body.value.commits[0], false)
 
   const badOp = await call('nonsense')
   assert.equal(badOp.body.ok, false)
@@ -348,6 +350,27 @@ test('commit details follow the first parent for renames, deletions, and merges'
     assert.equal(mergeDetails.body.ok, true)
     assert.equal(mergeDetails.body.value.commit.parents.length, 2)
     assert.deepEqual(mergeDetails.body.value.files, [{ path: 'feature.txt', letter: 'A' }])
+
+    // History carries the parent list the browser lays the graph out from, in
+    // an order where every listed parent comes after its children.
+    const history = await callAt(baseUrl, 'history')
+    assert.equal(history.body.ok, true)
+    const entries = history.body.value.commits
+    const mergeRow = entries.find((entry) => entry.oid === merge)
+    assert.ok(mergeRow, 'the merge commit is listed')
+    assert.equal(mergeRow.parents.length, 2)
+    const featureTip = (await git(timeline, 'rev-parse', 'feature')).trim()
+    const featureRow = entries.find((entry) => entry.oid === featureTip)
+    assert.ok(featureRow, 'the side branch tip is listed')
+    assert.deepEqual(featureRow.parents, [second])
+    const position = new Map(entries.map((entry, index) => [entry.oid, index]))
+    for (const entry of entries) {
+      for (const parent of entry.parents) {
+        if (position.has(parent)) {
+          assert.ok(position.get(parent) > position.get(entry.oid), `${entry.oid} is listed after its parent ${parent}`)
+        }
+      }
+    }
   })
 })
 

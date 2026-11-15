@@ -8,21 +8,25 @@ const MAX_GRAPH_COMMITS = 60
 const MAX_COMMIT_FILES = 1000
 const FULL_OID = /^[0-9a-f]{40}$/
 const COMMIT_META_FORMAT = '%H%x00%h%x00%an%x00%at%x00%D%x00%P%x00%s%x00%b'
+// One record per line, tab-separated. The subject stays last so a tab inside
+// it cannot shift the fields before it.
+const HISTORY_FORMAT = '%H%x09%h%x09%an%x09%at%x09%D%x09%P%x09%s'
 
 /**
  * Read recent commits across local branches, tags, and remote-tracking branches.
+ * `--date-order` keeps parents after all of their children, which is what lets
+ * the browser draw the commit graph from the parent list alone.
  * @param {string} root - repository root.
  * @returns {Promise<object[]>} graph rows.
  */
 export async function readHistory(root) {
   const result = await runGit(root, [
     'log',
-    '--graph',
     '--branches',
     '--tags',
     '--remotes',
     '--date-order',
-    `--pretty=format:%H%x09%h%x09%an%x09%at%x09%D%x09%s`,
+    `--pretty=format:${HISTORY_FORMAT}`,
     '-n',
     String(MAX_GRAPH_COMMITS),
   ], { timeout: 30_000 })
@@ -32,19 +36,32 @@ export async function readHistory(root) {
     if (result.code === 'ENOENT') throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
     throw new GitGraphError('git-command-failed', result.stderr.trim() || 'git log failed', 409)
   }
+  return parseHistory(result.stdout)
+}
+
+/**
+ * Parse `git log` output written with {@link HISTORY_FORMAT}: one commit per
+ * line, `oid`, short oid, author, author time, decorations, parents, subject.
+ * Malformed lines are skipped rather than failing the whole read.
+ * @param {string} stdout - command output.
+ * @returns {object[]} graph rows in display order.
+ */
+export function parseHistory(stdout) {
   const commits = []
-  for (const line of result.stdout.split('\n')) {
+  for (const line of stdout.split('\n')) {
     if (line === '') continue
-    const match = /^([|/\\*_.\- ]*)([0-9a-f]{40})\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t?(.*)$/.exec(line)
-    if (match === null) continue
+    const fields = line.split('\t')
+    if (fields.length < 7) continue
+    const oid = fields[0]
+    if (!FULL_OID.test(oid)) continue
     commits.push({
-      oid: match[2],
-      shortOid: match[3],
-      author: match[4],
-      authoredAt: Number(match[5]) || 0,
-      refs: match[6],
-      subject: match[7],
-      graph: match[1],
+      oid,
+      shortOid: fields[1],
+      author: fields[2],
+      authoredAt: Number(fields[3]) || 0,
+      refs: fields[4],
+      parents: fields[5] === '' ? [] : fields[5].split(' '),
+      subject: fields.slice(6).join('\t'),
     })
   }
   return commits
