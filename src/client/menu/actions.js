@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Describe the commands available for one menu target; the overlay renders them and the panel runs them.
  */
@@ -5,23 +6,67 @@
 import { panelCommands } from './bus.js'
 import { absolutePath, copyAndReport } from './clipboard.js'
 
+/** @typedef {import('../git/format.js').LocaleBinder} LocaleBinder */
+/** @typedef {import('./trigger.js').MenuTargetValue} MenuTargetValue */
+
+/**
+ * Payload one action emits on the panel command bus; `type` names the panel
+ * operation and the remaining fields address it.
+ * @typedef {object} MenuCommandPayload
+ * @property {string} type - panel operation (`open`, `stage`, `discard`, `refresh`, ...).
+ * @property {string} [section] - change group the operation applies to.
+ * @property {string} [path] - one repository-relative path.
+ * @property {string[]} [paths] - repository-relative paths.
+ * @property {boolean} [single] - a single-entry discard needs one confirmation.
+ */
+
+/**
+ * One resolved menu action as the shared overlay renders it.
+ * @typedef {object} MenuAction
+ * @property {string} id - stable action id, published under the contribution id.
+ * @property {string} label - localized label from the locale binder.
+ * @property {() => void} run - executes the panel command or the clipboard copy.
+ * @property {boolean} [separatorBefore] - draw a divider above the action.
+ * @property {boolean} [danger] - destructive styling.
+ * @property {boolean} [disabled] - shown but not selectable.
+ */
+
+/**
+ * Build one resolved menu action.
+ * @param {string} id - stable action id.
+ * @param {string} label - localized label.
+ * @param {() => void} run - action callback.
+ * @param {{ danger?: boolean, separatorBefore?: boolean, disabled?: boolean }} [extra] - presentation flags.
+ * @returns {MenuAction} resolved action.
+ */
 export function menuAction(id, label, run, extra = {}) {
   return { id, label, run, ...extra }
 }
 
 /**
  * Resolve the actions for one captured context-menu target.
- * @param value - the captured target value: the row data the trigger was
+ * @param {MenuTargetValue | null | undefined} value - the captured target value: the row data the trigger was
  *   bound with, as the shared registry hands it to a contribution.
- * @param t - locale binder.
- * @param notify - host toast for clipboard feedback.
- * @returns ordered actions for the shared overlay.
+ * @param {LocaleBinder} t - locale binder.
+ * @param {((text: string, success: boolean) => void) | undefined} notify - host toast for clipboard feedback.
+ * @returns {MenuAction[]} ordered actions for the shared overlay.
  */
 export function resolveMenuActions(value, t, notify) {
   if (value === null || value === undefined || typeof value !== 'object') return []
   const sessionId = value.sessionId
   if (typeof sessionId !== 'string' || sessionId === '') return []
+  /**
+   * Emit one panel command for this captured target.
+   * @param {MenuCommandPayload} payload - panel operation and its arguments.
+   * @returns {() => void} action callback.
+   */
   const command = (payload) => () => panelCommands.emit({ sessionId, panelId: value.panelId, ...payload })
+  /**
+   * Copy one value and report through the host toast.
+   * @param {string} text - text to copy.
+   * @param {string} successKey - dictionary key reported on success.
+   * @returns {() => Promise<void>} action callback.
+   */
   const copy = (text, successKey) => () => copyAndReport(t, notify, text, successKey)
   const blocked = value.busy === true ? { disabled: true } : {}
 

@@ -1,9 +1,12 @@
+// @ts-check
 /**
  * Chinese UI dictionary for the Git graph panel.
  *
  * Keys are bound through the plugin locale namespace; both dictionaries must
  * stay complete (tests assert the key lists match).
  */
+
+/** @type {Record<string, string>} */
 export const zh = {
   title: '源代码管理',
   guideTitle: '源代码管理',

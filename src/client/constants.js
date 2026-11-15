@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Identifiers and limits shared by the plugin, the panels and the Host route.
  */

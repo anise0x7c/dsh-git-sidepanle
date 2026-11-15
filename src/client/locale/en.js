@@ -1,9 +1,12 @@
+// @ts-check
 /**
  * English UI dictionary for the Git graph panel.
  *
  * Keys are bound through the plugin locale namespace; both dictionaries must
  * stay complete (tests assert the key lists match).
  */
+
+/** @type {Record<string, string>} */
 export const en = {
   title: 'Source control',
   guideTitle: 'Source control',

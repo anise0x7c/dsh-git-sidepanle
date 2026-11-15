@@ -1,7 +1,16 @@
+// @ts-check
 /**
  * Path resolution and clipboard copy for the copy commands.
  */
 
+/** @typedef {import('../git/format.js').LocaleBinder} LocaleBinder */
+
+/**
+ * Join a repository-relative path below the captured repository root.
+ * @param {string} cwd - repository root; native separators are preserved.
+ * @param {string} path - repository-relative path.
+ * @returns {string} absolute path for display and copying.
+ */
 export function absolutePath(cwd, path) {
   if (typeof cwd !== 'string' || cwd === '') return path
   const base = cwd.replace(/[\\/]+$/, '')
@@ -10,6 +19,12 @@ export function absolutePath(cwd, path) {
   return windows ? `${base}\\${path.replaceAll('/', '\\')}` : `${base}/${path}`
 }
 
+/**
+ * Copy text through the async clipboard API, falling back to the selection
+ * based copy used by older WebViews.
+ * @param {string} text - text to copy.
+ * @returns {Promise<boolean>} whether a clipboard write succeeded.
+ */
 export async function copyToClipboard(text) {
   const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
   if (clipboard !== undefined && clipboard !== null && typeof clipboard.writeText === 'function') {
@@ -37,6 +52,14 @@ export async function copyToClipboard(text) {
   }
 }
 
+/**
+ * Copy one value and report the outcome through the host toast.
+ * @param {LocaleBinder} t - locale binder.
+ * @param {((text: string, success: boolean) => void) | undefined} notify - host toast callback.
+ * @param {string} text - text to copy.
+ * @param {string} successKey - dictionary key reported on success.
+ * @returns {Promise<void>} resolves after the toast attempt.
+ */
 export async function copyAndReport(t, notify, text, successKey) {
   const copied = await copyToClipboard(String(text))
   if (typeof notify !== 'function') return
