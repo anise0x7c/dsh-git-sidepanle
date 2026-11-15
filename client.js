@@ -32,7 +32,871 @@ __export(client_entry_exports, {
 module.exports = __toCommonJS(client_entry_exports);
 
 // src/client/app.js
+var import_react10 = require("react");
+
+// src/client/constants.js
+var PACKAGE_ID = "@local/dsh-git-graph";
+var NS = "gitGraph";
+var GIT_ID = "@local/dsh-git-graph/git";
+var GIT_KIND = "git";
+var GIT_SHORTCUT = "workspace.git";
+var DIFF_ID = "@local/dsh-git-graph/diff";
+var DIFF_KIND = "git-diff";
+var RPC_PATH = "api/dsh-git-graph/rpc";
+var POLL_INTERVAL_MS = 5e3;
+var MAX_RENDERED_DIFF_LINES = 4e3;
+var MENU_TARGET = "gitGraphItem";
+var MENU_CONTRIBUTION_ID = "git-graph.actions";
+var panelSequence = 0;
+function nextPanelId() {
+  panelSequence += 1;
+  return `git-panel-${panelSequence}`;
+}
+
+// src/client/data/caller.js
+function makeFailure(code, message, status) {
+  const failure = new Error(message || code);
+  failure.code = code;
+  failure.detail = message || "";
+  failure.status = status;
+  return failure;
+}
+function createCaller(sessionId) {
+  return async function call(op, payload = {}) {
+    let response;
+    try {
+      response = await fetch(RPC_PATH, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json", "x-dsh-git-graph": "1" },
+        body: JSON.stringify({ sessionId, op, ...payload })
+      });
+    } catch (cause) {
+      throw makeFailure("network", cause instanceof Error ? cause.message : String(cause));
+    }
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      throw makeFailure("bad-response", `The Host answered HTTP ${response.status}.`, response.status);
+    }
+    if (data === null || typeof data !== "object") throw makeFailure("bad-response", `The Host answered HTTP ${response.status}.`, response.status);
+    if (data.ok !== true) {
+      const error = data.error ?? {};
+      throw makeFailure(typeof error.code === "string" ? error.code : "internal", typeof error.message === "string" ? error.message : "", response.status);
+    }
+    return data.value;
+  };
+}
+
+// src/client/diff/DiffPanel.js
+var import_react5 = require("react");
+
+// src/client/diff/render.js
 var import_react = require("react");
+var h = import_react.createElement;
+function renderDiff(t, diff) {
+  if (diff === null || diff === void 0) return h("div", { className: "dshgg-diffNote" }, t("diff.empty"));
+  if (diff.binary === true) return h("div", { className: "dshgg-diffNote" }, t("diff.binary"));
+  const hunks = Array.isArray(diff.hunks) ? diff.hunks : [];
+  if (hunks.length === 0) return h("div", { className: "dshgg-diffNote" }, t("diff.empty"));
+  const rows = [];
+  let rendered = 0;
+  let clipped = false;
+  if (diff.truncated === true) rows.push(h("div", { key: "truncated", className: "dshgg-diffNote" }, t("diff.truncated")));
+  for (let index = 0; index < hunks.length; index += 1) {
+    const hunk = hunks[index];
+    rows.push(h("div", { key: `hunk:${index}`, className: "dshgg-hunkHeader" }, hunk.header ?? ""));
+    let oldLine = hunk.oldStart ?? 0;
+    let newLine = hunk.newStart ?? 0;
+    for (let lineIndex = 0; lineIndex < hunk.lines.length; lineIndex += 1) {
+      if (rendered >= MAX_RENDERED_DIFF_LINES) {
+        clipped = true;
+        break;
+      }
+      const line = hunk.lines[lineIndex];
+      let oldNumber = "";
+      let newNumber = "";
+      if (line.t === " ") {
+        oldNumber = String(oldLine);
+        newNumber = String(newLine);
+        oldLine += 1;
+        newLine += 1;
+      } else if (line.t === "-") {
+        oldNumber = String(oldLine);
+        oldLine += 1;
+      } else {
+        newNumber = String(newLine);
+        newLine += 1;
+      }
+      rows.push(h(
+        "div",
+        { key: `line:${index}:${lineIndex}`, className: "dshgg-diffLine", "data-type": line.t },
+        h("span", { className: "dshgg-gutter" }, oldNumber),
+        h("span", { className: "dshgg-gutter" }, newNumber),
+        h("span", { className: "dshgg-marker" }, line.t === " " ? "" : line.t),
+        h("span", { className: "dshgg-code" }, line.text === "" ? " " : line.text)
+      ));
+      rendered += 1;
+    }
+    if (clipped) break;
+  }
+  if (clipped) rows.push(h("div", { key: "clipped", className: "dshgg-diffNote" }, t("diff.truncated")));
+  return rows;
+}
+
+// src/client/git/format.js
+var STATUS_LETTERS = {
+  ".": "",
+  M: "M",
+  A: "A",
+  D: "D",
+  R: "R",
+  C: "C",
+  U: "U",
+  T: "T",
+  "?": "U"
+};
+function statusLetter(character) {
+  return STATUS_LETTERS[character] ?? "";
+}
+function statusKey(letter) {
+  if (letter === "M") return "status.modified";
+  if (letter === "A") return "status.added";
+  if (letter === "D") return "status.deleted";
+  if (letter === "R") return "status.renamed";
+  if (letter === "C") return "status.copied";
+  if (letter === "U") return "status.untracked";
+  if (letter === "!") return "status.conflict";
+  if (letter === "T") return "status.typeChanged";
+  return "status.modified";
+}
+function isStaged(entry) {
+  return entry.conflict !== true && entry.x !== "." && entry.x !== "?" && entry.x !== "!";
+}
+function isUnstaged(entry) {
+  return entry.conflict !== true && (entry.y !== "." || entry.x === "?");
+}
+function baseName(path) {
+  const index = path.lastIndexOf("/");
+  return index < 0 ? path : path.slice(index + 1);
+}
+function formatAgo(t, authoredAt) {
+  const seconds = Math.max(0, Math.floor(Date.now() / 1e3) - authoredAt);
+  if (seconds < 45) return t("time.now");
+  if (seconds < 3600) return t("time.minutes", { n: Math.max(1, Math.round(seconds / 60)) });
+  if (seconds < 86400) return t("time.hours", { n: Math.round(seconds / 3600) });
+  if (seconds < 604800) return t("time.days", { n: Math.round(seconds / 86400) });
+  if (seconds < 2592e3) return t("time.weeks", { n: Math.round(seconds / 604800) });
+  if (seconds < 31536e3) return t("time.months", { n: Math.round(seconds / 2592e3) });
+  return t("time.years", { n: Math.round(seconds / 31536e3) });
+}
+function parseRefs(refs) {
+  if (typeof refs !== "string" || refs === "") return [];
+  return refs.split(", ").filter((label) => label !== "").map((label) => {
+    if (label.startsWith("HEAD -> ")) return { label: label.slice("HEAD -> ".length), kind: "head" };
+    if (label === "HEAD") return { label: "HEAD", kind: "head" };
+    if (label.startsWith("tag: ")) return { label: label.slice("tag: ".length), kind: "tag" };
+    if (label.includes("/")) return { label, kind: "remote" };
+    return { label, kind: "branch" };
+  });
+}
+function errorText(t, failure) {
+  if (failure === null || failure === void 0) return t("error.unknown");
+  const code = failure.code;
+  if (code === "git-unavailable") return t("gitUnavailable.desc");
+  if (code === "network") return t("error.network");
+  if (code === "forbidden") return t("error.forbidden");
+  if (code === "not-a-repository") return t("noRepo.title");
+  if (code === "discard-unborn") return t("error.discardUnborn");
+  return failure.message || t("error.unknown");
+}
+
+// src/client/icons.js
+var import_react2 = require("react");
+var h2 = import_react2.createElement;
+function svgIcon(size, path, options = {}) {
+  return h2("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: size,
+    height: size,
+    viewBox: "0 0 16 16",
+    fill: options.fill ?? "none",
+    stroke: options.fill === "currentColor" ? "none" : "currentColor",
+    strokeWidth: options.strokeWidth ?? 1.3,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    "aria-hidden": true,
+    focusable: false,
+    className: options.className
+  }, path);
+}
+function GitBranchIcon(props) {
+  const size = props?.size ?? 16;
+  return svgIcon(size, [
+    h2("circle", { key: "a", cx: 4.5, cy: 3.5, r: 1.6 }),
+    h2("circle", { key: "b", cx: 4.5, cy: 12.5, r: 1.6 }),
+    h2("circle", { key: "c", cx: 11.5, cy: 6.5, r: 1.6 }),
+    h2("path", { key: "d", d: "M4.5 5.1v5.8" }),
+    h2("path", { key: "e", d: "M11.5 8.1c0 2.1-2.4 3-7 3.4" })
+  ]);
+}
+function ChevronRightIcon(props) {
+  const size = props?.size ?? 12;
+  return svgIcon(size, h2("path", { d: "M6 3.5 10.5 8 6 12.5" }), { className: props?.className });
+}
+function ChevronDownIcon(props) {
+  const size = props?.size ?? 12;
+  return svgIcon(size, h2("path", { d: "M3.5 6 8 10.5 12.5 6" }), { className: props?.className });
+}
+function RefreshIcon(props) {
+  const size = props?.size ?? 14;
+  return svgIcon(size, [
+    h2("path", { key: "a", d: "M13 8a5 5 0 1 1-1.7-3.75" }),
+    h2("path", { key: "b", d: "M13 2.5v3.2H9.8" })
+  ]);
+}
+function PlusIcon(props) {
+  const size = props?.size ?? 14;
+  return svgIcon(size, [h2("path", { key: "a", d: "M8 3v10" }), h2("path", { key: "b", d: "M3 8h10" })]);
+}
+function MinusIcon(props) {
+  const size = props?.size ?? 14;
+  return svgIcon(size, h2("path", { d: "M3 8h10" }));
+}
+function UndoIcon(props) {
+  const size = props?.size ?? 14;
+  return svgIcon(size, [
+    h2("path", { key: "a", d: "M5.5 4.5 2.5 7.5l3 3" }),
+    h2("path", { key: "b", d: "M2.5 7.5H9a4 4 0 0 1 0 8H7" })
+  ]);
+}
+function CheckIcon(props) {
+  const size = props?.size ?? 14;
+  return svgIcon(size, h2("path", { d: "M3 8.5 6.2 11.5 13 4.5" }));
+}
+function CloseIcon(props) {
+  const size = props?.size ?? 12;
+  return svgIcon(size, [h2("path", { key: "a", d: "M4 4l8 8" }), h2("path", { key: "b", d: "M12 4l-8 8" })]);
+}
+function FileIcon(props) {
+  const size = props?.size ?? 14;
+  return svgIcon(size, [
+    h2("path", { key: "a", d: "M4 1.8h5l3 3v9.4H4z" }),
+    h2("path", { key: "b", d: "M9 1.8v3h3" })
+  ]);
+}
+function AlertIcon(props) {
+  const size = props?.size ?? 16;
+  return svgIcon(size, [
+    h2("circle", { key: "a", cx: 8, cy: 8, r: 6.4 }),
+    h2("path", { key: "b", d: "M8 4.8v4.2" }),
+    h2("path", { key: "c", d: "M8 11.6h.01" })
+  ]);
+}
+function CheckCircleIcon(props) {
+  const size = props?.size ?? 28;
+  return svgIcon(size, [
+    h2("circle", { key: "a", cx: 8, cy: 8, r: 6.4 }),
+    h2("path", { key: "b", d: "M5 8.2 7.2 10.4 11.2 6" })
+  ]);
+}
+
+// src/client/menu/trigger.js
+function bindMenuTrigger(useContextMenu) {
+  if (typeof useContextMenu !== "function") return null;
+  let bindings;
+  try {
+    bindings = useContextMenu();
+  } catch (error) {
+    console.warn("[git-graph] context menus are unavailable", error);
+    return null;
+  }
+  if (bindings === null || bindings === void 0 || typeof bindings.getTriggerProps !== "function") return null;
+  return (target, handlers) => bindings.getTriggerProps(target, handlers);
+}
+function menuTarget(sessionId, kind, detail) {
+  return { kind: MENU_TARGET, value: { sessionId, kind, ...detail } };
+}
+
+// src/client/panel/controls.js
+var import_react3 = require("react");
+var h3 = import_react3.createElement;
+function IconButton(props) {
+  return h3("button", {
+    type: "button",
+    className: "dshgg-iconBtn",
+    "aria-label": props.label,
+    title: props.title ?? props.label,
+    disabled: props.disabled === true,
+    onClick: props.onClick,
+    "data-spinning": props.spinning === true ? "true" : void 0
+  }, props.children);
+}
+
+// src/client/panel/feedback.js
+var import_react4 = require("react");
+var h4 = import_react4.createElement;
+function Banner(props) {
+  return h4(
+    "div",
+    { className: "dshgg-banner", "data-kind": props.kind ?? "error", role: props.kind === "error" ? "alert" : "status" },
+    h4(
+      "span",
+      { className: "dshgg-bannerText" },
+      h4("span", null, props.title),
+      props.detail === void 0 || props.detail === "" ? null : h4("div", { className: "dshgg-bannerDetail" }, props.detail)
+    ),
+    h4(
+      "span",
+      { className: "dshgg-bannerActions" },
+      props.onRetry === void 0 ? null : h4("button", { type: "button", className: "dshgg-linkBtn", onClick: props.onRetry }, props.retryLabel),
+      props.onDismiss === void 0 ? null : h4(IconButton, { label: props.dismissLabel ?? "Dismiss", onClick: props.onDismiss }, h4(CloseIcon, { size: 12 }))
+    )
+  );
+}
+function EmptyState(props) {
+  return h4(
+    "div",
+    { className: "dshgg-state" },
+    h4("span", { className: "dshgg-stateIcon" }, props.icon),
+    h4("p", { className: "dshgg-stateTitle" }, props.title),
+    props.desc === void 0 ? null : h4("p", { className: "dshgg-stateDesc" }, props.desc),
+    props.action === void 0 ? null : h4("div", { className: "dshgg-stateAction" }, props.action)
+  );
+}
+
+// src/client/diff/DiffPanel.js
+var h5 = import_react5.createElement;
+function DiffPanel(props) {
+  const sessionId = props.sessionId;
+  const t = props.t;
+  const tabInfo = props.useTabInfo();
+  const tab = tabInfo.tab;
+  const params = tab.navigation?.params ?? {};
+  const revision = tab.navigation?.revision ?? 0;
+  const call = (0, import_react5.useMemo)(() => createCaller(sessionId), [sessionId]);
+  const menuTrigger = (0, import_react5.useMemo)(
+    () => typeof sessionId === "string" && sessionId !== "" ? bindMenuTrigger(props.useContextMenu) : null,
+    [props.useContextMenu, sessionId]
+  );
+  const [state, setState] = (0, import_react5.useState)({ phase: "loading", diff: null, failure: null });
+  const [reload, setReload] = (0, import_react5.useState)(0);
+  const hasTarget = typeof params.path === "string" && params.path !== "";
+  (0, import_react5.useEffect)(() => {
+    if (!hasTarget) {
+      setState({ phase: "empty", diff: null, failure: null });
+      return void 0;
+    }
+    let cancelled = false;
+    setState({ phase: "loading", diff: null, failure: null });
+    call("diff", {
+      path: params.path,
+      staged: params.staged === true,
+      untracked: params.untracked === true
+    }).then((diff) => {
+      if (!cancelled) setState({ phase: "ready", diff, failure: null });
+    }).catch((failure) => {
+      if (!cancelled) setState({ phase: "error", diff: null, failure });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [call, hasTarget, params.path, params.staged, params.untracked, revision, reload]);
+  const badgeKind = params.untracked === true ? "untracked" : params.staged === true ? "staged" : "unstaged";
+  const badgeLabel = badgeKind === "untracked" ? t("diff.untracked") : badgeKind === "staged" ? t("diff.staged") : t("diff.unstaged");
+  const headerMenu = menuTrigger === null || !hasTarget ? null : menuTrigger(menuTarget(sessionId, "diff", { path: params.path, cwd: params.cwd }), { tabIndex: -1, "aria-haspopup": "menu", title: t("menu.hint") });
+  const header = hasTarget ? h5(
+    "div",
+    { className: "dshgg-diffHeader", ...headerMenu ?? {} },
+    h5(
+      "span",
+      { className: "dshgg-diffPath" },
+      h5("span", { className: "dshgg-diffName" }, baseName(params.path)),
+      params.origPath === void 0 || params.origPath === null || params.origPath === "" ? null : h5("span", { className: "dshgg-diffFrom" }, t("diff.from", { path: params.origPath }))
+    ),
+    h5("span", { className: "dshgg-diffBadge", "data-kind": badgeKind }, badgeLabel),
+    state.phase === "ready" && state.diff !== null && state.diff.binary !== true ? h5(
+      "span",
+      { className: "dshgg-diffStats" },
+      h5("span", { className: "dshgg-diffAdd" }, `+${state.diff.additions}`),
+      h5("span", { className: "dshgg-diffDel" }, `−${state.diff.deletions}`)
+    ) : null,
+    h5(IconButton, {
+      label: t("diff.refresh"),
+      title: t("diff.refresh"),
+      onClick: () => setReload((value) => value + 1)
+    }, h5(RefreshIcon, { size: 14 }))
+  ) : null;
+  let content;
+  if (!hasTarget) {
+    content = h5(EmptyState, {
+      icon: h5(FileIcon, { size: 26 }),
+      title: t("diff.title"),
+      desc: t("diff.pick")
+    });
+  } else if (state.phase === "loading") {
+    content = h5("div", { className: "dshgg-diffNote" }, t("diff.loading"));
+  } else if (state.phase === "error") {
+    content = h5(Banner, {
+      title: t("diff.error"),
+      detail: errorText(t, state.failure),
+      retryLabel: t("retry"),
+      onRetry: () => setReload((value) => value + 1)
+    });
+  } else {
+    content = renderDiff(t, state.diff);
+  }
+  return h5(
+    "div",
+    { className: "dshgg-diffRoot", "data-dsh-git-graph-diff": "" },
+    header,
+    h5("div", { className: "dshgg-diffBody" }, content)
+  );
+}
+
+// src/client/git/tree.js
+function buildTree(entries) {
+  const root = { type: "root", name: "", path: "", children: [], folders: /* @__PURE__ */ new Map() };
+  for (const entry of entries) {
+    const parts = entry.path.split("/");
+    let node = root;
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      const name = parts[index];
+      let folder = node.folders.get(name);
+      if (folder === void 0) {
+        folder = {
+          type: "folder",
+          name,
+          path: parts.slice(0, index + 1).join("/"),
+          children: [],
+          folders: /* @__PURE__ */ new Map()
+        };
+        node.folders.set(name, folder);
+        node.children.push(folder);
+      }
+      node = folder;
+    }
+    node.children.push({ type: "file", name: parts[parts.length - 1], path: entry.path, entry });
+  }
+  const sort = (nodes) => {
+    nodes.sort((left, right) => {
+      const leftFolder = left.type === "folder" ? 0 : 1;
+      const rightFolder = right.type === "folder" ? 0 : 1;
+      if (leftFolder !== rightFolder) return leftFolder - rightFolder;
+      return left.name.localeCompare(right.name, void 0, { numeric: true, sensitivity: "base" });
+    });
+    for (const node of nodes) if (node.type === "folder") sort(node.children);
+  };
+  sort(root.children);
+  return root.children;
+}
+function collectTreePaths(node) {
+  if (node.type !== "folder") return [node.path];
+  const paths = [];
+  for (const child of node.children) paths.push(...collectTreePaths(child));
+  return paths;
+}
+
+// src/client/menu/bus.js
+function createCommandBus() {
+  const listeners = /* @__PURE__ */ new Set();
+  return {
+    emit(command) {
+      for (const listener of [...listeners]) {
+        try {
+          listener(command);
+        } catch (error) {
+          console.warn("[git-graph] context menu command failed", error);
+        }
+      }
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    }
+  };
+}
+var panelCommands = createCommandBus();
+
+// src/client/menu/clipboard.js
+function absolutePath(cwd, path) {
+  if (typeof cwd !== "string" || cwd === "") return path;
+  const base = cwd.replace(/[\\/]+$/, "");
+  if (base === "") return path;
+  const windows = base.includes("\\") && !base.includes("/");
+  return windows ? `${base}\\${path.replaceAll("/", "\\")}` : `${base}/${path}`;
+}
+async function copyToClipboard(text) {
+  const clipboard = typeof navigator === "undefined" ? void 0 : navigator.clipboard;
+  if (clipboard !== void 0 && clipboard !== null && typeof clipboard.writeText === "function") {
+    try {
+      await clipboard.writeText(text);
+      return true;
+    } catch (error) {
+    }
+  }
+  try {
+    if (typeof document === "undefined" || typeof document.execCommand !== "function") return false;
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.top = "-1000px";
+    document.body.appendChild(area);
+    area.select();
+    const copied = document.execCommand("copy") !== false;
+    document.body.removeChild(area);
+    return copied;
+  } catch (error) {
+    return false;
+  }
+}
+async function copyAndReport(t, notify, text, successKey) {
+  const copied = await copyToClipboard(String(text));
+  if (typeof notify !== "function") return;
+  try {
+    notify(copied ? t(successKey) : t("menu.copyFailed"), copied);
+  } catch (error) {
+    console.warn("[git-graph] copy feedback failed", error);
+  }
+}
+
+// src/client/menu/actions.js
+function menuAction(id, label, run, extra = {}) {
+  return { id, label, run, ...extra };
+}
+function resolveMenuActions(value, t, notify) {
+  if (value === null || value === void 0 || typeof value !== "object") return [];
+  const sessionId = value.sessionId;
+  if (typeof sessionId !== "string" || sessionId === "") return [];
+  const command = (payload) => () => panelCommands.emit({ sessionId, panelId: value.panelId, ...payload });
+  const copy = (text, successKey) => () => copyAndReport(t, notify, text, successKey);
+  const blocked = value.busy === true ? { disabled: true } : {};
+  if (value.kind === "file") {
+    const path = value.path;
+    if (typeof path !== "string" || path === "") return [];
+    const section = value.section === "staged" || value.section === "merge" ? value.section : "changes";
+    const actions = [menuAction("open", t("menu.openDiff"), command({ type: "open", section, path }), blocked)];
+    if (section === "staged") {
+      actions.push(menuAction("unstage", t("actions.unstage"), command({ type: "unstage", paths: [path] }), { separatorBefore: true, ...blocked }));
+    } else {
+      actions.push(menuAction("stage", t("actions.stage"), command({ type: "stage", paths: [path] }), { separatorBefore: true, ...blocked }));
+      if (section !== "merge") actions.push(menuAction("discard", t("actions.discard"), command({ type: "discard", paths: [path], single: true }), { danger: true, ...blocked }));
+    }
+    actions.push(menuAction("copy-relative", t("menu.copyRelativePath"), copy(path, "menu.copiedRelativePath"), { separatorBefore: true }));
+    if (typeof value.cwd === "string" && value.cwd !== "") {
+      actions.push(menuAction("copy-path", t("menu.copyPath"), copy(absolutePath(value.cwd, path), "menu.copiedPath")));
+    }
+    return actions;
+  }
+  if (value.kind === "folder") {
+    const folder = value.path;
+    const paths = Array.isArray(value.paths) ? value.paths.filter((entry) => typeof entry === "string" && entry !== "") : [];
+    if (typeof folder !== "string" || folder === "" || paths.length === 0) return [];
+    const section = value.section === "staged" || value.section === "merge" ? value.section : "changes";
+    const actions = [];
+    if (section === "staged") {
+      actions.push(menuAction("unstage-all", t("actions.unstage"), command({ type: "unstage", paths }), blocked));
+    } else {
+      actions.push(menuAction("stage-all", t("actions.stage"), command({ type: "stage", paths }), blocked));
+      if (section !== "merge") actions.push(menuAction("discard-all", t("actions.discard"), command({ type: "discard", paths }), { danger: true, ...blocked }));
+    }
+    actions.push(menuAction("copy-relative", t("menu.copyRelativePath"), copy(folder, "menu.copiedRelativePath"), { separatorBefore: true }));
+    if (typeof value.cwd === "string" && value.cwd !== "") {
+      actions.push(menuAction("copy-path", t("menu.copyPath"), copy(absolutePath(value.cwd, folder), "menu.copiedPath")));
+    }
+    return actions;
+  }
+  if (value.kind === "section") {
+    const section = value.section;
+    if (section === "changes") {
+      return [
+        menuAction("stage-all", t("actions.stageAll"), command({ type: "stageSection", section }), blocked),
+        menuAction("discard-all", t("actions.discardAll"), command({ type: "discardSection", section }), { danger: true, ...blocked }),
+        menuAction("refresh", t("refresh"), command({ type: "refresh" }), { separatorBefore: true, ...blocked })
+      ];
+    }
+    if (section === "staged") {
+      return [
+        menuAction("unstage-all", t("actions.unstageAll"), command({ type: "unstageSection", section }), blocked),
+        menuAction("refresh", t("refresh"), command({ type: "refresh" }), { separatorBefore: true, ...blocked })
+      ];
+    }
+    if (section === "merge") {
+      return [menuAction("stage-all", t("actions.stageAll"), command({ type: "stageSection", section }), blocked)];
+    }
+    if (section === "graph") {
+      return [menuAction("refresh", t("menu.refreshHistory"), command({ type: "refresh" }), blocked)];
+    }
+    return [];
+  }
+  if (value.kind === "commit") {
+    const actions = [];
+    if (typeof value.oid === "string" && value.oid !== "") {
+      actions.push(menuAction("copy-id", t("menu.copyCommitId"), copy(value.oid, "menu.copiedCommitId")));
+    }
+    if (typeof value.subject === "string" && value.subject !== "") {
+      actions.push(menuAction("copy-message", t("menu.copyCommitSubject"), copy(value.subject, "menu.copiedCommitSubject")));
+    }
+    return actions;
+  }
+  if (value.kind === "diff") {
+    const path = value.path;
+    if (typeof path !== "string" || path === "") return [];
+    const actions = [menuAction("copy-relative", t("menu.copyRelativePath"), copy(path, "menu.copiedRelativePath"))];
+    if (typeof value.cwd === "string" && value.cwd !== "") {
+      actions.push(menuAction("copy-path", t("menu.copyPath"), copy(absolutePath(value.cwd, path), "menu.copiedPath")));
+    }
+    return actions;
+  }
+  return [];
+}
+
+// src/client/panel/BranchMenu.js
+var import_react6 = require("react");
+var h6 = import_react6.createElement;
+function BranchMenu(props) {
+  const t = props.t;
+  let content;
+  if (props.loading === true && props.branches === null) {
+    content = h6("div", { className: "dshgg-menuNote" }, t("branch.loading"));
+  } else if (props.failure !== null) {
+    content = h6(
+      "div",
+      { className: "dshgg-menuNote" },
+      errorText(t, props.failure),
+      " ",
+      h6("button", { type: "button", className: "dshgg-linkBtn", onClick: props.onRetry }, t("retry"))
+    );
+  } else if (props.branches === null || props.branches.length === 0) {
+    content = h6("div", { className: "dshgg-menuNote" }, t("branch.empty"));
+  } else {
+    content = props.branches.map((branch) => h6(
+      "button",
+      {
+        key: branch.name,
+        type: "button",
+        className: "dshgg-menuItem",
+        role: "menuitemradio",
+        "aria-checked": branch.current === true,
+        disabled: branch.current === true,
+        onClick: () => props.onPick(branch.name)
+      },
+      h6("span", { className: "dshgg-menuCheck" }, branch.current === true ? h6(CheckIcon, { size: 12 }) : null),
+      h6("span", { className: "dshgg-menuLabel" }, branch.name)
+    ));
+  }
+  return h6("div", { className: "dshgg-menu", role: "menu", "aria-label": t("branch.menu") }, content);
+}
+
+// src/client/panel/confirm.js
+function confirmTitle(t, confirm) {
+  if (confirm.kind === "commitAll") return t("commit.emptyConfirm");
+  if (confirm.kind === "discardAll") return t("confirm.discardAllTitle", { n: confirm.entries.length });
+  return t("confirm.discardTitle", { name: baseName(confirm.entry.path) });
+}
+function confirmDescription(t, confirm) {
+  if (confirm.kind === "commitAll") return "";
+  if (confirm.kind === "discardAll") return t("confirm.discardAllDesc");
+  return confirm.entry.untracked === true ? t("confirm.deleteUntrackedDesc") : t("confirm.discardDesc");
+}
+function confirmActionLabel(t, confirm) {
+  if (confirm.kind === "commitAll") return t("commit.stageAll");
+  return confirm.kind === "discardAll" ? t("confirm.discardAll") : t("confirm.discard");
+}
+
+// src/client/panel/rows.js
+var import_react7 = require("react");
+var h7 = import_react7.createElement;
+function FolderRow(props) {
+  const keyboard = {
+    onKeyDown: (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        props.onToggle();
+      }
+    }
+  };
+  const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
+  const rowProps = menuTrigger === null || props.menuTarget === void 0 ? keyboard : menuTrigger(props.menuTarget, { ...keyboard, "aria-haspopup": "menu", title: props.menuHint });
+  return h7(
+    "div",
+    {
+      className: "dshgg-row dshgg-folderRow",
+      style: { paddingLeft: `${4 + props.depth * 10}px` },
+      role: "button",
+      tabIndex: 0,
+      "aria-expanded": props.open,
+      onClick: props.onToggle,
+      ...rowProps
+    },
+    h7(
+      "span",
+      { className: "dshgg-chevron", "data-open": props.open === true ? "true" : "false" },
+      h7(ChevronRightIcon, { size: 12 })
+    ),
+    h7("span", { className: "dshgg-folderName" }, props.node.name)
+  );
+}
+function FileRow(props) {
+  const entry = props.entry;
+  const letter = props.letter;
+  const name = baseName(entry.path);
+  const actionButtons = [];
+  if (props.mode === "staged") {
+    actionButtons.push(h7(IconButton, {
+      key: "unstage",
+      label: props.t("actions.unstage"),
+      title: props.t("actions.unstage"),
+      disabled: props.busy === true,
+      onClick: (event) => {
+        event.stopPropagation();
+        props.onUnstage(entry);
+      }
+    }, h7(MinusIcon, { size: 14 })));
+  } else {
+    actionButtons.push(h7(IconButton, {
+      key: "stage",
+      label: props.t("actions.stage"),
+      title: props.t("actions.stage"),
+      disabled: props.busy === true,
+      onClick: (event) => {
+        event.stopPropagation();
+        props.onStage(entry);
+      }
+    }, h7(PlusIcon, { size: 14 })));
+    if (props.mode !== "merge" && typeof props.onDiscard === "function") {
+      actionButtons.push(h7(IconButton, {
+        key: "discard",
+        label: props.t("actions.discard"),
+        title: props.t("actions.discard"),
+        disabled: props.busy === true,
+        onClick: (event) => {
+          event.stopPropagation();
+          props.onDiscard(entry);
+        }
+      }, h7(UndoIcon, { size: 14 })));
+    }
+  }
+  const title = entry.origPath === void 0 ? entry.path : `${entry.origPath} → ${entry.path}`;
+  const keyboard = {
+    onKeyDown: (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        props.onOpen(entry);
+      }
+    }
+  };
+  const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
+  const rowProps = menuTrigger === null || props.menuTarget === void 0 ? keyboard : menuTrigger(props.menuTarget, { ...keyboard, "aria-haspopup": "menu" });
+  return h7(
+    "div",
+    {
+      className: "dshgg-row dshgg-fileRow",
+      style: { paddingLeft: `${4 + props.depth * 10}px` },
+      role: "button",
+      tabIndex: 0,
+      "aria-label": `${props.t(statusKey(letter))} ${entry.path}`,
+      title,
+      onClick: () => props.onOpen(entry),
+      ...rowProps
+    },
+    h7("span", { className: "dshgg-status", "data-status": letter }, letter),
+    h7("span", { className: "dshgg-fileName" }, name),
+    entry.origPath === void 0 ? null : h7("span", { className: "dshgg-fileArrow", title: entry.origPath }, `← ${baseName(entry.origPath)}`),
+    h7("span", { className: "dshgg-fileActions" }, actionButtons)
+  );
+}
+function renderTree(nodes, depth, context) {
+  const rows = [];
+  const target = (kind, detail) => context.menuTarget === void 0 ? void 0 : context.menuTarget(kind, detail);
+  for (const node of nodes) {
+    if (node.type === "folder") {
+      const open = context.collapsed[node.path] !== true;
+      rows.push(h7(FolderRow, {
+        key: `folder:${node.path}`,
+        node,
+        depth,
+        open,
+        onToggle: () => context.onToggleFolder(node.path),
+        menuTrigger: context.menuTrigger,
+        menuHint: context.menuHint,
+        menuTarget: target("folder", { section: context.mode, path: node.path, paths: collectTreePaths(node) })
+      }));
+      if (open) rows.push(...renderTree(node.children, depth + 1, context));
+      continue;
+    }
+    rows.push(h7(FileRow, {
+      key: `file:${node.entry.kind}:${node.entry.path}:${node.entry.x}:${node.entry.y}`,
+      entry: node.entry,
+      letter: node.entry.letter ?? "",
+      depth,
+      t: context.t,
+      busy: context.busy,
+      mode: context.mode,
+      onOpen: context.onOpen,
+      onStage: context.onStage,
+      onUnstage: context.onUnstage,
+      onDiscard: context.onDiscard,
+      menuTrigger: context.menuTrigger,
+      menuTarget: target("file", { section: context.mode, path: node.entry.path })
+    }));
+  }
+  return rows;
+}
+
+// src/client/panel/Section.js
+var import_react8 = require("react");
+var h8 = import_react8.createElement;
+function Section(props) {
+  const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
+  const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
+  const menuProps = menuTrigger === null || props.menuTarget === void 0 ? null : menuTrigger(props.menuTarget, { tabIndex: -1, "aria-haspopup": "menu", title: props.menuHint });
+  return h8(
+    "section",
+    { className: "dshgg-section", "data-section": props.id, "aria-label": props.title },
+    h8(
+      "div",
+      { className: "dshgg-sectionHeader", ...menuProps ?? {} },
+      h8(
+        "button",
+        {
+          type: "button",
+          className: "dshgg-sectionToggle",
+          "aria-expanded": props.open,
+          onClick: props.onToggle
+        },
+        h8(
+          "span",
+          { className: "dshgg-chevron", "data-open": props.open === true ? "true" : "false" },
+          h8(ChevronRightIcon, { size: 12 })
+        ),
+        h8("span", { className: "dshgg-sectionTitle" }, props.title),
+        props.count === void 0 || props.count === null ? null : h8("span", { className: "dshgg-sectionCount" }, String(props.count))
+      ),
+      actions === null ? null : h8("div", { className: "dshgg-sectionActions" }, actions)
+    ),
+    props.open === true ? h8("div", { className: "dshgg-sectionBody" }, props.children) : null
+  );
+}
+
+// src/client/titles.js
+var import_react9 = require("react");
+var h9 = import_react9.createElement;
+function GitTabTitle(props) {
+  const tabInfo = props.useTabInfo();
+  const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;
+  return h9("span", { className: "dshgg-title" }, h9(GitBranchIcon, { size: 14 }), h9("span", { className: "dshgg-titleText" }, title));
+}
+function DiffTabTitle(props) {
+  const tabInfo = props.useTabInfo();
+  const params = tabInfo.tab.navigation?.params ?? {};
+  const name = typeof params.path === "string" && params.path !== "" ? baseName(params.path) : tabInfo.tab.title;
+  return h9("span", { className: "dshgg-title" }, h9(FileIcon, { size: 14 }), h9("span", { className: "dshgg-titleText" }, name));
+}
 
 // src/client/locale/en.js
 var en = {
@@ -245,625 +1109,16 @@ var zh = {
 // src/client/styles.css
 var styles_default = '.dshgg-root{display:flex;flex-direction:column;flex:1 1 auto;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px;line-height:1.45;background:transparent}\n.dshgg-toolbar{display:flex;align-items:center;gap:6px;padding:6px 8px;min-height:36px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1)}\n.dshgg-spacer{flex:1}\n.dshgg-branchWrap{position:relative;display:flex;min-width:0}\n.dshgg-branchChip{display:flex;align-items:center;gap:5px;min-width:0;max-width:100%;height:24px;padding:0 6px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}\n.dshgg-branchChip:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l1)}\n.dshgg-branchChip:disabled{cursor:default;color:var(--dsw-alias-label-secondary)}\n.dshgg-branchName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}\n.dshgg-upstream{display:inline-flex;align-items:center;gap:2px;color:var(--dsw-alias-label-secondary);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-sync{display:inline-flex;align-items:center;gap:1px;color:var(--dsw-alias-label-secondary);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-chevron{flex:none;transition:transform .12s ease}\n.dshgg-chevron[data-open="true"]{transform:rotate(90deg)}\n.dshgg-iconBtn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none}\n.dshgg-iconBtn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}\n.dshgg-iconBtn:disabled{opacity:.4;cursor:default}\n.dshgg-iconBtn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-iconBtn[data-spinning="true"] svg{animation:dshgg-spin 1s linear infinite}\n@keyframes dshgg-spin{to{transform:rotate(360deg)}}\n.dshgg-commitBox{display:flex;flex-direction:column;gap:6px;padding:8px 8px 9px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1)}\n.dshgg-commitMessage{width:100%;box-sizing:border-box;min-height:54px;max-height:40vh;padding:6px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:5px;background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:1.5;resize:vertical;outline:none}\n.dshgg-commitMessage::placeholder{color:var(--dsw-alias-label-tertiary)}\n.dshgg-commitMessage:focus{border-color:var(--dsw-alias-state-business-primary)}\n.dshgg-commitMessage:disabled{opacity:.6}\n.dshgg-commitRow{display:flex;align-items:center;gap:8px}\n.dshgg-commitHint{flex:1;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:25px;padding:0 11px;border:1px solid transparent;border-radius:5px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex:none}\n.dshgg-btn:disabled{opacity:.45;cursor:default}\n.dshgg-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}\n.dshgg-btnPrimary{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}\n.dshgg-btnPrimary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}\n.dshgg-btnGhost{background:transparent;border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);font-weight:500}\n.dshgg-btnGhost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-banner{display:flex;align-items:flex-start;gap:8px;margin:6px 8px 0;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;font-size:12px}\n.dshgg-banner[data-kind="error"]{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}\n.dshgg-bannerText{flex:1;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}\n.dshgg-bannerDetail{margin-top:3px;color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code);font-size:11px;max-height:96px;overflow:auto;white-space:pre-wrap}\n.dshgg-bannerActions{display:flex;align-items:center;gap:4px;flex:none}\n.dshgg-linkBtn{padding:0;border:none;background:none;color:var(--dsw-alias-state-business-primary);font:inherit;font-size:12px;cursor:pointer}\n.dshgg-linkBtn:hover{text-decoration:underline}\n.dshgg-notice{margin:6px 8px 0;padding:6px 9px;border:1px solid var(--dsw-alias-state-success-primary);border-radius:6px;color:var(--dsw-alias-state-success-primary);font-size:12px}\n.dshgg-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;padding-bottom:8px}\n.dshgg-state{display:flex;flex-direction:column;align-items:center;gap:6px;padding:34px 18px;text-align:center}\n.dshgg-stateIcon{color:var(--dsw-alias-label-tertiary);display:flex}\n.dshgg-stateTitle{margin:2px 0 0;font-size:13px;font-weight:600}\n.dshgg-stateDesc{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;max-width:320px;overflow-wrap:anywhere}\n.dshgg-stateAction{margin-top:8px}\n.dshgg-section{display:flex;flex-direction:column;flex:none}\n.dshgg-sectionHeader{display:flex;align-items:center;gap:2px;height:24px;padding:0 6px 0 2px;position:relative}\n.dshgg-sectionToggle{display:flex;align-items:center;gap:5px;min-width:0;flex:1;height:100%;padding:0 4px;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:11px;font-weight:700;letter-spacing:.02em;cursor:pointer}\n.dshgg-sectionToggle:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-sectionToggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-sectionTitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-sectionCount{color:var(--dsw-alias-label-secondary);font-weight:500;font-variant-numeric:tabular-nums}\n.dshgg-sectionActions{display:flex;align-items:center;gap:1px;flex:none}\n.dshgg-sectionBody{display:flex;flex-direction:column}\n.dshgg-row{display:flex;align-items:center;gap:6px;height:23px;padding-right:4px;flex:none;min-width:0}\n.dshgg-fileRow{cursor:pointer;user-select:none}\n.dshgg-fileRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-fileRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-status{flex:none;width:14px;text-align:center;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}\n.dshgg-status[data-status="M"]{color:var(--dsw-alias-state-warn-primary)}\n.dshgg-status[data-status="A"],.dshgg-status[data-status="U"]{color:var(--dsw-alias-state-success-primary)}\n.dshgg-status[data-status="D"]{color:var(--dsw-alias-state-error-primary)}\n.dshgg-status[data-status="R"],.dshgg-status[data-status="C"]{color:var(--dsw-alias-state-business-primary)}\n.dshgg-status[data-status="T"]{color:var(--dsw-alias-state-warn-primary)}\n.dshgg-status[data-status="!"]{color:var(--dsw-alias-state-error-primary);font-size:12px}\n.dshgg-fileName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}\n.dshgg-fileName[data-obsolete="true"]{color:var(--dsw-alias-label-secondary);text-decoration:line-through}\n.dshgg-fileArrow{flex:none;color:var(--dsw-alias-label-tertiary);font-size:11px;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-fileActions{display:flex;align-items:center;gap:0;flex:none;opacity:0}\n.dshgg-fileRow:hover .dshgg-fileActions,.dshgg-fileRow:focus-within .dshgg-fileActions{opacity:1}\n.dshgg-fileActions .dshgg-iconBtn{width:20px;height:20px}\n.dshgg-folderRow{cursor:pointer;user-select:none;color:var(--dsw-alias-label-primary)}\n.dshgg-folderRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-folderRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-folderName{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-clean{display:flex;flex-direction:column;align-items:center;gap:5px;padding:26px 16px 20px;text-align:center;color:var(--dsw-alias-label-secondary)}\n.dshgg-cleanIcon{color:var(--dsw-alias-state-success-primary);display:flex}\n.dshgg-cleanTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}\n.dshgg-cleanDesc{font-size:12px}\n.dshgg-graphRow{display:flex;gap:6px;padding:2px 8px 2px 4px;min-width:0;align-items:flex-start;border-radius:0}\n.dshgg-graphRow:hover{background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-graphRow:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-graphPrefix{margin:0;flex:none;font-family:var(--ds-font-family-code);font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);white-space:pre;user-select:none}\n.dshgg-graphBody{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}\n.dshgg-graphSubject{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary)}\n.dshgg-graphMeta{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:11px;color:var(--dsw-alias-label-secondary);min-width:0}\n.dshgg-graphHash{font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-tertiary)}\n.dshgg-dot{color:var(--dsw-alias-label-tertiary)}\n.dshgg-refs{display:inline-flex;gap:3px;flex-wrap:wrap}\n.dshgg-ref{display:inline-flex;align-items:center;gap:3px;padding:0 5px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:10px;line-height:15px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-ref[data-kind="head"]{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);font-weight:600}\n.dshgg-ref[data-kind="branch"]{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}\n.dshgg-ref[data-kind="tag"]{color:var(--dsw-alias-state-warn-primary);border-color:var(--dsw-alias-state-warn-primary)}\n.dshgg-confirm{display:flex;align-items:center;gap:10px;margin:0;padding:8px 10px;flex:none;border-top:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1)}\n.dshgg-confirmText{flex:1;min-width:0}\n.dshgg-confirmTitle{font-size:12.5px;font-weight:600;overflow-wrap:anywhere}\n.dshgg-confirmDesc{margin-top:2px;font-size:11.5px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}\n.dshgg-confirmActions{display:flex;align-items:center;gap:6px;flex:none}\n.dshgg-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:min(320px,70vw);max-height:320px;overflow-y:auto;padding:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-overlay);box-shadow:0 8px 24px rgba(0,0,0,.18)}\n.dshgg-menuItem{display:flex;align-items:center;gap:6px;width:100%;height:26px;padding:0 7px;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}\n.dshgg-menuItem:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}\n.dshgg-menuItem:disabled{cursor:default;font-weight:600}\n.dshgg-menuItem:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}\n.dshgg-menuCheck{display:inline-flex;width:12px;flex:none;color:var(--dsw-alias-state-business-primary)}\n.dshgg-menuLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-menuNote{padding:7px 8px;color:var(--dsw-alias-label-secondary);font-size:12px}\n.dshgg-title{display:inline-flex;align-items:center;gap:5px;min-width:0}\n.dshgg-titleText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffRoot{display:flex;flex-direction:column;flex:1 1 auto;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:12.5px}\n.dshgg-diffHeader{display:flex;align-items:center;gap:6px;padding:5px 8px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1);min-width:0}\n.dshgg-diffPath{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}\n.dshgg-diffName{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffFrom{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.dshgg-diffStats{flex:none;display:inline-flex;gap:4px;font-family:var(--ds-font-family-code);font-size:11px;font-variant-numeric:tabular-nums}\n.dshgg-diffAdd{color:var(--dsw-alias-code-diff-added)}\n.dshgg-diffDel{color:var(--dsw-alias-code-diff-deleted)}\n.dshgg-diffBadge{flex:none;padding:0 6px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-secondary)}\n.dshgg-diffBadge[data-kind="staged"]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}\n.dshgg-diffBadge[data-kind="untracked"]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}\n.dshgg-diffBody{flex:1;min-height:0;overflow:auto;font-family:var(--ds-font-family-code);font-size:12px;line-height:18px;padding-bottom:10px}\n.dshgg-hunkHeader{padding:2px 10px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);font-size:11.5px;white-space:pre;border-top:1px solid var(--dsw-alias-border-l1);border-bottom:1px solid var(--dsw-alias-border-l1);margin-top:2px}\n.dshgg-diffLine{display:grid;grid-template-columns:44px 44px 16px minmax(0,1fr);min-width:max-content}\n.dshgg-gutter{padding-right:6px;text-align:right;color:var(--dsw-alias-label-tertiary);user-select:none;font-variant-numeric:tabular-nums;font-size:11px;border-right:1px solid var(--dsw-alias-border-l1)}\n.dshgg-marker{text-align:center;user-select:none;color:var(--dsw-alias-label-tertiary);font-weight:700}\n.dshgg-code{padding:0 10px;white-space:pre;min-width:0}\n.dshgg-diffLine[data-type="+"]{background:var(--dsw-alias-file-diff-added-bg)}\n.dshgg-diffLine[data-type="+"] .dshgg-gutter{background:var(--dsw-alias-file-diff-added-gutter)}\n.dshgg-diffLine[data-type="+"] .dshgg-marker{color:var(--dsw-alias-file-diff-added-marker)}\n.dshgg-diffLine[data-type="-"]{background:var(--dsw-alias-file-diff-deleted-bg)}\n.dshgg-diffLine[data-type="-"] .dshgg-gutter{background:var(--dsw-alias-file-diff-deleted-gutter)}\n.dshgg-diffLine[data-type="-"] .dshgg-marker{color:var(--dsw-alias-file-diff-deleted-marker)}\n.dshgg-diffNote{padding:16px;color:var(--dsw-alias-label-secondary);font-family:var(--dsw-font-family);font-size:12.5px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}\n.dshgg-emptyLine{min-height:18px}\n';
 
-// src/client/app.js
-var h = import_react.createElement;
-var PACKAGE_ID = "@local/dsh-git-graph";
-var NS = "gitGraph";
-var GIT_ID = "@local/dsh-git-graph/git";
-var GIT_KIND = "git";
-var GIT_SHORTCUT = "workspace.git";
-var DIFF_ID = "@local/dsh-git-graph/diff";
-var DIFF_KIND = "git-diff";
-var RPC_PATH = "api/dsh-git-graph/rpc";
-var POLL_INTERVAL_MS = 5e3;
-var MAX_RENDERED_DIFF_LINES = 4e3;
-var MENU_TARGET = "gitGraphItem";
-var MENU_CONTRIBUTION_ID = "git-graph.actions";
-var panelSequence = 0;
+// src/client/styles.js
 if (typeof document !== "undefined" && document.querySelector(`style[data-plugin=${JSON.stringify(PACKAGE_ID)}]`) === null) {
   const style = document.createElement("style");
   style.setAttribute("data-plugin", PACKAGE_ID);
   style.textContent = styles_default;
   document.head.appendChild(style);
 }
-function svgIcon(size, path, options = {}) {
-  return h("svg", {
-    xmlns: "http://www.w3.org/2000/svg",
-    width: size,
-    height: size,
-    viewBox: "0 0 16 16",
-    fill: options.fill ?? "none",
-    stroke: options.fill === "currentColor" ? "none" : "currentColor",
-    strokeWidth: options.strokeWidth ?? 1.3,
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    "aria-hidden": true,
-    focusable: false,
-    className: options.className
-  }, path);
-}
-function GitBranchIcon(props) {
-  const size = props?.size ?? 16;
-  return svgIcon(size, [
-    h("circle", { key: "a", cx: 4.5, cy: 3.5, r: 1.6 }),
-    h("circle", { key: "b", cx: 4.5, cy: 12.5, r: 1.6 }),
-    h("circle", { key: "c", cx: 11.5, cy: 6.5, r: 1.6 }),
-    h("path", { key: "d", d: "M4.5 5.1v5.8" }),
-    h("path", { key: "e", d: "M11.5 8.1c0 2.1-2.4 3-7 3.4" })
-  ]);
-}
-function ChevronRightIcon(props) {
-  const size = props?.size ?? 12;
-  return svgIcon(size, h("path", { d: "M6 3.5 10.5 8 6 12.5" }), { className: props?.className });
-}
-function ChevronDownIcon(props) {
-  const size = props?.size ?? 12;
-  return svgIcon(size, h("path", { d: "M3.5 6 8 10.5 12.5 6" }), { className: props?.className });
-}
-function RefreshIcon(props) {
-  const size = props?.size ?? 14;
-  return svgIcon(size, [
-    h("path", { key: "a", d: "M13 8a5 5 0 1 1-1.7-3.75" }),
-    h("path", { key: "b", d: "M13 2.5v3.2H9.8" })
-  ]);
-}
-function PlusIcon(props) {
-  const size = props?.size ?? 14;
-  return svgIcon(size, [h("path", { key: "a", d: "M8 3v10" }), h("path", { key: "b", d: "M3 8h10" })]);
-}
-function MinusIcon(props) {
-  const size = props?.size ?? 14;
-  return svgIcon(size, h("path", { d: "M3 8h10" }));
-}
-function UndoIcon(props) {
-  const size = props?.size ?? 14;
-  return svgIcon(size, [
-    h("path", { key: "a", d: "M5.5 4.5 2.5 7.5l3 3" }),
-    h("path", { key: "b", d: "M2.5 7.5H9a4 4 0 0 1 0 8H7" })
-  ]);
-}
-function CheckIcon(props) {
-  const size = props?.size ?? 14;
-  return svgIcon(size, h("path", { d: "M3 8.5 6.2 11.5 13 4.5" }));
-}
-function CloseIcon(props) {
-  const size = props?.size ?? 12;
-  return svgIcon(size, [h("path", { key: "a", d: "M4 4l8 8" }), h("path", { key: "b", d: "M12 4l-8 8" })]);
-}
-function FileIcon(props) {
-  const size = props?.size ?? 14;
-  return svgIcon(size, [
-    h("path", { key: "a", d: "M4 1.8h5l3 3v9.4H4z" }),
-    h("path", { key: "b", d: "M9 1.8v3h3" })
-  ]);
-}
-function AlertIcon(props) {
-  const size = props?.size ?? 16;
-  return svgIcon(size, [
-    h("circle", { key: "a", cx: 8, cy: 8, r: 6.4 }),
-    h("path", { key: "b", d: "M8 4.8v4.2" }),
-    h("path", { key: "c", d: "M8 11.6h.01" })
-  ]);
-}
-function CheckCircleIcon(props) {
-  const size = props?.size ?? 28;
-  return svgIcon(size, [
-    h("circle", { key: "a", cx: 8, cy: 8, r: 6.4 }),
-    h("path", { key: "b", d: "M5 8.2 7.2 10.4 11.2 6" })
-  ]);
-}
-function makeFailure(code, message, status) {
-  const failure = new Error(message || code);
-  failure.code = code;
-  failure.detail = message || "";
-  failure.status = status;
-  return failure;
-}
-function createCaller(sessionId) {
-  return async function call(op, payload = {}) {
-    let response;
-    try {
-      response = await fetch(RPC_PATH, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json", "x-dsh-git-graph": "1" },
-        body: JSON.stringify({ sessionId, op, ...payload })
-      });
-    } catch (cause) {
-      throw makeFailure("network", cause instanceof Error ? cause.message : String(cause));
-    }
-    let data;
-    try {
-      data = await response.json();
-    } catch {
-      throw makeFailure("bad-response", `The Host answered HTTP ${response.status}.`, response.status);
-    }
-    if (data === null || typeof data !== "object") throw makeFailure("bad-response", `The Host answered HTTP ${response.status}.`, response.status);
-    if (data.ok !== true) {
-      const error = data.error ?? {};
-      throw makeFailure(typeof error.code === "string" ? error.code : "internal", typeof error.message === "string" ? error.message : "", response.status);
-    }
-    return data.value;
-  };
-}
-var STATUS_LETTERS = {
-  ".": "",
-  M: "M",
-  A: "A",
-  D: "D",
-  R: "R",
-  C: "C",
-  U: "U",
-  T: "T",
-  "?": "U"
-};
-function statusLetter(character) {
-  return STATUS_LETTERS[character] ?? "";
-}
-function statusKey(letter) {
-  if (letter === "M") return "status.modified";
-  if (letter === "A") return "status.added";
-  if (letter === "D") return "status.deleted";
-  if (letter === "R") return "status.renamed";
-  if (letter === "C") return "status.copied";
-  if (letter === "U") return "status.untracked";
-  if (letter === "!") return "status.conflict";
-  if (letter === "T") return "status.typeChanged";
-  return "status.modified";
-}
-function isStaged(entry) {
-  return entry.conflict !== true && entry.x !== "." && entry.x !== "?" && entry.x !== "!";
-}
-function isUnstaged(entry) {
-  return entry.conflict !== true && (entry.y !== "." || entry.x === "?");
-}
-function baseName(path) {
-  const index = path.lastIndexOf("/");
-  return index < 0 ? path : path.slice(index + 1);
-}
-function formatAgo(t, authoredAt) {
-  const seconds = Math.max(0, Math.floor(Date.now() / 1e3) - authoredAt);
-  if (seconds < 45) return t("time.now");
-  if (seconds < 3600) return t("time.minutes", { n: Math.max(1, Math.round(seconds / 60)) });
-  if (seconds < 86400) return t("time.hours", { n: Math.round(seconds / 3600) });
-  if (seconds < 604800) return t("time.days", { n: Math.round(seconds / 86400) });
-  if (seconds < 2592e3) return t("time.weeks", { n: Math.round(seconds / 604800) });
-  if (seconds < 31536e3) return t("time.months", { n: Math.round(seconds / 2592e3) });
-  return t("time.years", { n: Math.round(seconds / 31536e3) });
-}
-function parseRefs(refs) {
-  if (typeof refs !== "string" || refs === "") return [];
-  return refs.split(", ").filter((label) => label !== "").map((label) => {
-    if (label.startsWith("HEAD -> ")) return { label: label.slice("HEAD -> ".length), kind: "head" };
-    if (label === "HEAD") return { label: "HEAD", kind: "head" };
-    if (label.startsWith("tag: ")) return { label: label.slice("tag: ".length), kind: "tag" };
-    if (label.includes("/")) return { label, kind: "remote" };
-    return { label, kind: "branch" };
-  });
-}
-function buildTree(entries) {
-  const root = { type: "root", name: "", path: "", children: [], folders: /* @__PURE__ */ new Map() };
-  for (const entry of entries) {
-    const parts = entry.path.split("/");
-    let node = root;
-    for (let index = 0; index < parts.length - 1; index += 1) {
-      const name = parts[index];
-      let folder = node.folders.get(name);
-      if (folder === void 0) {
-        folder = {
-          type: "folder",
-          name,
-          path: parts.slice(0, index + 1).join("/"),
-          children: [],
-          folders: /* @__PURE__ */ new Map()
-        };
-        node.folders.set(name, folder);
-        node.children.push(folder);
-      }
-      node = folder;
-    }
-    node.children.push({ type: "file", name: parts[parts.length - 1], path: entry.path, entry });
-  }
-  const sort = (nodes) => {
-    nodes.sort((left, right) => {
-      const leftFolder = left.type === "folder" ? 0 : 1;
-      const rightFolder = right.type === "folder" ? 0 : 1;
-      if (leftFolder !== rightFolder) return leftFolder - rightFolder;
-      return left.name.localeCompare(right.name, void 0, { numeric: true, sensitivity: "base" });
-    });
-    for (const node of nodes) if (node.type === "folder") sort(node.children);
-  };
-  sort(root.children);
-  return root.children;
-}
-function errorText(t, failure) {
-  if (failure === null || failure === void 0) return t("error.unknown");
-  const code = failure.code;
-  if (code === "git-unavailable") return t("gitUnavailable.desc");
-  if (code === "network") return t("error.network");
-  if (code === "forbidden") return t("error.forbidden");
-  if (code === "not-a-repository") return t("noRepo.title");
-  if (code === "discard-unborn") return t("error.discardUnborn");
-  return failure.message || t("error.unknown");
-}
-function createCommandBus() {
-  const listeners = /* @__PURE__ */ new Set();
-  return {
-    emit(command) {
-      for (const listener of [...listeners]) {
-        try {
-          listener(command);
-        } catch (error) {
-          console.warn("[git-graph] context menu command failed", error);
-        }
-      }
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    }
-  };
-}
-var panelCommands = createCommandBus();
-function bindMenuTrigger(useContextMenu) {
-  if (typeof useContextMenu !== "function") return null;
-  let bindings;
-  try {
-    bindings = useContextMenu();
-  } catch (error) {
-    console.warn("[git-graph] context menus are unavailable", error);
-    return null;
-  }
-  if (bindings === null || bindings === void 0 || typeof bindings.getTriggerProps !== "function") return null;
-  return (target, handlers) => bindings.getTriggerProps(target, handlers);
-}
-function menuTarget(sessionId, kind, detail) {
-  return { kind: MENU_TARGET, value: { sessionId, kind, ...detail } };
-}
-function collectTreePaths(node) {
-  if (node.type !== "folder") return [node.path];
-  const paths = [];
-  for (const child of node.children) paths.push(...collectTreePaths(child));
-  return paths;
-}
-function absolutePath(cwd, path) {
-  if (typeof cwd !== "string" || cwd === "") return path;
-  const base = cwd.replace(/[\\/]+$/, "");
-  if (base === "") return path;
-  const windows = base.includes("\\") && !base.includes("/");
-  return windows ? `${base}\\${path.replaceAll("/", "\\")}` : `${base}/${path}`;
-}
-async function copyToClipboard(text) {
-  const clipboard = typeof navigator === "undefined" ? void 0 : navigator.clipboard;
-  if (clipboard !== void 0 && clipboard !== null && typeof clipboard.writeText === "function") {
-    try {
-      await clipboard.writeText(text);
-      return true;
-    } catch (error) {
-    }
-  }
-  try {
-    if (typeof document === "undefined" || typeof document.execCommand !== "function") return false;
-    const area = document.createElement("textarea");
-    area.value = text;
-    area.setAttribute("readonly", "");
-    area.style.position = "fixed";
-    area.style.top = "-1000px";
-    document.body.appendChild(area);
-    area.select();
-    const copied = document.execCommand("copy") !== false;
-    document.body.removeChild(area);
-    return copied;
-  } catch (error) {
-    return false;
-  }
-}
-async function copyAndReport(t, notify, text, successKey) {
-  const copied = await copyToClipboard(String(text));
-  if (typeof notify !== "function") return;
-  try {
-    notify(copied ? t(successKey) : t("menu.copyFailed"), copied);
-  } catch (error) {
-    console.warn("[git-graph] copy feedback failed", error);
-  }
-}
-function menuAction(id, label, run, extra = {}) {
-  return { id, label, run, ...extra };
-}
-function resolveMenuActions(value, t, notify) {
-  if (value === null || value === void 0 || typeof value !== "object") return [];
-  const sessionId = value.sessionId;
-  if (typeof sessionId !== "string" || sessionId === "") return [];
-  const command = (payload) => () => panelCommands.emit({ sessionId, panelId: value.panelId, ...payload });
-  const copy = (text, successKey) => () => copyAndReport(t, notify, text, successKey);
-  const blocked = value.busy === true ? { disabled: true } : {};
-  if (value.kind === "file") {
-    const path = value.path;
-    if (typeof path !== "string" || path === "") return [];
-    const section = value.section === "staged" || value.section === "merge" ? value.section : "changes";
-    const actions = [menuAction("open", t("menu.openDiff"), command({ type: "open", section, path }), blocked)];
-    if (section === "staged") {
-      actions.push(menuAction("unstage", t("actions.unstage"), command({ type: "unstage", paths: [path] }), { separatorBefore: true, ...blocked }));
-    } else {
-      actions.push(menuAction("stage", t("actions.stage"), command({ type: "stage", paths: [path] }), { separatorBefore: true, ...blocked }));
-      if (section !== "merge") actions.push(menuAction("discard", t("actions.discard"), command({ type: "discard", paths: [path], single: true }), { danger: true, ...blocked }));
-    }
-    actions.push(menuAction("copy-relative", t("menu.copyRelativePath"), copy(path, "menu.copiedRelativePath"), { separatorBefore: true }));
-    if (typeof value.cwd === "string" && value.cwd !== "") {
-      actions.push(menuAction("copy-path", t("menu.copyPath"), copy(absolutePath(value.cwd, path), "menu.copiedPath")));
-    }
-    return actions;
-  }
-  if (value.kind === "folder") {
-    const folder = value.path;
-    const paths = Array.isArray(value.paths) ? value.paths.filter((entry) => typeof entry === "string" && entry !== "") : [];
-    if (typeof folder !== "string" || folder === "" || paths.length === 0) return [];
-    const section = value.section === "staged" || value.section === "merge" ? value.section : "changes";
-    const actions = [];
-    if (section === "staged") {
-      actions.push(menuAction("unstage-all", t("actions.unstage"), command({ type: "unstage", paths }), blocked));
-    } else {
-      actions.push(menuAction("stage-all", t("actions.stage"), command({ type: "stage", paths }), blocked));
-      if (section !== "merge") actions.push(menuAction("discard-all", t("actions.discard"), command({ type: "discard", paths }), { danger: true, ...blocked }));
-    }
-    actions.push(menuAction("copy-relative", t("menu.copyRelativePath"), copy(folder, "menu.copiedRelativePath"), { separatorBefore: true }));
-    if (typeof value.cwd === "string" && value.cwd !== "") {
-      actions.push(menuAction("copy-path", t("menu.copyPath"), copy(absolutePath(value.cwd, folder), "menu.copiedPath")));
-    }
-    return actions;
-  }
-  if (value.kind === "section") {
-    const section = value.section;
-    if (section === "changes") {
-      return [
-        menuAction("stage-all", t("actions.stageAll"), command({ type: "stageSection", section }), blocked),
-        menuAction("discard-all", t("actions.discardAll"), command({ type: "discardSection", section }), { danger: true, ...blocked }),
-        menuAction("refresh", t("refresh"), command({ type: "refresh" }), { separatorBefore: true, ...blocked })
-      ];
-    }
-    if (section === "staged") {
-      return [
-        menuAction("unstage-all", t("actions.unstageAll"), command({ type: "unstageSection", section }), blocked),
-        menuAction("refresh", t("refresh"), command({ type: "refresh" }), { separatorBefore: true, ...blocked })
-      ];
-    }
-    if (section === "merge") {
-      return [menuAction("stage-all", t("actions.stageAll"), command({ type: "stageSection", section }), blocked)];
-    }
-    if (section === "graph") {
-      return [menuAction("refresh", t("menu.refreshHistory"), command({ type: "refresh" }), blocked)];
-    }
-    return [];
-  }
-  if (value.kind === "commit") {
-    const actions = [];
-    if (typeof value.oid === "string" && value.oid !== "") {
-      actions.push(menuAction("copy-id", t("menu.copyCommitId"), copy(value.oid, "menu.copiedCommitId")));
-    }
-    if (typeof value.subject === "string" && value.subject !== "") {
-      actions.push(menuAction("copy-message", t("menu.copyCommitSubject"), copy(value.subject, "menu.copiedCommitSubject")));
-    }
-    return actions;
-  }
-  if (value.kind === "diff") {
-    const path = value.path;
-    if (typeof path !== "string" || path === "") return [];
-    const actions = [menuAction("copy-relative", t("menu.copyRelativePath"), copy(path, "menu.copiedRelativePath"))];
-    if (typeof value.cwd === "string" && value.cwd !== "") {
-      actions.push(menuAction("copy-path", t("menu.copyPath"), copy(absolutePath(value.cwd, path), "menu.copiedPath")));
-    }
-    return actions;
-  }
-  return [];
-}
-function IconButton(props) {
-  return h("button", {
-    type: "button",
-    className: "dshgg-iconBtn",
-    "aria-label": props.label,
-    title: props.title ?? props.label,
-    disabled: props.disabled === true,
-    onClick: props.onClick,
-    "data-spinning": props.spinning === true ? "true" : void 0
-  }, props.children);
-}
-function Section(props) {
-  const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
-  const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
-  const menuProps = menuTrigger === null || props.menuTarget === void 0 ? null : menuTrigger(props.menuTarget, { tabIndex: -1, "aria-haspopup": "menu", title: props.menuHint });
-  return h(
-    "section",
-    { className: "dshgg-section", "data-section": props.id, "aria-label": props.title },
-    h(
-      "div",
-      { className: "dshgg-sectionHeader", ...menuProps ?? {} },
-      h(
-        "button",
-        {
-          type: "button",
-          className: "dshgg-sectionToggle",
-          "aria-expanded": props.open,
-          onClick: props.onToggle
-        },
-        h(
-          "span",
-          { className: "dshgg-chevron", "data-open": props.open === true ? "true" : "false" },
-          h(ChevronRightIcon, { size: 12 })
-        ),
-        h("span", { className: "dshgg-sectionTitle" }, props.title),
-        props.count === void 0 || props.count === null ? null : h("span", { className: "dshgg-sectionCount" }, String(props.count))
-      ),
-      actions === null ? null : h("div", { className: "dshgg-sectionActions" }, actions)
-    ),
-    props.open === true ? h("div", { className: "dshgg-sectionBody" }, props.children) : null
-  );
-}
-function FolderRow(props) {
-  const keyboard = {
-    onKeyDown: (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        props.onToggle();
-      }
-    }
-  };
-  const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
-  const rowProps = menuTrigger === null || props.menuTarget === void 0 ? keyboard : menuTrigger(props.menuTarget, { ...keyboard, "aria-haspopup": "menu", title: props.menuHint });
-  return h(
-    "div",
-    {
-      className: "dshgg-row dshgg-folderRow",
-      style: { paddingLeft: `${4 + props.depth * 10}px` },
-      role: "button",
-      tabIndex: 0,
-      "aria-expanded": props.open,
-      onClick: props.onToggle,
-      ...rowProps
-    },
-    h(
-      "span",
-      { className: "dshgg-chevron", "data-open": props.open === true ? "true" : "false" },
-      h(ChevronRightIcon, { size: 12 })
-    ),
-    h("span", { className: "dshgg-folderName" }, props.node.name)
-  );
-}
-function FileRow(props) {
-  const entry = props.entry;
-  const letter = props.letter;
-  const name = baseName(entry.path);
-  const actionButtons = [];
-  if (props.mode === "staged") {
-    actionButtons.push(h(IconButton, {
-      key: "unstage",
-      label: props.t("actions.unstage"),
-      title: props.t("actions.unstage"),
-      disabled: props.busy === true,
-      onClick: (event) => {
-        event.stopPropagation();
-        props.onUnstage(entry);
-      }
-    }, h(MinusIcon, { size: 14 })));
-  } else {
-    actionButtons.push(h(IconButton, {
-      key: "stage",
-      label: props.t("actions.stage"),
-      title: props.t("actions.stage"),
-      disabled: props.busy === true,
-      onClick: (event) => {
-        event.stopPropagation();
-        props.onStage(entry);
-      }
-    }, h(PlusIcon, { size: 14 })));
-    if (props.mode !== "merge" && typeof props.onDiscard === "function") {
-      actionButtons.push(h(IconButton, {
-        key: "discard",
-        label: props.t("actions.discard"),
-        title: props.t("actions.discard"),
-        disabled: props.busy === true,
-        onClick: (event) => {
-          event.stopPropagation();
-          props.onDiscard(entry);
-        }
-      }, h(UndoIcon, { size: 14 })));
-    }
-  }
-  const title = entry.origPath === void 0 ? entry.path : `${entry.origPath} → ${entry.path}`;
-  const keyboard = {
-    onKeyDown: (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        props.onOpen(entry);
-      }
-    }
-  };
-  const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
-  const rowProps = menuTrigger === null || props.menuTarget === void 0 ? keyboard : menuTrigger(props.menuTarget, { ...keyboard, "aria-haspopup": "menu" });
-  return h(
-    "div",
-    {
-      className: "dshgg-row dshgg-fileRow",
-      style: { paddingLeft: `${4 + props.depth * 10}px` },
-      role: "button",
-      tabIndex: 0,
-      "aria-label": `${props.t(statusKey(letter))} ${entry.path}`,
-      title,
-      onClick: () => props.onOpen(entry),
-      ...rowProps
-    },
-    h("span", { className: "dshgg-status", "data-status": letter }, letter),
-    h("span", { className: "dshgg-fileName" }, name),
-    entry.origPath === void 0 ? null : h("span", { className: "dshgg-fileArrow", title: entry.origPath }, `← ${baseName(entry.origPath)}`),
-    h("span", { className: "dshgg-fileActions" }, actionButtons)
-  );
-}
-function renderTree(nodes, depth, context) {
-  const rows = [];
-  const target = (kind, detail) => context.menuTarget === void 0 ? void 0 : context.menuTarget(kind, detail);
-  for (const node of nodes) {
-    if (node.type === "folder") {
-      const open = context.collapsed[node.path] !== true;
-      rows.push(h(FolderRow, {
-        key: `folder:${node.path}`,
-        node,
-        depth,
-        open,
-        onToggle: () => context.onToggleFolder(node.path),
-        menuTrigger: context.menuTrigger,
-        menuHint: context.menuHint,
-        menuTarget: target("folder", { section: context.mode, path: node.path, paths: collectTreePaths(node) })
-      }));
-      if (open) rows.push(...renderTree(node.children, depth + 1, context));
-      continue;
-    }
-    rows.push(h(FileRow, {
-      key: `file:${node.entry.kind}:${node.entry.path}:${node.entry.x}:${node.entry.y}`,
-      entry: node.entry,
-      letter: node.entry.letter ?? "",
-      depth,
-      t: context.t,
-      busy: context.busy,
-      mode: context.mode,
-      onOpen: context.onOpen,
-      onStage: context.onStage,
-      onUnstage: context.onUnstage,
-      onDiscard: context.onDiscard,
-      menuTrigger: context.menuTrigger,
-      menuTarget: target("file", { section: context.mode, path: node.entry.path })
-    }));
-  }
-  return rows;
-}
-function Banner(props) {
-  return h(
-    "div",
-    { className: "dshgg-banner", "data-kind": props.kind ?? "error", role: props.kind === "error" ? "alert" : "status" },
-    h(
-      "span",
-      { className: "dshgg-bannerText" },
-      h("span", null, props.title),
-      props.detail === void 0 || props.detail === "" ? null : h("div", { className: "dshgg-bannerDetail" }, props.detail)
-    ),
-    h(
-      "span",
-      { className: "dshgg-bannerActions" },
-      props.onRetry === void 0 ? null : h("button", { type: "button", className: "dshgg-linkBtn", onClick: props.onRetry }, props.retryLabel),
-      props.onDismiss === void 0 ? null : h(IconButton, { label: props.dismissLabel ?? "Dismiss", onClick: props.onDismiss }, h(CloseIcon, { size: 12 }))
-    )
-  );
-}
-function EmptyState(props) {
-  return h(
-    "div",
-    { className: "dshgg-state" },
-    h("span", { className: "dshgg-stateIcon" }, props.icon),
-    h("p", { className: "dshgg-stateTitle" }, props.title),
-    props.desc === void 0 ? null : h("p", { className: "dshgg-stateDesc" }, props.desc),
-    props.action === void 0 ? null : h("div", { className: "dshgg-stateAction" }, props.action)
-  );
-}
+
+// src/client/app.js
+var h10 = import_react10.createElement;
 function GitPanel(props) {
   const sessionId = props.sessionId;
   const t = props.t;
@@ -871,45 +1126,45 @@ function GitPanel(props) {
   const tabInfo = useTabInfo();
   const tab = tabInfo.tab;
   const visible = tab.visible !== false;
-  const call = (0, import_react.useMemo)(() => createCaller(sessionId), [sessionId]);
-  const menuTrigger = (0, import_react.useMemo)(
+  const call = (0, import_react10.useMemo)(() => createCaller(sessionId), [sessionId]);
+  const menuTrigger = (0, import_react10.useMemo)(
     () => typeof sessionId === "string" && sessionId !== "" ? bindMenuTrigger(props.useContextMenu) : null,
     [props.useContextMenu, sessionId]
   );
-  const panelId = (0, import_react.useMemo)(() => `git-panel-${++panelSequence}`, []);
-  const [status, setStatus] = (0, import_react.useState)(null);
-  const [loading, setLoading] = (0, import_react.useState)(true);
-  const [loadFailure, setLoadFailure] = (0, import_react.useState)(null);
-  const [actionFailure, setActionFailure] = (0, import_react.useState)(null);
-  const [busy, setBusy] = (0, import_react.useState)(null);
-  const [message, setMessage] = (0, import_react.useState)("");
-  const [notice, setNotice] = (0, import_react.useState)(null);
-  const [confirm, setConfirm] = (0, import_react.useState)(null);
-  const [openSections, setOpenSections] = (0, import_react.useState)({ merge: true, staged: true, changes: true, graph: true });
-  const [collapsed, setCollapsed] = (0, import_react.useState)({});
-  const [graph, setGraph] = (0, import_react.useState)(null);
-  const [graphLoading, setGraphLoading] = (0, import_react.useState)(false);
-  const [graphFailure, setGraphFailure] = (0, import_react.useState)(null);
-  const [branchMenu, setBranchMenu] = (0, import_react.useState)(false);
-  const [branches, setBranches] = (0, import_react.useState)(null);
-  const [branchLoading, setBranchLoading] = (0, import_react.useState)(false);
-  const [branchFailure, setBranchFailure] = (0, import_react.useState)(null);
-  const inFlight = (0, import_react.useRef)(false);
-  const busyRef = (0, import_react.useRef)(null);
-  const confirmRef = (0, import_react.useRef)(null);
-  const mounted = (0, import_react.useRef)(true);
-  const wrapRef = (0, import_react.useRef)(null);
-  const commandRef = (0, import_react.useRef)(null);
+  const panelId = (0, import_react10.useMemo)(() => `git-panel-${nextPanelId()}`, []);
+  const [status, setStatus] = (0, import_react10.useState)(null);
+  const [loading, setLoading] = (0, import_react10.useState)(true);
+  const [loadFailure, setLoadFailure] = (0, import_react10.useState)(null);
+  const [actionFailure, setActionFailure] = (0, import_react10.useState)(null);
+  const [busy, setBusy] = (0, import_react10.useState)(null);
+  const [message, setMessage] = (0, import_react10.useState)("");
+  const [notice, setNotice] = (0, import_react10.useState)(null);
+  const [confirm, setConfirm] = (0, import_react10.useState)(null);
+  const [openSections, setOpenSections] = (0, import_react10.useState)({ merge: true, staged: true, changes: true, graph: true });
+  const [collapsed, setCollapsed] = (0, import_react10.useState)({});
+  const [graph, setGraph] = (0, import_react10.useState)(null);
+  const [graphLoading, setGraphLoading] = (0, import_react10.useState)(false);
+  const [graphFailure, setGraphFailure] = (0, import_react10.useState)(null);
+  const [branchMenu, setBranchMenu] = (0, import_react10.useState)(false);
+  const [branches, setBranches] = (0, import_react10.useState)(null);
+  const [branchLoading, setBranchLoading] = (0, import_react10.useState)(false);
+  const [branchFailure, setBranchFailure] = (0, import_react10.useState)(null);
+  const inFlight = (0, import_react10.useRef)(false);
+  const busyRef = (0, import_react10.useRef)(null);
+  const confirmRef = (0, import_react10.useRef)(null);
+  const mounted = (0, import_react10.useRef)(true);
+  const wrapRef = (0, import_react10.useRef)(null);
+  const commandRef = (0, import_react10.useRef)(null);
   busyRef.current = busy;
   confirmRef.current = confirm;
-  (0, import_react.useEffect)(() => () => {
+  (0, import_react10.useEffect)(() => () => {
     mounted.current = false;
   }, []);
-  (0, import_react.useEffect)(() => panelCommands.subscribe((command) => {
+  (0, import_react10.useEffect)(() => panelCommands.subscribe((command) => {
     const handler = commandRef.current;
     if (typeof handler === "function") handler(command);
   }), []);
-  const loadStatus = (0, import_react.useCallback)(async (options = {}) => {
+  const loadStatus = (0, import_react10.useCallback)(async (options = {}) => {
     if (inFlight.current) return;
     inFlight.current = true;
     if (options.silent !== true) setLoading(true);
@@ -926,7 +1181,7 @@ function GitPanel(props) {
       if (mounted.current) setLoading(false);
     }
   }, [call]);
-  const loadGraph = (0, import_react.useCallback)(async () => {
+  const loadGraph = (0, import_react10.useCallback)(async () => {
     if (mounted.current) setGraphLoading(true);
     try {
       const value = await call("history");
@@ -941,7 +1196,7 @@ function GitPanel(props) {
       if (mounted.current) setGraphLoading(false);
     }
   }, [call]);
-  const loadBranches = (0, import_react.useCallback)(async () => {
+  const loadBranches = (0, import_react10.useCallback)(async () => {
     if (mounted.current) setBranchLoading(true);
     try {
       const value = await call("branches");
@@ -955,11 +1210,11 @@ function GitPanel(props) {
       if (mounted.current) setBranchLoading(false);
     }
   }, [call]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react10.useEffect)(() => {
     void loadStatus();
     void loadGraph();
   }, [loadStatus, loadGraph]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react10.useEffect)(() => {
     if (!visible) return void 0;
     const timer = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
@@ -968,14 +1223,14 @@ function GitPanel(props) {
     }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [visible, loadStatus]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react10.useEffect)(() => {
     if (notice === null) return void 0;
     const timer = setTimeout(() => {
       if (mounted.current) setNotice(null);
     }, 4e3);
     return () => clearTimeout(timer);
   }, [notice]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react10.useEffect)(() => {
     if (!branchMenu) return void 0;
     const onPointerDown = (event) => {
       const wrap = wrapRef.current;
@@ -992,7 +1247,7 @@ function GitPanel(props) {
       document.removeEventListener("keydown", onKeyDown, true);
     };
   }, [branchMenu]);
-  const perform = (0, import_react.useCallback)(async (name, operation, options = {}) => {
+  const perform = (0, import_react10.useCallback)(async (name, operation, options = {}) => {
     if (busyRef.current !== null) return void 0;
     busyRef.current = name;
     setBusy(name);
@@ -1017,10 +1272,10 @@ function GitPanel(props) {
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
   const files = status?.files ?? [];
-  const mergeFiles = (0, import_react.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
-  const stagedFiles = (0, import_react.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
-  const changedFiles = (0, import_react.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
-  const treeCache = (0, import_react.useMemo)(() => ({
+  const mergeFiles = (0, import_react10.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
+  const stagedFiles = (0, import_react10.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
+  const changedFiles = (0, import_react10.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
+  const treeCache = (0, import_react10.useMemo)(() => ({
     merge: buildTree(mergeFiles.map((entry) => ({ ...entry, letter: "!" }))),
     staged: buildTree(stagedFiles.map((entry) => ({ ...entry, letter: statusLetter(entry.x) }))),
     changes: buildTree(changedFiles.map((entry) => ({ ...entry, letter: entry.untracked === true ? "U" : statusLetter(entry.y) })))
@@ -1030,7 +1285,7 @@ function GitPanel(props) {
   const toggleFolder = (path) => setCollapsed((current) => ({ ...current, [path]: current[path] !== true }));
   const stage = (entries) => perform("stage", () => call("stage", { paths: entries.map((entry) => entry.path) }));
   const unstage = (entries) => perform("unstage", () => call("unstage", { paths: entries.map((entry) => entry.path) }));
-  const openDiff = (0, import_react.useCallback)((entry, mode) => {
+  const openDiff = (0, import_react10.useCallback)((entry, mode) => {
     tab.actions.openTab(DIFF_KIND, {
       params: {
         path: entry.path,
@@ -1191,16 +1446,16 @@ function GitPanel(props) {
   const canAct = repo !== null && busy === null;
   const sectionActions = {
     merge: null,
-    staged: stagedFiles.length === 0 ? null : h(IconButton, {
+    staged: stagedFiles.length === 0 ? null : h10(IconButton, {
       label: t("actions.unstageAll"),
       title: t("actions.unstageAll"),
       disabled: !canAct,
       onClick: () => {
         void unstage(stagedFiles);
       }
-    }, h(MinusIcon, { size: 14 })),
+    }, h10(MinusIcon, { size: 14 })),
     changes: changedFiles.length === 0 ? null : [
-      h(IconButton, {
+      h10(IconButton, {
         key: "stage-all",
         label: t("actions.stageAll"),
         title: t("actions.stageAll"),
@@ -1208,14 +1463,14 @@ function GitPanel(props) {
         onClick: () => {
           void stage(changedFiles);
         }
-      }, h(PlusIcon, { size: 14 })),
-      h(IconButton, {
+      }, h10(PlusIcon, { size: 14 })),
+      h10(IconButton, {
         key: "discard-all",
         label: t("actions.discardAll"),
         title: t("actions.discardAll"),
         disabled: !canAct,
         onClick: () => setConfirm({ kind: "discardAll", entries: changedFiles })
-      }, h(UndoIcon, { size: 14 }))
+      }, h10(UndoIcon, { size: 14 }))
     ]
   };
   const treeContext = {
@@ -1238,46 +1493,46 @@ function GitPanel(props) {
   };
   const renderState = () => {
     if (loading && status === null) {
-      return h(EmptyState, {
-        icon: h(GitBranchIcon, { size: 26 }),
+      return h10(EmptyState, {
+        icon: h10(GitBranchIcon, { size: 26 }),
         title: t("loading")
       });
     }
     if (loadFailure !== null && status === null) {
       if (loadFailure.code === "git-unavailable") {
-        return h(EmptyState, {
-          icon: h(AlertIcon, { size: 26 }),
+        return h10(EmptyState, {
+          icon: h10(AlertIcon, { size: 26 }),
           title: t("gitUnavailable.title"),
           desc: t("gitUnavailable.desc"),
-          action: h("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
+          action: h10("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
             void loadStatus();
           } }, t("retry"))
         });
       }
-      return h(EmptyState, {
-        icon: h(AlertIcon, { size: 26 }),
+      return h10(EmptyState, {
+        icon: h10(AlertIcon, { size: 26 }),
         title: t("error.title"),
         desc: errorText(t, loadFailure),
-        action: h("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
+        action: h10("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: () => {
           void loadStatus();
         } }, t("retry"))
       });
     }
     if (status !== null && repo === null) {
-      return h(EmptyState, {
-        icon: h(GitBranchIcon, { size: 26 }),
+      return h10(EmptyState, {
+        icon: h10(GitBranchIcon, { size: 26 }),
         title: t("noRepo.title"),
         desc: t("noRepo.desc", { path: sessionDirectory ?? "" }),
-        action: h("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: refreshAll }, t("refresh"))
+        action: h10("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: refreshAll }, t("refresh"))
       });
     }
     return null;
   };
   const stateView = renderState();
-  const body = stateView !== null ? stateView : h(
-    import_react.Fragment,
+  const body = stateView !== null ? stateView : h10(
+    import_react10.Fragment,
     null,
-    mergeFiles.length === 0 ? null : h(Section, {
+    mergeFiles.length === 0 ? null : h10(Section, {
       id: "merge",
       title: t("sections.merge"),
       count: mergeFiles.length,
@@ -1288,7 +1543,7 @@ function GitPanel(props) {
       menuHint: t("menu.hint"),
       menuTarget: menuSection("merge")
     }, renderTree(treeCache.merge, 0, { ...treeContext, mode: "merge", onOpen: (entry) => openDiff(entry, "changes") })),
-    stagedFiles.length === 0 ? null : h(Section, {
+    stagedFiles.length === 0 ? null : h10(Section, {
       id: "staged",
       title: t("sections.staged"),
       count: stagedFiles.length,
@@ -1309,7 +1564,7 @@ function GitPanel(props) {
         void unstage([entry]);
       }
     })),
-    changedFiles.length === 0 ? null : h(Section, {
+    changedFiles.length === 0 ? null : h10(Section, {
       id: "changes",
       title: t("sections.changes"),
       count: changedFiles.length,
@@ -1320,12 +1575,12 @@ function GitPanel(props) {
       menuHint: t("menu.hint"),
       menuTarget: menuSection("changes")
     }, renderTree(treeCache.changes, 0, { ...treeContext, onOpen: (entry) => openDiff(entry, "changes") })),
-    clean ? h(
+    clean ? h10(
       "div",
       { className: "dshgg-clean" },
-      h("span", { className: "dshgg-cleanIcon" }, h(CheckCircleIcon, { size: 26 })),
-      h("span", { className: "dshgg-cleanTitle" }, t("clean.title")),
-      h("span", { className: "dshgg-cleanDesc" }, t("clean.desc"))
+      h10("span", { className: "dshgg-cleanIcon" }, h10(CheckCircleIcon, { size: 26 })),
+      h10("span", { className: "dshgg-cleanTitle" }, t("clean.title")),
+      h10("span", { className: "dshgg-cleanDesc" }, t("clean.desc"))
     ) : null,
     graphRows(t, graph, graphLoading, graphFailure, openSections.graph === true, () => toggleSection("graph"), () => {
       void loadGraph();
@@ -1333,16 +1588,16 @@ function GitPanel(props) {
   );
   const commitHint = stagedFiles.length > 0 ? t("commit.hint") : t("commit.hintNone");
   const placeholder = repo === null ? t("commit.placeholder", { branch: "" }) : t("commit.placeholder", { branch: branchLabel ?? "" });
-  return h(
+  return h10(
     "div",
     { className: "dshgg-root", "data-dsh-git-graph": "" },
-    h(
+    h10(
       "div",
       { className: "dshgg-toolbar" },
-      h(
+      h10(
         "div",
         { className: "dshgg-branchWrap", ref: wrapRef },
-        h(
+        h10(
           "button",
           {
             type: "button",
@@ -1353,14 +1608,14 @@ function GitPanel(props) {
             "aria-expanded": branchMenu,
             title: repo === null ? t("noRepo.title") : t("branch.menu")
           },
-          h(GitBranchIcon, { size: 14 }),
-          h("span", { className: "dshgg-branchName" }, branchLabel ?? t("loading")),
-          ahead > 0 ? h("span", { className: "dshgg-sync", title: t("branch.ahead", { n: ahead }) }, h("span", null, "↑"), String(ahead)) : null,
-          behind > 0 ? h("span", { className: "dshgg-sync", title: t("branch.behind", { n: behind }) }, h("span", null, "↓"), String(behind)) : null,
-          repo?.upstream !== void 0 && repo?.upstream !== null ? h("span", { className: "dshgg-upstream", title: t("branch.upstream", { name: repo.upstream }) }, repo.upstream) : null,
-          h(ChevronDownIcon, { size: 12 })
+          h10(GitBranchIcon, { size: 14 }),
+          h10("span", { className: "dshgg-branchName" }, branchLabel ?? t("loading")),
+          ahead > 0 ? h10("span", { className: "dshgg-sync", title: t("branch.ahead", { n: ahead }) }, h10("span", null, "↑"), String(ahead)) : null,
+          behind > 0 ? h10("span", { className: "dshgg-sync", title: t("branch.behind", { n: behind }) }, h10("span", null, "↓"), String(behind)) : null,
+          repo?.upstream !== void 0 && repo?.upstream !== null ? h10("span", { className: "dshgg-upstream", title: t("branch.upstream", { name: repo.upstream }) }, repo.upstream) : null,
+          h10(ChevronDownIcon, { size: 12 })
         ),
-        branchMenu ? h(BranchMenu, {
+        branchMenu ? h10(BranchMenu, {
           t,
           branches,
           loading: branchLoading,
@@ -1371,19 +1626,19 @@ function GitPanel(props) {
           }
         }) : null
       ),
-      h("span", { className: "dshgg-spacer" }),
-      h(IconButton, {
+      h10("span", { className: "dshgg-spacer" }),
+      h10(IconButton, {
         label: t("refresh"),
         title: t("refresh"),
         disabled: busy !== null,
         spinning: busy === "refresh",
         onClick: refreshAll
-      }, h(RefreshIcon, { size: 14 }))
+      }, h10(RefreshIcon, { size: 14 }))
     ),
-    repo === null ? null : h(
+    repo === null ? null : h10(
       "div",
       { className: "dshgg-commitBox" },
-      h("textarea", {
+      h10("textarea", {
         className: "dshgg-commitMessage",
         value: message,
         rows: 3,
@@ -1399,11 +1654,11 @@ function GitPanel(props) {
           }
         }
       }),
-      h(
+      h10(
         "div",
         { className: "dshgg-commitRow" },
-        h("span", { className: "dshgg-commitHint", title: commitHint }, commitHint),
-        h("button", {
+        h10("span", { className: "dshgg-commitHint", title: commitHint }, commitHint),
+        h10("button", {
           type: "button",
           className: "dshgg-btn dshgg-btnPrimary",
           disabled: message.trim() === "" || busy !== null,
@@ -1411,7 +1666,7 @@ function GitPanel(props) {
         }, busy === "commit" ? t("commit.committing") : t("commit.action"))
       )
     ),
-    loadFailure !== null && status !== null ? h(Banner, {
+    loadFailure !== null && status !== null ? h10(Banner, {
       title: t("error.title"),
       detail: errorText(t, loadFailure),
       retryLabel: t("retry"),
@@ -1421,86 +1676,39 @@ function GitPanel(props) {
       dismissLabel: t("action.dismiss"),
       onDismiss: () => setLoadFailure(null)
     }) : null,
-    actionFailure !== null ? h(Banner, {
+    actionFailure !== null ? h10(Banner, {
       title: t("error.title"),
       detail: errorText(t, actionFailure),
       dismissLabel: t("action.dismiss"),
       onDismiss: () => setActionFailure(null)
     }) : null,
-    notice !== null ? h("div", { className: "dshgg-notice", role: "status" }, notice) : null,
-    h("div", { className: "dshgg-scroll" }, body),
-    confirm !== null ? h(
+    notice !== null ? h10("div", { className: "dshgg-notice", role: "status" }, notice) : null,
+    h10("div", { className: "dshgg-scroll" }, body),
+    confirm !== null ? h10(
       "div",
       { className: "dshgg-confirm", role: "alertdialog", "aria-label": confirmTitle(t, confirm) },
-      h(
+      h10(
         "div",
         { className: "dshgg-confirmText" },
-        h("div", { className: "dshgg-confirmTitle" }, confirmTitle(t, confirm)),
-        confirmDescription(t, confirm) === "" ? null : h("div", { className: "dshgg-confirmDesc" }, confirmDescription(t, confirm))
+        h10("div", { className: "dshgg-confirmTitle" }, confirmTitle(t, confirm)),
+        confirmDescription(t, confirm) === "" ? null : h10("div", { className: "dshgg-confirmDesc" }, confirmDescription(t, confirm))
       ),
-      h(
+      h10(
         "div",
         { className: "dshgg-confirmActions" },
-        h("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", disabled: busy !== null, onClick: () => setConfirm(null) }, t("action.cancel")),
-        h("button", { type: "button", className: "dshgg-btn dshgg-btnPrimary", disabled: busy !== null, onClick: confirmAction }, confirmActionLabel(t, confirm))
+        h10("button", { type: "button", className: "dshgg-btn dshgg-btnGhost", disabled: busy !== null, onClick: () => setConfirm(null) }, t("action.cancel")),
+        h10("button", { type: "button", className: "dshgg-btn dshgg-btnPrimary", disabled: busy !== null, onClick: confirmAction }, confirmActionLabel(t, confirm))
       )
     ) : null
   );
-}
-function confirmTitle(t, confirm) {
-  if (confirm.kind === "commitAll") return t("commit.emptyConfirm");
-  if (confirm.kind === "discardAll") return t("confirm.discardAllTitle", { n: confirm.entries.length });
-  return t("confirm.discardTitle", { name: baseName(confirm.entry.path) });
-}
-function confirmDescription(t, confirm) {
-  if (confirm.kind === "commitAll") return "";
-  if (confirm.kind === "discardAll") return t("confirm.discardAllDesc");
-  return confirm.entry.untracked === true ? t("confirm.deleteUntrackedDesc") : t("confirm.discardDesc");
-}
-function confirmActionLabel(t, confirm) {
-  if (confirm.kind === "commitAll") return t("commit.stageAll");
-  return confirm.kind === "discardAll" ? t("confirm.discardAll") : t("confirm.discard");
-}
-function BranchMenu(props) {
-  const t = props.t;
-  let content;
-  if (props.loading === true && props.branches === null) {
-    content = h("div", { className: "dshgg-menuNote" }, t("branch.loading"));
-  } else if (props.failure !== null) {
-    content = h(
-      "div",
-      { className: "dshgg-menuNote" },
-      errorText(t, props.failure),
-      " ",
-      h("button", { type: "button", className: "dshgg-linkBtn", onClick: props.onRetry }, t("retry"))
-    );
-  } else if (props.branches === null || props.branches.length === 0) {
-    content = h("div", { className: "dshgg-menuNote" }, t("branch.empty"));
-  } else {
-    content = props.branches.map((branch) => h(
-      "button",
-      {
-        key: branch.name,
-        type: "button",
-        className: "dshgg-menuItem",
-        role: "menuitemradio",
-        "aria-checked": branch.current === true,
-        disabled: branch.current === true,
-        onClick: () => props.onPick(branch.name)
-      },
-      h("span", { className: "dshgg-menuCheck" }, branch.current === true ? h(CheckIcon, { size: 12 }) : null),
-      h("span", { className: "dshgg-menuLabel" }, branch.name)
-    ));
-  }
-  return h("div", { className: "dshgg-menu", role: "menu", "aria-label": t("branch.menu") }, content);
 }
 function graphRows(t, commits, loading, failure, open, onToggle, onRetry, menu) {
   const rows = [];
   const trigger = menu === void 0 ? null : menu.trigger;
   if (loading === true && commits === null) {
-    rows.push(h("div", { key: "loading", className: "dshgg-menuNote" }, t("graph.loading")));
+    rows.push(h10("div", { key: "loading", className: "dshgg-menuNote" }, t("graph.loading")));
   } else if (failure !== null) {
-    rows.push(h(Banner, {
+    rows.push(h10(Banner, {
       key: "error",
       title: t("error.title"),
       detail: errorText(t, failure),
@@ -1508,10 +1716,10 @@ function graphRows(t, commits, loading, failure, open, onToggle, onRetry, menu) 
       onRetry
     }));
   } else if (commits === null || commits.length === 0) {
-    rows.push(h("div", { key: "empty", className: "dshgg-menuNote" }, t("graph.empty")));
+    rows.push(h10("div", { key: "empty", className: "dshgg-menuNote" }, t("graph.empty")));
   } else {
     for (const commit of commits) {
-      rows.push(h(GraphRow, {
+      rows.push(h10(GraphRow, {
         key: commit.oid,
         commit,
         t,
@@ -1520,7 +1728,7 @@ function graphRows(t, commits, loading, failure, open, onToggle, onRetry, menu) 
       }));
     }
   }
-  return h(Section, {
+  return h10(Section, {
     id: "graph",
     title: t("sections.graph"),
     count: commits === null ? void 0 : commits.length,
@@ -1539,181 +1747,35 @@ function GraphRow(props) {
   const hidden = refs.length - visibleRefs.length;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
   const menuProps = menuTrigger === null || props.menuTarget === void 0 ? null : menuTrigger(props.menuTarget, { tabIndex: 0, "aria-haspopup": "menu" });
-  return h(
+  return h10(
     "div",
     {
       className: "dshgg-graphRow",
       title: `${commit.shortOid} ${commit.subject} · ${t("menu.hint")}`,
       ...menuProps ?? {}
     },
-    h("pre", { className: "dshgg-graphPrefix" }, commit.graph === "" ? "*" : commit.graph),
-    h(
+    h10("pre", { className: "dshgg-graphPrefix" }, commit.graph === "" ? "*" : commit.graph),
+    h10(
       "div",
       { className: "dshgg-graphBody" },
-      h("div", { className: "dshgg-graphSubject" }, commit.subject === "" ? t("graph.noSubject") : commit.subject),
-      h(
+      h10("div", { className: "dshgg-graphSubject" }, commit.subject === "" ? t("graph.noSubject") : commit.subject),
+      h10(
         "div",
         { className: "dshgg-graphMeta" },
-        h("span", { className: "dshgg-graphHash" }, commit.shortOid),
-        h("span", { className: "dshgg-dot" }, "·"),
-        h("span", null, commit.author),
-        h("span", { className: "dshgg-dot" }, "·"),
-        h("span", null, formatAgo(t, commit.authoredAt)),
-        visibleRefs.length === 0 ? null : h(
+        h10("span", { className: "dshgg-graphHash" }, commit.shortOid),
+        h10("span", { className: "dshgg-dot" }, "·"),
+        h10("span", null, commit.author),
+        h10("span", { className: "dshgg-dot" }, "·"),
+        h10("span", null, formatAgo(t, commit.authoredAt)),
+        visibleRefs.length === 0 ? null : h10(
           "span",
           { className: "dshgg-refs" },
-          visibleRefs.map((ref, index) => h("span", { key: `${ref.label}:${index}`, className: "dshgg-ref", "data-kind": ref.kind, title: ref.label }, ref.label)),
-          hidden > 0 ? h("span", { key: "more", className: "dshgg-ref", title: refs.slice(3).map((ref) => ref.label).join(", ") }, `+${hidden}`) : null
+          visibleRefs.map((ref, index) => h10("span", { key: `${ref.label}:${index}`, className: "dshgg-ref", "data-kind": ref.kind, title: ref.label }, ref.label)),
+          hidden > 0 ? h10("span", { key: "more", className: "dshgg-ref", title: refs.slice(3).map((ref) => ref.label).join(", ") }, `+${hidden}`) : null
         )
       )
     )
   );
-}
-function DiffPanel(props) {
-  const sessionId = props.sessionId;
-  const t = props.t;
-  const tabInfo = props.useTabInfo();
-  const tab = tabInfo.tab;
-  const params = tab.navigation?.params ?? {};
-  const revision = tab.navigation?.revision ?? 0;
-  const call = (0, import_react.useMemo)(() => createCaller(sessionId), [sessionId]);
-  const menuTrigger = (0, import_react.useMemo)(
-    () => typeof sessionId === "string" && sessionId !== "" ? bindMenuTrigger(props.useContextMenu) : null,
-    [props.useContextMenu, sessionId]
-  );
-  const [state, setState] = (0, import_react.useState)({ phase: "loading", diff: null, failure: null });
-  const [reload, setReload] = (0, import_react.useState)(0);
-  const hasTarget = typeof params.path === "string" && params.path !== "";
-  (0, import_react.useEffect)(() => {
-    if (!hasTarget) {
-      setState({ phase: "empty", diff: null, failure: null });
-      return void 0;
-    }
-    let cancelled = false;
-    setState({ phase: "loading", diff: null, failure: null });
-    call("diff", {
-      path: params.path,
-      staged: params.staged === true,
-      untracked: params.untracked === true
-    }).then((diff) => {
-      if (!cancelled) setState({ phase: "ready", diff, failure: null });
-    }).catch((failure) => {
-      if (!cancelled) setState({ phase: "error", diff: null, failure });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [call, hasTarget, params.path, params.staged, params.untracked, revision, reload]);
-  const badgeKind = params.untracked === true ? "untracked" : params.staged === true ? "staged" : "unstaged";
-  const badgeLabel = badgeKind === "untracked" ? t("diff.untracked") : badgeKind === "staged" ? t("diff.staged") : t("diff.unstaged");
-  const headerMenu = menuTrigger === null || !hasTarget ? null : menuTrigger(menuTarget(sessionId, "diff", { path: params.path, cwd: params.cwd }), { tabIndex: -1, "aria-haspopup": "menu", title: t("menu.hint") });
-  const header = hasTarget ? h(
-    "div",
-    { className: "dshgg-diffHeader", ...headerMenu ?? {} },
-    h(
-      "span",
-      { className: "dshgg-diffPath" },
-      h("span", { className: "dshgg-diffName" }, baseName(params.path)),
-      params.origPath === void 0 || params.origPath === null || params.origPath === "" ? null : h("span", { className: "dshgg-diffFrom" }, t("diff.from", { path: params.origPath }))
-    ),
-    h("span", { className: "dshgg-diffBadge", "data-kind": badgeKind }, badgeLabel),
-    state.phase === "ready" && state.diff !== null && state.diff.binary !== true ? h(
-      "span",
-      { className: "dshgg-diffStats" },
-      h("span", { className: "dshgg-diffAdd" }, `+${state.diff.additions}`),
-      h("span", { className: "dshgg-diffDel" }, `−${state.diff.deletions}`)
-    ) : null,
-    h(IconButton, {
-      label: t("diff.refresh"),
-      title: t("diff.refresh"),
-      onClick: () => setReload((value) => value + 1)
-    }, h(RefreshIcon, { size: 14 }))
-  ) : null;
-  let content;
-  if (!hasTarget) {
-    content = h(EmptyState, {
-      icon: h(FileIcon, { size: 26 }),
-      title: t("diff.title"),
-      desc: t("diff.pick")
-    });
-  } else if (state.phase === "loading") {
-    content = h("div", { className: "dshgg-diffNote" }, t("diff.loading"));
-  } else if (state.phase === "error") {
-    content = h(Banner, {
-      title: t("diff.error"),
-      detail: errorText(t, state.failure),
-      retryLabel: t("retry"),
-      onRetry: () => setReload((value) => value + 1)
-    });
-  } else {
-    content = renderDiff(t, state.diff);
-  }
-  return h(
-    "div",
-    { className: "dshgg-diffRoot", "data-dsh-git-graph-diff": "" },
-    header,
-    h("div", { className: "dshgg-diffBody" }, content)
-  );
-}
-function renderDiff(t, diff) {
-  if (diff === null || diff === void 0) return h("div", { className: "dshgg-diffNote" }, t("diff.empty"));
-  if (diff.binary === true) return h("div", { className: "dshgg-diffNote" }, t("diff.binary"));
-  const hunks = Array.isArray(diff.hunks) ? diff.hunks : [];
-  if (hunks.length === 0) return h("div", { className: "dshgg-diffNote" }, t("diff.empty"));
-  const rows = [];
-  let rendered = 0;
-  let clipped = false;
-  if (diff.truncated === true) rows.push(h("div", { key: "truncated", className: "dshgg-diffNote" }, t("diff.truncated")));
-  for (let index = 0; index < hunks.length; index += 1) {
-    const hunk = hunks[index];
-    rows.push(h("div", { key: `hunk:${index}`, className: "dshgg-hunkHeader" }, hunk.header ?? ""));
-    let oldLine = hunk.oldStart ?? 0;
-    let newLine = hunk.newStart ?? 0;
-    for (let lineIndex = 0; lineIndex < hunk.lines.length; lineIndex += 1) {
-      if (rendered >= MAX_RENDERED_DIFF_LINES) {
-        clipped = true;
-        break;
-      }
-      const line = hunk.lines[lineIndex];
-      let oldNumber = "";
-      let newNumber = "";
-      if (line.t === " ") {
-        oldNumber = String(oldLine);
-        newNumber = String(newLine);
-        oldLine += 1;
-        newLine += 1;
-      } else if (line.t === "-") {
-        oldNumber = String(oldLine);
-        oldLine += 1;
-      } else {
-        newNumber = String(newLine);
-        newLine += 1;
-      }
-      rows.push(h(
-        "div",
-        { key: `line:${index}:${lineIndex}`, className: "dshgg-diffLine", "data-type": line.t },
-        h("span", { className: "dshgg-gutter" }, oldNumber),
-        h("span", { className: "dshgg-gutter" }, newNumber),
-        h("span", { className: "dshgg-marker" }, line.t === " " ? "" : line.t),
-        h("span", { className: "dshgg-code" }, line.text === "" ? " " : line.text)
-      ));
-      rendered += 1;
-    }
-    if (clipped) break;
-  }
-  if (clipped) rows.push(h("div", { key: "clipped", className: "dshgg-diffNote" }, t("diff.truncated")));
-  return rows;
-}
-function GitTabTitle(props) {
-  const tabInfo = props.useTabInfo();
-  const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;
-  return h("span", { className: "dshgg-title" }, h(GitBranchIcon, { size: 14 }), h("span", { className: "dshgg-titleText" }, title));
-}
-function DiffTabTitle(props) {
-  const tabInfo = props.useTabInfo();
-  const params = tabInfo.tab.navigation?.params ?? {};
-  const name = typeof params.path === "string" && params.path !== "" ? baseName(params.path) : tabInfo.tab.title;
-  return h("span", { className: "dshgg-title" }, h(FileIcon, { size: 14 }), h("span", { className: "dshgg-titleText" }, name));
 }
 var inject = ["slots", "locale", "sidebarRightTabs", "sidebarRight"];
 function apply(ctx) {
