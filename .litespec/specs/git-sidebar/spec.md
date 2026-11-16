@@ -742,7 +742,9 @@ graph SHALL NOT offer another page.
 Each collapsible section header SHALL remain visible at the top edge of its
 scrolling pane for as long as any part of its own section still reaches below
 that edge. A pinned header SHALL paint the host's surface, so the rows scrolling
-beneath it are hidden. At most one header SHALL be pinned at a time: while a
+beneath it are hidden. A header SHALL show the host's hover highlight over that
+surface while the pointer is over it, and the highlight SHALL stay inside the
+header's rounded corners. At most one header SHALL be pinned at a time: while a
 header is pinned, the next section's header SHALL keep its normal position until
 the pinned header's section has left the top edge, and SHALL then take that
 place. A pinned header SHALL keep its toggle, count and context menu usable. A
@@ -759,6 +761,11 @@ position.
 
 - **WHEN** rows scroll under a pinned header
 - **THEN** the header's surface hides them
+
+#### Scenario: Hovering a header highlights it
+
+- **WHEN** the pointer moves over a section header, whether it is pinned or in its normal position
+- **THEN** the header shows the host hover highlight over its surface and the rows beneath a pinned header stay hidden
 
 #### Scenario: Only one header is pinned
 
