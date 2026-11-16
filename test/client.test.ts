@@ -50,6 +50,7 @@ const fakeReact: HarnessReact = {
     return [typeof initial === 'function' ? (initial as () => T)() : initial, () => {}]
   },
   useEffect() {},
+  useLayoutEffect() {},
   useMemo<T>(factory: () => T) {
     return factory()
   },

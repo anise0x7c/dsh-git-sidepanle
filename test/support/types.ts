@@ -176,6 +176,7 @@ export interface HarnessReact {
   useMemo<T>(factory: () => T, deps?: readonly unknown[]): T
   useCallback<T extends (...args: never[]) => unknown>(callback: T, deps?: readonly unknown[]): T
   useEffect(callback: () => (() => void) | undefined, deps?: readonly unknown[]): void
+  useLayoutEffect(callback: () => (() => void) | undefined, deps?: readonly unknown[]): void
 }
 
 /** JSON body of one panel RPC request, as the panel sends it. */

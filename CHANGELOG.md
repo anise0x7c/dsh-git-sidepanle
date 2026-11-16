@@ -3,6 +3,25 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## 0.9.0
+
+The commit message box now takes the height its message needs:
+
+- The box starts one line high instead of three, so an empty or one-line message
+  leaves the space to the change list and the graph.
+- Typing grows it by one line for every line the message wraps onto, and deleting
+  text shrinks it back, down to a single line.
+- It stops at ten lines: a longer message scrolls inside the box instead of
+  pushing the rest of the panel out.
+- A message that rewraps because the Sidebar or the window became narrower is
+  re-measured without waiting for the next keystroke.
+- The manual resize handle is gone: the content decides the height, and a
+  dragged height would contradict the ten-line limit.
+
+Tests: 282 (was 273), covering the height rule, the measuring pass and its width
+watcher, and the one-row message box.
+This is a browser-only change: no Host restart is needed.
+
 ## 0.8.2
 
 Pinned section headers now cover the pane's top edge completely:

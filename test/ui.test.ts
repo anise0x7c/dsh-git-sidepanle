@@ -1040,8 +1040,11 @@ test('the commit button follows the message and posts a commit', async () => {
   const mounted = await mountGit()
   const commitButton = () => buttonByText(mounted.harness, 'commit.action')
   assert.equal(commitButton().props.disabled, true)
-  const textarea = mounted.harness.findAll((element) => element.type === 'textarea')[0]
-  mounted.harness.change(textarea, 'feat: git sidebar')
+  const messageBox = () => mounted.harness.findAll((element) => element.type === 'textarea')[0]
+  const emptyBox = messageBox()
+  assert.equal(emptyBox?.props.rows, 1, 'the message box starts one line high')
+  assert.equal(emptyBox?.props.className, 'dshgg-commitMessage')
+  mounted.harness.change(emptyBox, 'feat: git sidebar')
   await mounted.harness.flush()
   assert.equal(commitButton().props.disabled, false)
   mounted.harness.click(commitButton())
@@ -1050,6 +1053,7 @@ test('the commit button follows the message and posts a commit', async () => {
   assert.equal(commitCall?.message, 'feat: git sidebar')
   assert.notEqual(commitCall?.stageAll, true)
   assert.match(mounted.harness.text(), /commit\.done/)
+  assert.equal(messageBox()?.props.value, '', 'a committed message leaves the box empty')
   await mounted.harness.dispose()
 })
 

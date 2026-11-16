@@ -55,6 +55,7 @@ src/
       menu.ts                 panel-scoped command wiring
       split.ts                pure split-ratio range, pointer mapping and key steps
       scroll.ts               pure near-end rule that pages the commit history
+      autosize.ts             commit-message height rule and its one element pass
       hooks/                  repository/history/branches/details/action hooks
       views/                  branch/commit/change/graph sections and the split view
       GitPanel.ts             hook and view assembly
@@ -74,7 +75,7 @@ test/
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
-panel/views/* -> { panel/controls, panel/split, icons, git/format, git/graph }
+panel/views/* -> { panel/autosize, panel/controls, panel/split, icons, git/format, git/graph }
 pure git/menu/locale logic -> no React, no ctx
 host: http/* -> nothing; git/* -> git/exec; rpc -> readers; host-entry -> rpc + http/*
 either half -- import type --> shared/git
@@ -104,7 +105,9 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
    keyboard gestures. `GitPanel` keeps the ratio so commit details can replace
    the split and return to it, while commit metadata and files load lazily.
 5. Change actions share a busy lock, failure handling, confirmation and refresh
-   path. Commit/checkout also refresh history.
+   path. Commit/checkout also refresh history. The commit box sizes itself to its
+   message (`panel/autosize.ts`): one line at rest, ten at most, re-measured from
+   a layout effect per message and from a width watcher when the box rewraps.
 6. Triggers capture targets. The shared overlay calls a contribution with the
    target's **value**, never the wrapper. Menu actions travel through the bus to
    the owning panel, guarded by Session id, panel id, busy and stale checks.

@@ -187,17 +187,29 @@ export function createHarness(options: HarnessOptions): TestHarness {
       return cell.value as T
     },
     useEffect(callback, deps) {
-      const active = activeRender()
-      const index = active.index++
-      const cell = hookCell<DependencyCell<undefined>>(index, () => ({
-        deps: undefined,
-        value: undefined,
-      }))
-      if (cell.deps === undefined || !sameDeps(cell.deps, deps)) {
-        cell.deps = deps
-        effectQueue.push({ path: active.path, index, callback })
-      }
+      scheduleEffect(callback, deps)
     },
+    // The harness has no paint, so a layout effect is scheduled like a data
+    // effect: after the render that produced it.
+    useLayoutEffect(callback, deps) {
+      scheduleEffect(callback, deps)
+    },
+  }
+
+  function scheduleEffect(
+    callback: () => (() => void) | undefined,
+    deps: readonly unknown[] | undefined,
+  ): void {
+    const active = activeRender()
+    const index = active.index++
+    const cell = hookCell<DependencyCell<undefined>>(index, () => ({
+      deps: undefined,
+      value: undefined,
+    }))
+    if (cell.deps === undefined || !sameDeps(cell.deps, deps)) {
+      cell.deps = deps
+      effectQueue.push({ path: active.path, index, callback })
+    }
   }
 
   function resolve(node: TestNode, path: string): TestNode {

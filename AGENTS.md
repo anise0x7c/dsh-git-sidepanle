@@ -17,7 +17,7 @@ and right-click menus.
 - Both halves compile to committed JavaScript: `index.js`, `client.js` and
   their maps. A prepared plugin directory needs no compiler at install time.
 - Behavior truth lives in `.litespec/specs/git-sidebar/spec.md`
-  (23 requirements). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
+  (24 requirements). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
   `docs/DETAIL.zh.md` (Chinese). Architecture: `docs/ARCHITECTURE.md`.
   `docs/REFACTOR-PLAN.md` records the 0.3.0 split that produced the current
   layout — read it for rationale, not as a to-do list.
@@ -113,7 +113,7 @@ to force a fresh version, and never chase patch releases the day they ship.
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
-panel/views/* -> { panel/controls, panel/split, icons, git/format, git/graph }
+panel/views/* -> { panel/autosize, panel/controls, panel/split, icons, git/format, git/graph }
 pure logic (git/*, menu/actions, constants, locale/*) -> no React, no ctx
 icons -> React only (presentational SVG, no ctx)
 host: http/* -> nothing; git/* -> git/exec; rpc -> all; host-entry -> rpc + http/*

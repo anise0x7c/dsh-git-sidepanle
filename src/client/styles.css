@@ -254,18 +254,21 @@
   padding: 10px 8px 8px;
 }
 
+/* The message decides the height: one row at rest and ten at most, after which
+   the box scrolls. `panel/autosize.ts` applies it; the line height comes from
+   the font shorthand, and `overflow-y: auto` keeps the message reachable before
+   the first measurement. */
 .dshgg-commitMessage {
   box-sizing: border-box;
   width: 100%;
-  min-height: 60px;
-  max-height: 30vh;
   padding: 6px 8px;
   color: var(--dsw-alias-label-primary);
   font: var(--dsw-font-xs-13);
   background: var(--dsw-specific-input-major);
   border: 0.5px solid var(--dsw-alias-border-l4);
   border-radius: var(--dsw-radius-md);
-  resize: vertical;
+  overflow-y: auto;
+  resize: none;
   outline: none;
 }
 
