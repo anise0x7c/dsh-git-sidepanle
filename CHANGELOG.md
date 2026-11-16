@@ -3,6 +3,21 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## Unreleased
+
+Pinned section headers:
+
+- Each change-group and commit-graph header now stays pinned to the top edge of
+  its scrolling pane while its own section still reaches into the pane, with the
+  host surface masking the rows that scroll beneath it. The next section's
+  header takes the top edge as the previous section leaves, so only one header
+  is pinned at a time, and the pinned header's toggle, count and context menu
+  keep working.
+- Tests: 273 (was 272), covering the sticky and masking rules in the served
+  stylesheet and the per-section header containment the single-header rule
+  depends on.
+- This is a browser-only change: no Host restart is needed.
+
 ## 0.7.0
 
 The commit graph now pages backwards through history, and the changes and graph
