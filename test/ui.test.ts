@@ -492,6 +492,27 @@ test('change groups and graph are independent scroll panes with a resizable divi
   await mounted.harness.dispose()
 })
 
+test('each section header belongs to its own section so only one can stick', async () => {
+  const mounted = await mountGit()
+  const sections = mounted.harness.findAll((element) => element.props['data-section'] !== undefined)
+  assert.deepEqual(
+    sections.map((section) => section.props['data-section']),
+    ['merge', 'staged', 'changes', 'graph'],
+  )
+  for (const section of sections) {
+    // A header only pins while its own section is in view when the section is
+    // its containing block: the header is a direct child, never a sibling
+    // shared by a stack of sections.
+    const header = elementOf(section.children[0])
+    assert.equal(
+      header.props.className,
+      'dshgg-sectionHeader',
+      `${String(section.props['data-section'])} must lead with its own header`,
+    )
+  }
+  await mounted.harness.dispose()
+})
+
 test('scrolling the graph pane to its end appends the next page of commits', async () => {
   const pages = pagedHistory()
   const mounted = await mountGit({ historyPages: [pages.first, pages.second] })

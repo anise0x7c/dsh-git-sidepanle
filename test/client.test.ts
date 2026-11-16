@@ -145,6 +145,21 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /\.dshgg-sectionToggle\s*\{[^}]*font: var\(--dsw-font-s-strong-14\);[^}]*font-weight: 600;/,
   )
+  // Section headers pin to their pane's top edge on the host surface, so the
+  // rows pass hidden beneath them. A floating tab paints layer-2, not the
+  // docked tab host's base surface.
+  assert.match(
+    graphStyles,
+    /\.dshgg-sectionHeader\s*\{[^}]*position: sticky;[^}]*top: 0;[^}]*z-index: 1;/,
+  )
+  assert.match(
+    graphStyles,
+    /\.dshgg-sectionHeader::before\s*\{[^}]*position: absolute;[^}]*inset: 0;[^}]*background: var\(--dsw-alias-bg-base\);/,
+  )
+  assert.match(
+    graphStyles,
+    /\[data-dockkit-float\] \.dshgg-sectionHeader::before\s*\{[^}]*background: var\(--dsw-alias-bg-layer-2\);/,
+  )
   assert.match(graphStyles, /\.dshgg-paneTop\s*\{[^}]*flex: 0 0 auto;/)
   assert.match(graphStyles, /\.dshgg-paneBottom\s*\{[^}]*flex: 1 1 0;/)
   assert.doesNotMatch(graphStyles, /\.dshgg-cleanIcon/)

@@ -492,14 +492,37 @@
   flex-direction: column;
 }
 
+/* The header pins to its own pane's top edge while its section still reaches
+ * into the pane. Its containing block is that one section, so a header can
+ * never outlive it: the next section's header takes the top edge as the
+ * previous one leaves, and only one header is ever pinned. */
 .dshgg-sectionHeader {
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 2px;
   height: 30px;
   padding: 0 4px 0 2px;
   border-radius: var(--dsw-radius-md);
+}
+
+/* Opaque surface behind the header: it hides the rows scrolling beneath a
+ * pinned header, and its square shape covers the header's rounded corners,
+ * where the translucent row pixels would otherwise show. The host paints a
+ * docked tab body with the base surface and a floating tab with the layer-2
+ * surface, so the mask follows the pane it sits in. */
+.dshgg-sectionHeader::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--dsw-alias-bg-base);
+}
+
+[data-dockkit-float] .dshgg-sectionHeader::before {
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .dshgg-sectionToggle {
