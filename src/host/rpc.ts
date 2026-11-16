@@ -21,6 +21,7 @@ import {
   runGit,
 } from './git/exec.ts'
 import { readCommitDetails, readHistory } from './git/history.ts'
+import { readGraphReferences } from './git/references.ts'
 import { readStatus } from './git/status.ts'
 import { resolveSessionDirectory } from './session.ts'
 
@@ -60,8 +61,13 @@ export async function dispatch(
     )
 
   switch (op) {
-    case 'history':
-      return { commits: await readHistory(root) }
+    case 'history': {
+      const [commits, references] = await Promise.all([
+        readHistory(root),
+        readGraphReferences(root),
+      ])
+      return { commits, references }
+    }
     case 'commit-details': {
       const oid = payload.oid
       if (typeof oid !== 'string' || !FULL_OID.test(oid)) {

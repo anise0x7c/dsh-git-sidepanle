@@ -14,6 +14,13 @@ import { GitGraphError } from '../../src/host/errors.ts'
 import { parseUnifiedDiff } from '../../src/host/git/diff.ts'
 import { resolveRepositoryPath, resolveRepositoryPaths } from '../../src/host/git/exec.ts'
 import { parseCommitMeta, parseHistory, parseNameStatus } from '../../src/host/git/history.ts'
+import type { RefRecord } from '../../src/host/git/references.ts'
+import {
+  NO_GRAPH_REFERENCES,
+  parseRefRecords,
+  resolveGraphReferences,
+  shortRefName,
+} from '../../src/host/git/references.ts'
 import { parseStatus } from '../../src/host/git/status.ts'
 
 const NUL = '\0'
@@ -621,5 +628,131 @@ describe('parseNameStatus', () => {
 
   test('stops cleanly when a rename record is cut short', () => {
     assert.deepEqual(parseNameStatus(['R100', 'old.txt', ''].join(NUL)), [])
+  })
+})
+
+describe('graph references', () => {
+  /**
+   * Build one `for-each-ref` record.
+   * @param name - full ref name.
+   * @param oid - target.
+   * @param fields - HEAD marker, upstream and symref target.
+   * @returns record.
+   */
+  function record(name: string, oid: string, fields: Partial<RefRecord> = {}): RefRecord {
+    return { head: false, upstream: '', symref: '', ...fields, name, oid }
+  }
+
+  const records: RefRecord[] = [
+    record('refs/heads/main', OID_A, { head: true, upstream: 'refs/remotes/origin/main' }),
+    record('refs/heads/fix/side', OID_B),
+    record('refs/remotes/origin/HEAD', OID_C, { symref: 'refs/remotes/origin/master' }),
+    record('refs/remotes/origin/main', OID_B),
+    record('refs/remotes/origin/master', OID_C),
+    record('refs/remotes/upstream/release', OID_A),
+  ]
+
+  test('parses NUL-separated for-each-ref records and skips malformed lines', () => {
+    const stdout = [
+      ['*', 'refs/heads/main', OID_A, 'refs/remotes/origin/main', ''].join(NUL),
+      [' ', 'refs/remotes/origin/HEAD', OID_C, '', 'refs/remotes/origin/master'].join(NUL),
+      [' ', 'refs/heads/broken', 'not-an-oid', '', ''].join(NUL),
+      'garbage',
+      '',
+    ].join('\n')
+    assert.deepEqual(parseRefRecords(stdout), [
+      record('refs/heads/main', OID_A, { head: true, upstream: 'refs/remotes/origin/main' }),
+      record('refs/remotes/origin/HEAD', OID_C, { symref: 'refs/remotes/origin/master' }),
+    ])
+  })
+
+  test('shortens branch and remote names only', () => {
+    assert.equal(shortRefName('refs/heads/fix/side'), 'fix/side')
+    assert.equal(shortRefName('refs/remotes/origin/main'), 'origin/main')
+    assert.equal(shortRefName('refs/tags/v1'), 'refs/tags/v1')
+  })
+
+  test('resolves the checked-out branch, its upstream and the default branch as base', () => {
+    assert.deepEqual(
+      resolveGraphReferences({
+        records,
+        remotes: ['upstream', 'origin'],
+        mergeBase: '',
+        detachedHead: null,
+      }),
+      {
+        current: { id: 'refs/heads/main', name: 'main', revision: OID_A },
+        remote: { id: 'refs/remotes/origin/main', name: 'origin/main', revision: OID_B },
+        base: { id: 'refs/remotes/origin/master', name: 'origin/master', revision: OID_C },
+      },
+    )
+  })
+
+  test('prefers a configured VS Code merge base that names a remote branch', () => {
+    const resolved = resolveGraphReferences({
+      records,
+      remotes: ['origin'],
+      mergeBase: 'upstream/release',
+      detachedHead: null,
+    })
+    assert.deepEqual(resolved.base, {
+      id: 'refs/remotes/upstream/release',
+      name: 'upstream/release',
+      revision: OID_A,
+    })
+    const local = resolveGraphReferences({
+      records,
+      remotes: ['origin'],
+      mergeBase: 'fix/side',
+      detachedHead: null,
+    })
+    assert.equal(local.base?.id, 'refs/remotes/origin/master', 'a local branch is not a base')
+  })
+
+  test('uses the first remote when there is no origin and drops a base equal to the upstream', () => {
+    const noOrigin = resolveGraphReferences({
+      records,
+      remotes: ['upstream'],
+      mergeBase: '',
+      detachedHead: null,
+    })
+    assert.equal(noOrigin.base, null, 'upstream has no HEAD pointer')
+    const same = resolveGraphReferences({
+      records,
+      remotes: ['origin'],
+      mergeBase: 'origin/main',
+      detachedHead: null,
+    })
+    assert.equal(same.base, null)
+  })
+
+  test('reports a detached HEAD by commit id and nothing for an unborn branch', () => {
+    const detached = records.map((entry) => ({ ...entry, head: false }))
+    assert.deepEqual(
+      resolveGraphReferences({
+        records: detached,
+        remotes: ['origin'],
+        mergeBase: '',
+        detachedHead: OID_B,
+      }),
+      { current: { id: OID_B, name: OID_B, revision: OID_B }, remote: null, base: null },
+    )
+    assert.deepEqual(
+      resolveGraphReferences({ records: [], remotes: [], mergeBase: '', detachedHead: null }),
+      NO_GRAPH_REFERENCES,
+    )
+  })
+
+  test('drops an upstream that is not present locally', () => {
+    const resolved = resolveGraphReferences({
+      records: [
+        record('refs/heads/main', OID_A, { head: true, upstream: 'refs/remotes/origin/gone' }),
+      ],
+      remotes: [],
+      mergeBase: '',
+      detachedHead: null,
+    })
+    assert.equal(resolved.remote, null)
+    assert.equal(resolved.base, null)
   })
 })

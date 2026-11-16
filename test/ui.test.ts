@@ -402,6 +402,7 @@ test('a merge fans out into colored lanes and joins at the shared parent', async
         parents: [],
       },
     ],
+    references: { current: null, remote: null, base: null },
   }
   const mounted = await mountGit({ history })
   const rows = mounted.harness.findAll(
@@ -576,6 +577,7 @@ test('a secondary-parent line waits for the shared parent row', async () => {
         parents: [],
       },
     ],
+    references: { current: null, remote: null, base: null },
   }
   const mounted = await mountGit({ history })
   const rows = mounted.harness.findAll(

@@ -19,9 +19,12 @@ const COMMIT_META_FORMAT = '%H%x00%h%x00%an%x00%at%x00%D%x00%P%x00%s%x00%b'
 const HISTORY_FORMAT = '%H%x09%h%x09%an%x09%at%x09%D%x09%P%x09%s'
 
 /**
- * Read recent commits across local branches, tags, and remote-tracking branches.
- * `--date-order` keeps parents after all of their children, which is what lets
- * the browser draw the commit graph from the parent list alone.
+ * Read recent commits across local branches, tags, and remote-tracking branches,
+ * the way VS Code's Source Control Graph reads its "All" filter.
+ * `--topo-order` keeps parents after all of their children and a line of
+ * history together, which is what lets the browser draw the commit graph from
+ * the parent list alone; `--decorate=full` reports full reference names so a
+ * local branch containing a slash is not mistaken for a remote-tracking one.
  * @param root - repository root.
  * @returns graph rows.
  */
@@ -33,7 +36,8 @@ export async function readHistory(root: string): Promise<CommitSummary[]> {
       '--branches',
       '--tags',
       '--remotes',
-      '--date-order',
+      '--topo-order',
+      '--decorate=full',
       `--pretty=format:${HISTORY_FORMAT}`,
       '-n',
       String(MAX_GRAPH_COMMITS),
@@ -170,7 +174,13 @@ export async function readCommitDetails(root: string, oid: string): Promise<Comm
       throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
     throw new GitGraphError('unknown-commit', `No commit "${oid}" exists in this repository.`, 404)
   }
-  const meta = await runGit(root, ['log', '-1', `--format=${COMMIT_META_FORMAT}`, oid])
+  const meta = await runGit(root, [
+    'log',
+    '-1',
+    '--decorate=full',
+    `--format=${COMMIT_META_FORMAT}`,
+    oid,
+  ])
   if (!meta.ok) {
     if (meta.code === 'ENOENT')
       throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)

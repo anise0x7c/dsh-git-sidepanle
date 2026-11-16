@@ -429,7 +429,8 @@ async function readHistory(root) {
       "--branches",
       "--tags",
       "--remotes",
-      "--date-order",
+      "--topo-order",
+      "--decorate=full",
       `--pretty=format:${HISTORY_FORMAT}`,
       "-n",
       String(MAX_GRAPH_COMMITS)
@@ -518,7 +519,13 @@ async function readCommitDetails(root, oid) {
       throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
     throw new GitGraphError("unknown-commit", `No commit "${oid}" exists in this repository.`, 404);
   }
-  const meta = await runGit(root, ["log", "-1", `--format=${COMMIT_META_FORMAT}`, oid]);
+  const meta = await runGit(root, [
+    "log",
+    "-1",
+    "--decorate=full",
+    `--format=${COMMIT_META_FORMAT}`,
+    oid
+  ]);
   if (!meta.ok) {
     if (meta.code === "ENOENT")
       throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
@@ -553,6 +560,89 @@ async function readCommitDetails(root, oid) {
     files: files.length > MAX_COMMIT_FILES ? files.slice(0, MAX_COMMIT_FILES) : files,
     truncated: files.length > MAX_COMMIT_FILES
   };
+}
+
+// src/host/git/references.ts
+var REF_FORMAT = "%(HEAD)%00%(refname)%00%(objectname)%00%(upstream)%00%(symref)";
+var FULL_OID3 = /^[0-9a-f]{40}$/;
+var HEADS = "refs/heads/";
+var REMOTES = "refs/remotes/";
+var NO_GRAPH_REFERENCES = { current: null, remote: null, base: null };
+function parseRefRecords(stdout) {
+  const records = [];
+  for (const line of stdout.split("\n")) {
+    if (line === "") continue;
+    const fields = line.split("\0");
+    if (fields.length < 5) continue;
+    const name = fields[1] ?? "";
+    const oid = fields[2] ?? "";
+    if (name === "" || !FULL_OID3.test(oid)) continue;
+    records.push({
+      head: (fields[0] ?? "").trim() === "*",
+      name,
+      oid,
+      upstream: fields[3] ?? "",
+      symref: fields[4] ?? ""
+    });
+  }
+  return records;
+}
+function shortRefName(name) {
+  if (name.startsWith(HEADS)) return name.slice(HEADS.length);
+  if (name.startsWith(REMOTES)) return name.slice(REMOTES.length);
+  return name;
+}
+function toReference(record) {
+  return { id: record.name, name: shortRefName(record.name), revision: record.oid };
+}
+function resolveGraphReferences(inputs) {
+  const byName = new Map(inputs.records.map((record) => [record.name, record]));
+  const branch = inputs.records.find((record) => record.head && record.name.startsWith(HEADS));
+  if (branch === void 0) {
+    const oid = inputs.detachedHead;
+    if (oid === null || !FULL_OID3.test(oid)) return NO_GRAPH_REFERENCES;
+    return { current: { id: oid, name: oid, revision: oid }, remote: null, base: null };
+  }
+  const upstream = branch.upstream === "" ? void 0 : byName.get(branch.upstream);
+  let base;
+  if (inputs.mergeBase !== "") base = byName.get(`${REMOTES}${inputs.mergeBase}`);
+  if (base === void 0) {
+    const remote = inputs.remotes.includes("origin") ? "origin" : inputs.remotes[0];
+    const pointer = remote === void 0 ? void 0 : byName.get(`${REMOTES}${remote}/HEAD`);
+    const target = pointer === void 0 || pointer.symref === "" ? "" : pointer.symref;
+    if (target.startsWith(REMOTES)) base = byName.get(target);
+  }
+  if (base !== void 0 && base.name === branch.upstream) base = void 0;
+  return {
+    current: toReference(branch),
+    remote: upstream === void 0 ? null : toReference(upstream),
+    base: base === void 0 ? null : toReference(base)
+  };
+}
+async function readGraphReferences(root) {
+  const [refs, remotes, head] = await Promise.all([
+    runGit(root, ["for-each-ref", `--format=${REF_FORMAT}`, "refs/heads", "refs/remotes"]),
+    runGit(root, ["remote"]),
+    runGit(root, ["rev-parse", "--verify", "--quiet", "HEAD"])
+  ]);
+  if (!refs.ok) return NO_GRAPH_REFERENCES;
+  const records = parseRefRecords(refs.stdout);
+  const branch = records.find((record) => record.head && record.name.startsWith(HEADS));
+  let mergeBase = "";
+  if (branch !== void 0) {
+    const configured = await runGit(root, [
+      "config",
+      "--get",
+      `branch.${shortRefName(branch.name)}.vscode-merge-base`
+    ]);
+    if (configured.ok) mergeBase = configured.stdout.trim();
+  }
+  return resolveGraphReferences({
+    records,
+    remotes: remotes.ok ? remotes.stdout.split("\n").map((name) => name.trim()).filter((name) => name !== "") : [],
+    mergeBase,
+    detachedHead: branch === void 0 && head.ok ? head.stdout.trim() : null
+  });
 }
 
 // src/host/git/status.ts
@@ -678,7 +768,7 @@ async function resolveSessionDirectory(ctx, sessionId) {
 var RPC_PATH = "/api/dsh-git-graph/rpc";
 var HEALTH_PATH = "/api/dsh-git-graph/health";
 var COMMIT_TIMEOUT_MS = 12e4;
-var FULL_OID3 = /^[0-9a-f]{40}$/;
+var FULL_OID4 = /^[0-9a-f]{40}$/;
 async function dispatch(ctx, payload) {
   const cwd = await resolveSessionDirectory(ctx, payload.sessionId);
   if (!existsSync(cwd))
@@ -697,11 +787,16 @@ async function dispatch(ctx, payload) {
       409
     );
   switch (op) {
-    case "history":
-      return { commits: await readHistory(root) };
+    case "history": {
+      const [commits, references] = await Promise.all([
+        readHistory(root),
+        readGraphReferences(root)
+      ]);
+      return { commits, references };
+    }
     case "commit-details": {
       const oid = payload.oid;
-      if (typeof oid !== "string" || !FULL_OID3.test(oid)) {
+      if (typeof oid !== "string" || !FULL_OID4.test(oid)) {
         throw new GitGraphError("bad-request", "A full commit identifier is required.", 400);
       }
       return readCommitDetails(root, oid);
@@ -835,7 +930,7 @@ ${switched.stderr}`.trim() || "git switch failed",
         throw new GitGraphError("bad-request", "A file path is required.", 400);
       if (payload.commit !== void 0) {
         const commit = payload.commit;
-        if (typeof commit !== "string" || !FULL_OID3.test(commit)) {
+        if (typeof commit !== "string" || !FULL_OID4.test(commit)) {
           throw new GitGraphError("bad-request", "A full commit identifier is required.", 400);
         }
         const origPath = typeof payload.origPath === "string" && payload.origPath !== "" ? payload.origPath : void 0;

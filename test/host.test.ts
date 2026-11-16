@@ -328,6 +328,16 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
   assert.deepEqual(history.body.value.commits[0].parents, [history.body.value.commits[1].oid])
   assert.deepEqual(history.body.value.commits[1].parents, [])
   assert.equal('graph' in history.body.value.commits[0], false)
+  assert.equal(
+    history.body.value.commits[0].refs,
+    'HEAD -> refs/heads/main',
+    'decorations carry full reference names',
+  )
+  assert.deepEqual(history.body.value.references, {
+    current: { id: 'refs/heads/main', name: 'main', revision: history.body.value.commits[0].oid },
+    remote: null,
+    base: null,
+  })
 
   const badOp = await callUnknown('nonsense')
   assert.equal(badOp.body.ok, false)
@@ -479,6 +489,95 @@ test('commit details follow the first parent for renames, deletions, and merges'
         }
       }
     }
+  })
+})
+
+test('history lists branches topologically and reports the graph references', async () => {
+  const graphRepo = await mkdtemp(join(tmpRoot, 'graph-refs-'))
+  /**
+   * Commit an empty change at a fixed date.
+   * @param date - Unix seconds for both author and committer.
+   * @param subject - commit subject.
+   * @returns the new commit id.
+   */
+  const commitAt = async (date: number, subject: string): Promise<string> => {
+    await execFile('git', ['commit', '-q', '--allow-empty', '-m', subject], {
+      cwd: graphRepo,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: `@${date} +0000`,
+        GIT_COMMITTER_DATE: `@${date} +0000`,
+      },
+    })
+    return (await git(graphRepo, 'rev-parse', 'HEAD')).trim()
+  }
+  await git(graphRepo, 'init', '-q', '-b', 'main')
+  await git(graphRepo, 'config', 'user.name', 'Git Graph Test')
+  await git(graphRepo, 'config', 'user.email', 'git-graph@example.test')
+  const root = await commitAt(1_700_000_000, 'root')
+  const mainOne = await commitAt(1_700_000_200, 'main one')
+  await git(graphRepo, 'checkout', '-q', '-b', 'fix/side', root)
+  const sideOne = await commitAt(1_700_000_300, 'side one')
+  await git(graphRepo, 'checkout', '-q', 'main')
+  const mainTwo = await commitAt(1_700_000_400, 'main two')
+  await git(graphRepo, 'checkout', '-q', 'fix/side')
+  const sideTwo = await commitAt(1_700_000_500, 'side two')
+  await git(graphRepo, 'checkout', '-q', 'main')
+
+  // A remote without a network: its tracking refs, upstream and default branch.
+  await git(graphRepo, 'remote', 'add', 'origin', join(tmpRoot, 'no-such-remote'))
+  await git(graphRepo, 'update-ref', 'refs/remotes/origin/main', mainOne)
+  await git(graphRepo, 'update-ref', 'refs/remotes/origin/master', root)
+  await git(graphRepo, 'update-ref', 'refs/remotes/origin/release', sideOne)
+  await git(graphRepo, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/master')
+  await git(graphRepo, 'config', 'branch.main.remote', 'origin')
+  await git(graphRepo, 'config', 'branch.main.merge', 'refs/heads/main')
+
+  await withSessionServer(graphRepo, async (baseUrl) => {
+    let history = (await callAt(baseUrl, 'history')).body.value
+    const order = history.commits.map((entry) => entry.oid)
+    assert.deepEqual(
+      order,
+      [sideTwo, sideOne, mainTwo, mainOne, root],
+      'topological order keeps each line of history together instead of interleaving dates',
+    )
+    const sideRow = history.commits[0]
+    assert.ok(sideRow)
+    assert.equal(sideRow.refs, 'refs/heads/fix/side')
+    assert.deepEqual(history.references, {
+      current: { id: 'refs/heads/main', name: 'main', revision: mainTwo },
+      remote: { id: 'refs/remotes/origin/main', name: 'origin/main', revision: mainOne },
+      base: { id: 'refs/remotes/origin/master', name: 'origin/master', revision: root },
+    })
+
+    // A configured VS Code merge base wins over the default branch.
+    await git(graphRepo, 'config', 'branch.main.vscode-merge-base', 'origin/release')
+    history = (await callAt(baseUrl, 'history')).body.value
+    assert.deepEqual(history.references.base, {
+      id: 'refs/remotes/origin/release',
+      name: 'origin/release',
+      revision: sideOne,
+    })
+    assert.equal(
+      (await git(graphRepo, 'config', '--get', 'branch.main.vscode-merge-base')).trim(),
+      'origin/release',
+      'the history read never rewrites the configuration',
+    )
+
+    // A base that is the upstream is not a base.
+    await git(graphRepo, 'config', 'branch.main.vscode-merge-base', 'origin/main')
+    await git(graphRepo, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
+    history = (await callAt(baseUrl, 'history')).body.value
+    assert.equal(history.references.base, null)
+
+    // A detached HEAD is the current reference by commit id.
+    await git(graphRepo, 'checkout', '-q', '--detach', mainOne)
+    history = (await callAt(baseUrl, 'history')).body.value
+    assert.deepEqual(history.references, {
+      current: { id: mainOne, name: mainOne, revision: mainOne },
+      remote: null,
+      base: null,
+    })
   })
 })
 

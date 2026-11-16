@@ -99,7 +99,10 @@ export interface CommitSummary {
   author: string
   /** Author timestamp in Unix seconds. */
   authoredAt: number
-  /** Decoration string, for example `HEAD -> main, tag: v1`. */
+  /**
+   * Full decoration string, for example
+   * `HEAD -> refs/heads/main, refs/remotes/origin/main, tag: refs/tags/v1`.
+   */
   refs: string
   /** Parent ids, first parent first; empty for a root commit. */
   parents: string[]
@@ -133,10 +136,36 @@ export interface CommitDetails {
   truncated: boolean
 }
 
+/** One reference the commit graph gives a fixed color. */
+export interface GraphReference {
+  /** Full ref name such as `refs/heads/main`, or the commit id of a detached HEAD. */
+  id: string
+  /** Display name such as `main` or `origin/main`. */
+  name: string
+  /** Full id of the commit the reference points at. */
+  revision: string
+}
+
+/**
+ * The references VS Code's Source Control Graph colors specially: the
+ * checked-out branch (blue), its upstream (purple) and its base branch
+ * (orange). Each is null when the repository has none.
+ */
+export interface GraphReferences {
+  /** Checked-out branch, or the detached HEAD commit. */
+  current: GraphReference | null
+  /** Upstream of the checked-out branch. */
+  remote: GraphReference | null
+  /** Base branch of the checked-out branch, when it differs from the upstream. */
+  base: GraphReference | null
+}
+
 /** Value of the `history` operation. */
 export interface HistoryResult {
-  /** Graph rows in display order. */
+  /** Graph rows in topological display order. */
   commits: CommitSummary[]
+  /** References with fixed graph colors. */
+  references: GraphReferences
 }
 
 /** One local branch. */

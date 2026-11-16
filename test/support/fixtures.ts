@@ -62,6 +62,11 @@ export const HISTORY: HistoryResult = {
       parents: [],
     },
   ],
+  references: {
+    current: { id: 'refs/heads/main', name: 'main', revision: 'a'.repeat(40) },
+    remote: { id: 'refs/remotes/origin/main', name: 'origin/main', revision: 'a'.repeat(40) },
+    base: null,
+  },
 }
 
 /**
