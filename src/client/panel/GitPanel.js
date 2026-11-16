@@ -8,7 +8,7 @@
 import { Fragment, createElement, useCallback, useMemo, useState } from 'react'
 import { DIFF_KIND } from '../constants.js'
 import { errorText, isStaged, isUnstaged, statusLetter } from '../git/format.js'
-import { buildTree } from '../git/tree.js'
+import { sortChangeEntries } from '../git/list.js'
 import { AlertIcon, GitBranchIcon } from '../icons.js'
 import { Banner, EmptyState } from './feedback.js'
 import { confirmActionLabel, confirmDescription, confirmTitle } from './confirm.js'
@@ -44,7 +44,6 @@ export function GitPanel(props) {
   const { graph, graphLoading, graphFailure, loadGraph } = useHistory({ call, refs })
 
   const [openSections, setOpenSections] = useState({ merge: true, staged: true, changes: true, graph: true })
-  const [collapsed, setCollapsed] = useState({})
   const repo = status?.repo ?? null
   // The change list uses repository-relative paths, so the directory that
   // makes them absolute is the repository root, not the Session directory.
@@ -55,11 +54,21 @@ export function GitPanel(props) {
   const mergeFiles = useMemo(() => files.filter((entry) => entry.conflict === true), [files])
   const stagedFiles = useMemo(() => files.filter((entry) => isStaged(entry)), [files])
   const changedFiles = useMemo(() => files.filter((entry) => isUnstaged(entry)), [files])
-  const treeCache = useMemo(() => ({
-    merge: buildTree(mergeFiles.map((entry) => ({ ...entry, letter: '!' }))),
-    staged: buildTree(stagedFiles.map((entry) => ({ ...entry, letter: statusLetter(entry.x) }))),
-    changes: buildTree(changedFiles.map((entry) => ({ ...entry, letter: entry.untracked === true ? 'U' : statusLetter(entry.y) }))),
-  }), [mergeFiles, stagedFiles, changedFiles])
+  // Each group is one flat list in path order. The display letter depends on
+  // the group (an unstaged row takes its worktree half, a conflicted row is
+  // always `!`), so the rows the views receive are copies with that letter.
+  const mergeRows = useMemo(
+    () => sortChangeEntries(mergeFiles).map((entry) => ({ ...entry, letter: '!' })),
+    [mergeFiles],
+  )
+  const stagedRows = useMemo(
+    () => sortChangeEntries(stagedFiles).map((entry) => ({ ...entry, letter: statusLetter(entry.x) })),
+    [stagedFiles],
+  )
+  const changedRows = useMemo(
+    () => sortChangeEntries(changedFiles).map((entry) => ({ ...entry, letter: entry.untracked === true ? 'U' : statusLetter(entry.y) })),
+    [changedFiles],
+  )
   const clean = repo !== null && mergeFiles.length === 0 && stagedFiles.length === 0 && changedFiles.length === 0
 
   const actions = useChangeActions({ call, t, refs, files, stagedFiles, loadStatus, loadGraph })
@@ -70,8 +79,8 @@ export function GitPanel(props) {
   const { branchMenu, branches, branchLoading, branchFailure, loadBranches, toggleBranchMenu, checkout } = useBranches({ call, refs, perform })
   const commitState = useCommitDetails({ call, refs })
   const selectedCommit = commitState.selected
-  const commitTree = useMemo(
-    () => buildTree((commitState.details?.files ?? []).map((file) => ({ ...file, kind: 'commit' }))),
+  const commitRows = useMemo(
+    () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({ ...file, kind: 'commit' })),
     [commitState.details],
   )
 
@@ -103,7 +112,6 @@ export function GitPanel(props) {
   }, [tab.actions, repoRoot, selectedCommit])
 
   const toggleSection = (id) => setOpenSections((current) => ({ ...current, [id]: current[id] !== true }))
-  const toggleFolder = (path) => setCollapsed((current) => ({ ...current, [path]: current[path] !== true }))
 
   const refreshAll = () => {
     setActionFailure(null)
@@ -185,38 +193,33 @@ export function GitPanel(props) {
     details: commitState.details,
     loading: commitState.loading,
     failure: commitState.failure,
-    tree: commitTree,
-    collapsed,
-    onToggleFolder: toggleFolder,
+    files: commitRows,
     onBack: commitState.closeCommit,
     onRetry: commitState.retryCommit,
     onOpenFile: openCommitDiff,
     menuTrigger,
-    treeTarget: targets.treeTarget,
+    rowTarget: targets.rowTarget,
   })
 
   const body = renderState() ?? (commitBody ?? h(Fragment, null,
     h(ChangeGroups, {
       t,
       clean,
-      mergeFiles,
-      stagedFiles,
-      changedFiles,
-      treeCache,
+      mergeRows,
+      stagedRows,
+      changedRows,
       openSections,
-      collapsed,
       busy: busy !== null,
       canAct,
       onToggleSection: toggleSection,
-      onToggleFolder: toggleFolder,
       onStage: stage,
       onUnstage: unstage,
       onOpenDiff: openDiff,
       onDiscard: (entry) => setConfirm({ kind: 'discard', entry }),
-      onDiscardAll: () => setConfirm({ kind: 'discardAll', entries: changedFiles }),
+      onDiscardAll: () => setConfirm({ kind: 'discardAll', entries: changedRows }),
       menuTrigger,
       sectionTarget: targets.sectionTarget,
-      treeTarget: targets.treeTarget,
+      rowTarget: targets.rowTarget,
     }),
     h(GraphSection, {
       t,

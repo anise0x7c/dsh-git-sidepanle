@@ -40,7 +40,7 @@ src/
     icons.js                 inline SVG icons
     data/caller.js           createCaller, makeFailure (the only fetch layer)
     git/format.js            status letters, staging state, names, refs, time
-    git/tree.js              buildTree, collectTreePaths
+    git/list.js              sortChangeEntries (flat, path-sorted change lists)
     git/graph.js             deferred parent joins, grid topology and geometry,
                              branch color assignment
     menu/bus.js              command bus + the shared panel subscription point
@@ -49,7 +49,7 @@ src/
     menu/actions.js          which commands apply to a menu target
     panel/controls.js        IconButton
     panel/Section.js         collapsible section header
-    panel/rows.js            folder/file rows + tree renderer
+    panel/rows.js            file row + flat-list renderer
     panel/feedback.js        Banner, EmptyState
     panel/BranchMenu.js      branch picker
     panel/confirm.js         discard confirmation copy
@@ -191,8 +191,9 @@ breakpoints.
 
 ## Adding code
 
-- A new pure rule (formatting, path math, tree, menu description) goes into the
-  matching `src/client/git/*` or `menu/*` module and gets a `test/unit/` test.
+- A new pure rule (formatting, path math, list ordering, graph layout, menu
+  description) goes into the matching `src/client/git/*` or `menu/*` module and
+  gets a `test/unit/` test.
 - A new panel state or request goes into the matching hook; a new visual
   section goes into `panel/views/` and is wired from `GitPanel.js`.
 - A new Host operation is a `case` in `src/host/rpc.js` delegating to a

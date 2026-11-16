@@ -35,7 +35,16 @@ The panel SHALL show the repository it resolved from the Session's working direc
 
 ### Requirement: Change overview
 
-The panel SHALL list the repository's changes as three groups in VS Code's order: merge conflicts, staged changes, and changes not yet staged. Every entry SHALL carry the status letter identifying added, modified, deleted, renamed, untracked, or conflicted state and its repository-relative path, and entries SHALL be arranged in a folder tree whose folders collapse and expand. A file with both staged and unstaged modifications SHALL appear in both the staged and the unstaged group. A file that Git reports as conflicted SHALL appear under merge conflicts with the conflicted status letter and its folder path, and SHALL remain listed until the conflict is resolved.
+The panel SHALL list the repository's changes as three groups in VS Code's
+order: merge conflicts, staged changes, and changes not yet staged. Within a
+group, every changed file SHALL appear as one row in a single-layer list with
+no folder rows, sorted by its repository-relative path. Every row SHALL carry
+the status letter identifying added, modified, deleted, renamed, untracked, or
+conflicted state and the file's repository-relative path. A file with both
+staged and unstaged modifications SHALL appear in both the staged and the
+unstaged group. A file that Git reports as conflicted SHALL appear under merge
+conflicts with the conflicted status letter and SHALL remain listed until the
+conflict is resolved.
 
 #### Scenario: Partially staged file
 
@@ -45,17 +54,17 @@ The panel SHALL list the repository's changes as three groups in VS Code's order
 #### Scenario: Nested files
 
 - **WHEN** changed files live in several nested directories
-- **THEN** the panel groups them under collapsible folder rows that preserve their relative paths
+- **THEN** every file is listed directly in its group's single-layer list in path order, with no collapsible folder rows
 
 #### Scenario: Merge conflict
 
 - **WHEN** a merge leaves a tracked file conflicted
-- **THEN** the file appears under merge conflicts with the conflicted status letter and its path in the folder tree
+- **THEN** the file appears under merge conflicts with the conflicted status letter and its repository-relative path
 
 #### Scenario: Conflict in a nested folder
 
 - **WHEN** a conflicted file lives in a nested directory
-- **THEN** merge conflicts shows the file inside its folder rows, like the other groups
+- **THEN** merge conflicts lists the file directly, showing its directory with its name, like the other groups
 
 ### Requirement: Staging and unstaging
 
@@ -326,12 +335,12 @@ Chinese copy.
 
 ### Requirement: Change context menus
 
-The panel SHALL offer a context menu on every changed file, folder, and change
-group listed in the panel, containing only the operations valid for that
-object: opening a diff, staging or unstaging its files, and discarding them.
-Choosing a menu command SHALL have the same effect, the same confirmation
-before discarding, the same busy indication, the same failure report, and the
-same refresh as the equivalent inline control.
+The panel SHALL offer a context menu on every changed file and change group
+listed in the panel, containing only the operations valid for that object:
+opening a diff, staging or unstaging its files, and discarding them. Choosing a
+menu command SHALL have the same effect, the same confirmation before
+discarding, the same busy indication, the same failure report, and the same
+refresh as the equivalent inline control.
 
 #### Scenario: Stage a file from its menu
 
@@ -367,11 +376,10 @@ same refresh as the equivalent inline control.
 
 ### Requirement: Copy actions in context menus
 
-The panel SHALL offer copying a changed file's or folder's
-repository-relative path and absolute path, and copying a commit's full
-identifier and the subject line of its message. A successful copy SHALL be
-confirmed to the user, and an unavailable clipboard SHALL be reported as a
-failure rather than being ignored.
+The panel SHALL offer copying a changed file's repository-relative path and
+absolute path, and copying a commit's full identifier and the subject line of
+its message. A successful copy SHALL be confirmed to the user, and an
+unavailable clipboard SHALL be reported as a failure rather than being ignored.
 
 #### Scenario: Copy a relative path
 
@@ -417,8 +425,8 @@ panel SHALL remain fully usable through its inline controls.
 
 #### Scenario: Every invoked menu offers a command
 
-- **WHEN** the user invokes the menu on a changed file, a folder, a change group
-  header, a commit, or the diff header
+- **WHEN** the user invokes the menu on a changed file, a change group header,
+  a commit, or the diff header
 - **THEN** the menu lists at least one command for that object
 
 #### Scenario: Keyboard invocation
@@ -445,14 +453,14 @@ panel SHALL remain fully usable through its inline controls.
 The panel SHALL show a commit's changed files, that commit's metadata, and a
 way back to the change list when the user activates the commit's row in the
 graph. The changed files SHALL carry their change status letters and their
-repository-relative paths in a folder tree whose folders collapse and expand,
-and a renamed file SHALL show its original path. The metadata SHALL identify
-the commit by its short identifier and show its subject, author, relative time,
-and message body when present. Activating a changed file SHALL open that file's
-diff for the commit. A commit that changed no files SHALL be presented as such
-rather than as an empty list, a failed read SHALL be reported with a retry
-path, and returning from the details view SHALL restore the change list and
-graph without changing the repository.
+repository-relative paths in a single-layer list with no folder rows, sorted by
+path, and a renamed file SHALL show its original path. The metadata SHALL
+identify the commit by its short identifier and show its subject, author,
+relative time, and message body when present. Activating a changed file SHALL
+open that file's diff for the commit. A commit that changed no files SHALL be
+presented as such rather than as an empty list, a failed read SHALL be reported
+with a retry path, and returning from the details view SHALL restore the change
+list and graph without changing the repository.
 
 #### Scenario: Open a commit's details
 
@@ -476,7 +484,7 @@ graph without changing the repository.
 - **WHEN** the user opens a commit that changed no files relative to its first
   parent
 - **THEN** the details view says that the commit has no file changes instead of
-  showing an empty file tree
+  showing an empty list
 
 #### Scenario: Commit cannot be read
 

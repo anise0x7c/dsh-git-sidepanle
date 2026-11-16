@@ -100,13 +100,24 @@ export function isUnstaged(entry) {
 }
 
 /**
+ * Split a repository-relative path into its parent directory and file name.
+ * Only forward slashes separate segments; a trailing slash yields an empty
+ * file name.
+ * @param {string} path - repository-relative path.
+ * @returns {{dir: string, name: string}} parent directory (empty at the root) and last segment.
+ */
+export function splitPath(path) {
+  const index = path.lastIndexOf('/')
+  return index < 0 ? { dir: '', name: path } : { dir: path.slice(0, index), name: path.slice(index + 1) }
+}
+
+/**
  * Take the last `/`-separated segment of a repository-relative path.
  * @param {string} path - repository-relative path.
  * @returns {string} final path segment.
  */
 export function baseName(path) {
-  const index = path.lastIndexOf('/')
-  return index < 0 ? path : path.slice(index + 1)
+  return splitPath(path).name
 }
 
 /**

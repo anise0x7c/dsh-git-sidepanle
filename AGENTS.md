@@ -4,7 +4,7 @@
 
 `@local/dsh-git-graph` — a DSH bundle that adds a VS Code-style Git
 source-control surface to the Web GUI's right Sidebar: staged/unstaged/merge
-changes as a folder tree, a commit box, unified diff tabs, a commit graph
+changes as flat, path-sorted lists, a commit box, unified diff tabs, a commit graph
 whose commits open a details view of the files they changed, branch switching,
 and right-click menus.
 
@@ -38,7 +38,7 @@ and right-click menus.
 | `test/host.test.mjs` | Real loopback server + real Git fixture repositories |
 | `test/client.test.mjs` | Bundle factory/registration assertions without a DOM |
 | `test/ui.test.mjs` | Rendered panel behavior over `test/support/mini-react.mjs` |
-| `test/unit/` | Pure-function tests: Host parsers, browser formatting/tree/graph/locale/menu actions |
+| `test/unit/` | Pure-function tests: Host parsers, browser formatting/list/graph/locale/menu actions |
 | `test/support/` | Fake ctx + menu stand-in, fixtures, mini React |
 | `icon.svg`, `docs/`, `CHANGELOG.md` | Artwork and documentation |
 
@@ -169,8 +169,8 @@ hooks do. Do not introduce project-to-project cycles.
 ## Style
 
 - 2-space indent, single quotes, no semicolons, no tabs; comments in English.
-- Keep pure logic (parsing, tree building, path/menu action resolution) free of
-  React and context services so it stays directly testable; the pure layer
+- Keep pure logic (parsing, flat-list ordering, path/menu action resolution) free
+  of React and context services so it stays directly testable; the pure layer
   carries JSDoc and `// @ts-check`.
 - Keep functions small; give exported helpers JSDoc, and keep view modules
   presentational (props in, elements out).

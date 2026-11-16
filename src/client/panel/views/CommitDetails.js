@@ -1,8 +1,8 @@
 /**
  * One commit's details inside the Git panel: a back control, the commit
- * metadata, and the folder tree of the files the commit changed. This view
- * replaces the change list while it is open; the panel returns here with new
- * props for every load, so it only renders.
+ * metadata, and the flat list of files the commit changed. This view replaces
+ * the change list while it is open; the panel returns here with new props for
+ * every load, so it only renders.
  */
 
 import { createElement } from 'react'
@@ -10,7 +10,7 @@ import { errorText, formatAgo } from '../../git/format.js'
 import { ArrowLeftIcon } from '../../icons.js'
 import { Banner } from '../feedback.js'
 import { IconButton } from '../controls.js'
-import { renderTree } from '../rows.js'
+import { renderFileRows } from '../rows.js'
 
 const h = createElement
 
@@ -21,14 +21,12 @@ const h = createElement
  * @param {object|null} props.details - fetched commit record and file list.
  * @param {boolean} props.loading - file list is loading.
  * @param {object|null} props.failure - failed file-list read.
- * @param {object[]} props.tree - folder tree of the commit's changed files.
- * @param {object} props.collapsed - collapsed folder paths.
- * @param {Function} props.onToggleFolder - toggle a folder.
+ * @param {object[]} props.files - sorted changed files with display letters.
  * @param {Function} props.onBack - leave the details view.
  * @param {Function} props.onRetry - retry the failed read.
  * @param {Function} props.onOpenFile - open one changed file's diff.
  * @param {Function|null} props.menuTrigger - host trigger binding.
- * @param {Function} props.treeTarget - build a file/folder menu target.
+ * @param {Function} props.rowTarget - build a file-row menu target.
  * @returns {object} the commit-details element.
  */
 export function CommitDetails(props) {
@@ -39,23 +37,7 @@ export function CommitDetails(props) {
   const author = typeof commit.author === 'string' ? commit.author : ''
   const body = typeof commit.body === 'string' ? commit.body : ''
   const hasDetails = props.details !== null && props.details !== undefined
-  const files = hasDetails ? props.details.files : []
-  const treeContext = {
-    collapsed: props.collapsed,
-    t,
-    busy: false,
-    onToggleFolder: props.onToggleFolder,
-    onOpen: props.onOpenFile,
-    onStage: () => {},
-    onUnstage: () => {},
-    onDiscard: () => {},
-    menuTrigger: props.menuTrigger,
-    menuTarget: props.treeTarget,
-    menuHint: t('menu.hint'),
-    mode: 'commit',
-    fileKind: 'commitFile',
-    folderKind: 'commitFolder',
-  }
+  const files = props.files
 
   let filesBody
   if (props.loading === true && !hasDetails) {
@@ -71,7 +53,17 @@ export function CommitDetails(props) {
   } else if (files.length === 0) {
     filesBody = h('div', { key: 'empty', className: 'dshgg-commitNote' }, t('commitDetails.empty'))
   } else {
-    filesBody = renderTree(props.tree, 0, treeContext)
+    filesBody = renderFileRows(files, {
+      t,
+      busy: false,
+      mode: 'commit',
+      onOpen: props.onOpenFile,
+      onStage: () => {},
+      onUnstage: () => {},
+      onDiscard: () => {},
+      menuTrigger: props.menuTrigger,
+      menuTarget: (entry) => props.rowTarget('commitFile', { section: 'commit', path: entry.path }),
+    })
   }
 
   return h('div', { className: 'dshgg-commitView', 'data-commit': commit.oid ?? '' },

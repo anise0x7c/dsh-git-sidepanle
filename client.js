@@ -182,9 +182,12 @@ function isStaged(entry) {
 function isUnstaged(entry) {
   return entry.conflict !== true && (entry.y !== "." || entry.x === "?");
 }
-function baseName(path) {
+function splitPath(path) {
   const index = path.lastIndexOf("/");
-  return index < 0 ? path : path.slice(index + 1);
+  return index < 0 ? { dir: "", name: path } : { dir: path.slice(0, index), name: path.slice(index + 1) };
+}
+function baseName(path) {
+  return splitPath(path).name;
 }
 function formatAgo(t, authoredAt) {
   const seconds = Math.max(0, Math.floor(Date.now() / 1e3) - authoredAt);
@@ -580,24 +583,6 @@ function resolveMenuActions(value, t, notify) {
     }
     return actions;
   }
-  if (value.kind === "folder") {
-    const folder = value.path;
-    const paths = Array.isArray(value.paths) ? value.paths.filter((entry) => typeof entry === "string" && entry !== "") : [];
-    if (typeof folder !== "string" || folder === "" || paths.length === 0) return [];
-    const section = value.section === "staged" || value.section === "merge" ? value.section : "changes";
-    const actions = [];
-    if (section === "staged") {
-      actions.push(menuAction("unstage-all", t("actions.unstage"), command({ type: "unstage", paths }), blocked));
-    } else {
-      actions.push(menuAction("stage-all", t("actions.stage"), command({ type: "stage", paths }), blocked));
-      if (section !== "merge") actions.push(menuAction("discard-all", t("actions.discard"), command({ type: "discard", paths }), { danger: true, ...blocked }));
-    }
-    actions.push(menuAction("copy-relative", t("menu.copyRelativePath"), copy(folder, "menu.copiedRelativePath"), { separatorBefore: true }));
-    if (typeof value.cwd === "string" && value.cwd !== "") {
-      actions.push(menuAction("copy-path", t("menu.copyPath"), copy(absolutePath(value.cwd, folder), "menu.copiedPath")));
-    }
-    return actions;
-  }
   if (value.kind === "section") {
     const section = value.section;
     if (section === "changes") {
@@ -631,7 +616,7 @@ function resolveMenuActions(value, t, notify) {
     }
     return actions;
   }
-  if (value.kind === "commitFile" || value.kind === "commitFolder") {
+  if (value.kind === "commitFile") {
     const path = value.path;
     if (typeof path !== "string" || path === "") return [];
     const actions = [menuAction("copy-relative", t("menu.copyRelativePath"), copy(path, "menu.copiedRelativePath"))];
@@ -655,47 +640,10 @@ function resolveMenuActions(value, t, notify) {
 // src/client/panel/GitPanel.js
 var import_react21 = require("react");
 
-// src/client/git/tree.js
-function buildTree(entries) {
-  const root = { type: "root", name: "", path: "", children: [], folders: /* @__PURE__ */ new Map() };
-  for (const entry of entries) {
-    const parts = entry.path.split("/");
-    let node = root;
-    for (let index = 0; index < parts.length - 1; index += 1) {
-      const name = parts[index];
-      let folder = node.folders.get(name);
-      if (folder === void 0) {
-        folder = {
-          type: "folder",
-          name,
-          path: parts.slice(0, index + 1).join("/"),
-          children: [],
-          folders: /* @__PURE__ */ new Map()
-        };
-        node.folders.set(name, folder);
-        node.children.push(folder);
-      }
-      node = folder;
-    }
-    node.children.push({ type: "file", name: parts[parts.length - 1], path: entry.path, entry });
-  }
-  const sort = (nodes) => {
-    nodes.sort((left, right) => {
-      const leftFolder = left.type === "folder" ? 0 : 1;
-      const rightFolder = right.type === "folder" ? 0 : 1;
-      if (leftFolder !== rightFolder) return leftFolder - rightFolder;
-      return left.name.localeCompare(right.name, void 0, { numeric: true, sensitivity: "base" });
-    });
-    for (const node of nodes) if (node.type === "folder") sort(node.children);
-  };
-  sort(root.children);
-  return root.children;
-}
-function collectTreePaths(node) {
-  if (node.type !== "folder") return [node.path];
-  const paths = [];
-  for (const child of node.children) paths.push(...collectTreePaths(child));
-  return paths;
+// src/client/git/list.js
+function sortChangeEntries(entries) {
+  const collator = { numeric: true, sensitivity: "base" };
+  return [...entries].sort((left, right) => left.path.localeCompare(right.path, void 0, collator));
 }
 
 // src/client/panel/confirm.js
@@ -747,7 +695,7 @@ function createMenuTargets({ sessionId, panelId, busy, cwd }) {
       shortOid: commit.shortOid,
       subject: commit.subject
     }),
-    treeTarget: (kind, detail) => menuTarget(sessionId, kind, { ...detail, cwd, busy: busy !== null, panelId })
+    rowTarget: (kind, detail) => menuTarget(sessionId, kind, { ...detail, cwd, busy: busy !== null, panelId })
   };
 }
 
@@ -1211,40 +1159,10 @@ var import_react17 = require("react");
 // src/client/panel/rows.js
 var import_react15 = require("react");
 var h8 = import_react15.createElement;
-function FolderRow(props) {
-  const keyboard = {
-    onKeyDown: (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        props.onToggle();
-      }
-    }
-  };
-  const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
-  const rowProps = menuTrigger === null || props.menuTarget === void 0 ? keyboard : menuTrigger(props.menuTarget, { ...keyboard, "aria-haspopup": "menu", title: props.menuHint });
-  return h8(
-    "div",
-    {
-      className: "dshgg-row dshgg-folderRow",
-      style: { paddingLeft: `${6 + props.depth * 14}px` },
-      role: "button",
-      tabIndex: 0,
-      "aria-expanded": props.open,
-      onClick: props.onToggle,
-      ...rowProps
-    },
-    h8(
-      "span",
-      { className: "dshgg-chevron", "data-open": props.open === true ? "true" : "false" },
-      h8(ChevronRightIcon, { size: 12 })
-    ),
-    h8("span", { className: "dshgg-folderName" }, props.node.name)
-  );
-}
 function FileRow(props) {
   const entry = props.entry;
   const letter = props.letter;
-  const name = baseName(entry.path);
+  const { dir, name } = splitPath(entry.path);
   const actionButtons = [];
   if (props.mode === "commit") {
   } else if (props.mode === "staged") {
@@ -1297,7 +1215,6 @@ function FileRow(props) {
     "div",
     {
       className: "dshgg-row dshgg-fileRow",
-      style: { paddingLeft: `${6 + props.depth * 14}px` },
       role: "button",
       tabIndex: 0,
       "aria-label": `${props.t(statusKey(letter))} ${entry.path}`,
@@ -1307,48 +1224,26 @@ function FileRow(props) {
     },
     h8("span", { className: "dshgg-status", "data-status": letter }, letter),
     h8("span", { className: "dshgg-fileName" }, name),
-    entry.origPath === void 0 ? null : h8("span", { className: "dshgg-fileArrow", title: entry.origPath }, `← ${baseName(entry.origPath)}`),
+    entry.origPath === void 0 ? null : h8("span", { className: "dshgg-fileArrow", title: entry.origPath }, `← ${splitPath(entry.origPath).name}`),
+    dir === "" ? null : h8("span", { className: "dshgg-fileDir", title: entry.path }, dir),
     h8("span", { className: "dshgg-fileActions" }, actionButtons)
   );
 }
-function renderTree(nodes, depth, context) {
-  const rows = [];
-  const fileKind = context.fileKind ?? "file";
-  const folderKind = context.folderKind ?? "folder";
-  const target = (kind, detail) => context.menuTarget === void 0 ? void 0 : context.menuTarget(kind, detail);
-  for (const node of nodes) {
-    if (node.type === "folder") {
-      const open = context.collapsed[node.path] !== true;
-      rows.push(h8(FolderRow, {
-        key: `folder:${node.path}`,
-        node,
-        depth,
-        open,
-        onToggle: () => context.onToggleFolder(node.path),
-        menuTrigger: context.menuTrigger,
-        menuHint: context.menuHint,
-        menuTarget: target(folderKind, { section: context.mode, path: node.path, paths: collectTreePaths(node) })
-      }));
-      if (open) rows.push(...renderTree(node.children, depth + 1, context));
-      continue;
-    }
-    rows.push(h8(FileRow, {
-      key: `file:${node.entry.kind}:${node.entry.path}:${node.entry.x}:${node.entry.y}:${node.entry.letter ?? ""}`,
-      entry: node.entry,
-      letter: node.entry.letter ?? "",
-      depth,
-      t: context.t,
-      busy: context.busy,
-      mode: context.mode,
-      onOpen: context.onOpen,
-      onStage: context.onStage,
-      onUnstage: context.onUnstage,
-      onDiscard: context.onDiscard,
-      menuTrigger: context.menuTrigger,
-      menuTarget: target(fileKind, { section: context.mode, path: node.entry.path })
-    }));
-  }
-  return rows;
+function renderFileRows(entries, context) {
+  return entries.map((entry) => h8(FileRow, {
+    key: `file:${entry.kind}:${entry.path}:${entry.x}:${entry.y}:${entry.letter ?? ""}`,
+    entry,
+    letter: entry.letter ?? "",
+    t: context.t,
+    busy: context.busy,
+    mode: context.mode,
+    onOpen: context.onOpen,
+    onStage: context.onStage,
+    onUnstage: context.onUnstage,
+    onDiscard: context.onDiscard,
+    menuTrigger: context.menuTrigger,
+    menuTarget: context.menuTarget === void 0 ? void 0 : context.menuTarget(entry)
+  }));
 }
 
 // src/client/panel/Section.js
@@ -1392,22 +1287,22 @@ function ChangeGroups(props) {
   const t = props.t;
   const sectionActions = {
     merge: null,
-    staged: props.stagedFiles.length === 0 ? null : h10(IconButton, {
+    staged: props.stagedRows.length === 0 ? null : h10(IconButton, {
       label: t("actions.unstageAll"),
       title: t("actions.unstageAll"),
       disabled: !props.canAct,
       onClick: () => {
-        void props.onUnstage(props.stagedFiles);
+        void props.onUnstage(props.stagedRows);
       }
     }, h10(MinusIcon, { size: 14 })),
-    changes: props.changedFiles.length === 0 ? null : [
+    changes: props.changedRows.length === 0 ? null : [
       h10(IconButton, {
         key: "stage-all",
         label: t("actions.stageAll"),
         title: t("actions.stageAll"),
         disabled: !props.canAct,
         onClick: () => {
-          void props.onStage(props.changedFiles);
+          void props.onStage(props.changedRows);
         }
       }, h10(PlusIcon, { size: 14 })),
       h10(IconButton, {
@@ -1419,12 +1314,11 @@ function ChangeGroups(props) {
       }, h10(UndoIcon, { size: 14 }))
     ]
   };
-  const treeContext = {
-    collapsed: props.collapsed,
+  const rowsFor = (mode, rows) => renderFileRows(rows, {
     t,
     busy: props.busy,
-    onToggleFolder: props.onToggleFolder,
-    onOpen: (entry) => props.onOpenDiff(entry, "changes"),
+    mode,
+    onOpen: (entry) => props.onOpenDiff(entry, mode === "staged" ? "staged" : "changes"),
     onStage: (entry) => {
       void props.onStage([entry]);
     },
@@ -1433,56 +1327,44 @@ function ChangeGroups(props) {
     },
     onDiscard: (entry) => props.onDiscard(entry),
     menuTrigger: props.menuTrigger,
-    menuTarget: props.treeTarget,
-    menuHint: t("menu.hint"),
-    mode: "changes"
-  };
+    menuTarget: (entry) => props.rowTarget("file", { section: mode, path: entry.path })
+  });
   return h10(
     import_react17.Fragment,
     null,
-    props.mergeFiles.length === 0 ? null : h10(Section, {
+    props.mergeRows.length === 0 ? null : h10(Section, {
       id: "merge",
       title: t("sections.merge"),
-      count: props.mergeFiles.length,
+      count: props.mergeRows.length,
       open: props.openSections.merge === true,
       onToggle: () => props.onToggleSection("merge"),
       actions: sectionActions.merge,
       menuTrigger: props.menuTrigger,
       menuHint: t("menu.hint"),
       menuTarget: props.sectionTarget("merge")
-    }, renderTree(props.treeCache.merge, 0, { ...treeContext, mode: "merge", onOpen: (entry) => props.onOpenDiff(entry, "changes") })),
-    props.stagedFiles.length === 0 ? null : h10(Section, {
+    }, rowsFor("merge", props.mergeRows)),
+    props.stagedRows.length === 0 ? null : h10(Section, {
       id: "staged",
       title: t("sections.staged"),
-      count: props.stagedFiles.length,
+      count: props.stagedRows.length,
       open: props.openSections.staged === true,
       onToggle: () => props.onToggleSection("staged"),
       actions: sectionActions.staged,
       menuTrigger: props.menuTrigger,
       menuHint: t("menu.hint"),
       menuTarget: props.sectionTarget("staged")
-    }, renderTree(props.treeCache.staged, 0, {
-      ...treeContext,
-      mode: "staged",
-      onOpen: (entry) => props.onOpenDiff(entry, "staged"),
-      onStage: (entry) => {
-        void props.onStage([entry]);
-      },
-      onUnstage: (entry) => {
-        void props.onUnstage([entry]);
-      }
-    })),
-    props.changedFiles.length === 0 ? null : h10(Section, {
+    }, rowsFor("staged", props.stagedRows)),
+    props.changedRows.length === 0 ? null : h10(Section, {
       id: "changes",
       title: t("sections.changes"),
-      count: props.changedFiles.length,
+      count: props.changedRows.length,
       open: props.openSections.changes === true,
       onToggle: () => props.onToggleSection("changes"),
       actions: sectionActions.changes,
       menuTrigger: props.menuTrigger,
       menuHint: t("menu.hint"),
       menuTarget: props.sectionTarget("changes")
-    }, renderTree(props.treeCache.changes, 0, { ...treeContext, onOpen: (entry) => props.onOpenDiff(entry, "changes") })),
+    }, rowsFor("changes", props.changedRows)),
     props.clean ? h10(
       "div",
       { className: "dshgg-clean" },
@@ -1542,26 +1424,7 @@ function CommitDetails(props) {
   const author = typeof commit.author === "string" ? commit.author : "";
   const body = typeof commit.body === "string" ? commit.body : "";
   const hasDetails = props.details !== null && props.details !== void 0;
-  const files = hasDetails ? props.details.files : [];
-  const treeContext = {
-    collapsed: props.collapsed,
-    t,
-    busy: false,
-    onToggleFolder: props.onToggleFolder,
-    onOpen: props.onOpenFile,
-    onStage: () => {
-    },
-    onUnstage: () => {
-    },
-    onDiscard: () => {
-    },
-    menuTrigger: props.menuTrigger,
-    menuTarget: props.treeTarget,
-    menuHint: t("menu.hint"),
-    mode: "commit",
-    fileKind: "commitFile",
-    folderKind: "commitFolder"
-  };
+  const files = props.files;
   let filesBody;
   if (props.loading === true && !hasDetails) {
     filesBody = h12("div", { key: "loading", className: "dshgg-commitNote" }, t("commitDetails.loading"));
@@ -1576,7 +1439,20 @@ function CommitDetails(props) {
   } else if (files.length === 0) {
     filesBody = h12("div", { key: "empty", className: "dshgg-commitNote" }, t("commitDetails.empty"));
   } else {
-    filesBody = renderTree(props.tree, 0, treeContext);
+    filesBody = renderFileRows(files, {
+      t,
+      busy: false,
+      mode: "commit",
+      onOpen: props.onOpenFile,
+      onStage: () => {
+      },
+      onUnstage: () => {
+      },
+      onDiscard: () => {
+      },
+      menuTrigger: props.menuTrigger,
+      menuTarget: (entry) => props.rowTarget("commitFile", { section: "commit", path: entry.path })
+    });
   }
   return h12(
     "div",
@@ -1992,7 +1868,6 @@ function GitPanel(props) {
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const { graph, graphLoading, graphFailure, loadGraph } = useHistory({ call, refs });
   const [openSections, setOpenSections] = (0, import_react21.useState)({ merge: true, staged: true, changes: true, graph: true });
-  const [collapsed, setCollapsed] = (0, import_react21.useState)({});
   const repo = status?.repo ?? null;
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
@@ -2000,11 +1875,18 @@ function GitPanel(props) {
   const mergeFiles = (0, import_react21.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
   const stagedFiles = (0, import_react21.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
   const changedFiles = (0, import_react21.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
-  const treeCache = (0, import_react21.useMemo)(() => ({
-    merge: buildTree(mergeFiles.map((entry) => ({ ...entry, letter: "!" }))),
-    staged: buildTree(stagedFiles.map((entry) => ({ ...entry, letter: statusLetter(entry.x) }))),
-    changes: buildTree(changedFiles.map((entry) => ({ ...entry, letter: entry.untracked === true ? "U" : statusLetter(entry.y) })))
-  }), [mergeFiles, stagedFiles, changedFiles]);
+  const mergeRows = (0, import_react21.useMemo)(
+    () => sortChangeEntries(mergeFiles).map((entry) => ({ ...entry, letter: "!" })),
+    [mergeFiles]
+  );
+  const stagedRows = (0, import_react21.useMemo)(
+    () => sortChangeEntries(stagedFiles).map((entry) => ({ ...entry, letter: statusLetter(entry.x) })),
+    [stagedFiles]
+  );
+  const changedRows = (0, import_react21.useMemo)(
+    () => sortChangeEntries(changedFiles).map((entry) => ({ ...entry, letter: entry.untracked === true ? "U" : statusLetter(entry.y) })),
+    [changedFiles]
+  );
   const clean = repo !== null && mergeFiles.length === 0 && stagedFiles.length === 0 && changedFiles.length === 0;
   const actions = useChangeActions({ call, t, refs, files, stagedFiles, loadStatus, loadGraph });
   const {
@@ -2026,8 +1908,8 @@ function GitPanel(props) {
   const { branchMenu, branches, branchLoading, branchFailure, loadBranches, toggleBranchMenu, checkout } = useBranches({ call, refs, perform });
   const commitState = useCommitDetails({ call, refs });
   const selectedCommit = commitState.selected;
-  const commitTree = (0, import_react21.useMemo)(
-    () => buildTree((commitState.details?.files ?? []).map((file) => ({ ...file, kind: "commit" }))),
+  const commitRows = (0, import_react21.useMemo)(
+    () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({ ...file, kind: "commit" })),
     [commitState.details]
   );
   const openDiff = (0, import_react21.useCallback)((entry, mode) => {
@@ -2056,7 +1938,6 @@ function GitPanel(props) {
     });
   }, [tab.actions, repoRoot, selectedCommit]);
   const toggleSection = (id) => setOpenSections((current) => ({ ...current, [id]: current[id] !== true }));
-  const toggleFolder = (path) => setCollapsed((current) => ({ ...current, [path]: current[path] !== true }));
   const refreshAll = () => {
     setActionFailure(null);
     void loadStatus({ silent: true });
@@ -2129,14 +2010,12 @@ function GitPanel(props) {
     details: commitState.details,
     loading: commitState.loading,
     failure: commitState.failure,
-    tree: commitTree,
-    collapsed,
-    onToggleFolder: toggleFolder,
+    files: commitRows,
     onBack: commitState.closeCommit,
     onRetry: commitState.retryCommit,
     onOpenFile: openCommitDiff,
     menuTrigger,
-    treeTarget: targets.treeTarget
+    rowTarget: targets.rowTarget
   });
   const body = renderState() ?? (commitBody ?? h14(
     import_react21.Fragment,
@@ -2144,24 +2023,21 @@ function GitPanel(props) {
     h14(ChangeGroups, {
       t,
       clean,
-      mergeFiles,
-      stagedFiles,
-      changedFiles,
-      treeCache,
+      mergeRows,
+      stagedRows,
+      changedRows,
       openSections,
-      collapsed,
       busy: busy !== null,
       canAct,
       onToggleSection: toggleSection,
-      onToggleFolder: toggleFolder,
       onStage: stage,
       onUnstage: unstage,
       onOpenDiff: openDiff,
       onDiscard: (entry) => setConfirm({ kind: "discard", entry }),
-      onDiscardAll: () => setConfirm({ kind: "discardAll", entries: changedFiles }),
+      onDiscardAll: () => setConfirm({ kind: "discardAll", entries: changedRows }),
       menuTrigger,
       sectionTarget: targets.sectionTarget,
-      treeTarget: targets.treeTarget
+      rowTarget: targets.rowTarget
     }),
     h14(GraphSection, {
       t,
@@ -2489,7 +2365,7 @@ var zh = {
 };
 
 // src/client/styles.css
-var styles_default = '/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host\'s `--dsw-*`\n * theme tokens, and text uses the host\'s `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH\'s\n * own sidebar surfaces. Sizes follow the host\'s sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n\n/* --------------------------------------------------------------- buttons --- */\n\n.dshgg-iconBtn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n  padding: 6px;\n  color: var(--dsw-alias-label-secondary);\n  line-height: 1;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-iconBtn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-iconBtn[data-spinning="true"] svg {\n  animation: dshgg-spin 1s linear infinite;\n}\n\n@keyframes dshgg-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.dshgg-btn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  height: 28px;\n  padding: 0 12px;\n  border: 0.5px solid transparent;\n  border-radius: var(--dsw-radius-sm);\n  font: var(--dsw-font-xxs-strong-12);\n  white-space: nowrap;\n  cursor: pointer;\n}\n\n.dshgg-btn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-btnPrimary {\n  color: var(--dsw-alias-label-primary-foreground);\n  background: var(--dsw-alias-button-primary-fill);\n}\n\n.dshgg-btnPrimary:hover:not(:disabled) {\n  background: var(--dsw-alias-button-primary-hover);\n}\n\n.dshgg-btnGhost {\n  color: var(--dsw-alias-label-primary);\n  background: transparent;\n  border-color: var(--dsw-alias-border-l3);\n  font-weight: 400;\n}\n\n.dshgg-btnGhost:hover:not(:disabled) {\n  background: var(--dsw-alias-interactive-bg-hover-solid);\n}\n\n.dshgg-linkBtn {\n  flex: none;\n  padding: 0;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-strong-12);\n  background: none;\n  border: none;\n  cursor: pointer;\n}\n\n.dshgg-linkBtn:hover {\n  text-decoration: underline;\n}\n\n/* --------------------------------------------------------------- toolbar --- */\n\n.dshgg-toolbar {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  height: 38px;\n  padding: 0 6px;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l1);\n}\n\n.dshgg-branchWrap {\n  position: relative;\n  display: flex;\n  flex: 0 1 auto;\n  min-width: 0;\n}\n\n.dshgg-branchChip {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  height: 28px;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-branchChip:disabled {\n  color: var(--dsw-alias-label-tertiary);\n  cursor: default;\n}\n\n.dshgg-branchChip svg:first-child {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-branchName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font-weight: 500;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-upstream {\n  display: inline-flex;\n  flex: 0 1000 auto;\n  align-items: center;\n  min-width: 0;\n  max-width: 140px;\n  padding: 0 2px;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sync {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-branchChip .dshgg-chevron {\n  color: var(--dsw-alias-label-caption);\n}\n\n@media (hover: hover) {\n  .dshgg-branchChip:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-chevron {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  color: var(--dsw-alias-label-caption);\n  transition: transform 150ms var(--ds-ease-in-out);\n}\n\n.dshgg-chevron svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-chevron[data-open="true"] {\n  transform: rotate(90deg);\n}\n\n/* ------------------------------------------------------------ commit box --- */\n\n.dshgg-commitBox {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  gap: 8px;\n  padding: 10px 8px 8px;\n}\n\n.dshgg-commitMessage {\n  box-sizing: border-box;\n  width: 100%;\n  min-height: 60px;\n  max-height: 30vh;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  resize: vertical;\n  outline: none;\n}\n\n.dshgg-commitMessage::placeholder {\n  color: var(--dsw-alias-label-dimmed);\n}\n\n.dshgg-commitMessage:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-commitMessage:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-commitRow {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.dshgg-commitHint {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* -------------------------------------------------------------- feedback --- */\n\n.dshgg-banner {\n  display: flex;\n  align-items: flex-start;\n  gap: 8px;\n  margin: 0 8px 8px;\n  padding: 8px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-bannerText {\n  flex: 1;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerText > span {\n  font-weight: 500;\n}\n\n.dshgg-bannerDetail {\n  max-height: 96px;\n  margin-top: 4px;\n  overflow: auto;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  margin: -4px -4px -4px 0;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn svg {\n  width: 12px;\n  height: 12px;\n}\n\n.dshgg-notice {\n  margin: 0 8px 8px;\n  padding: 7px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: var(--dsw-alias-state-success-tertiary);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 24%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-state {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 6px;\n  padding: 28px 16px;\n  text-align: center;\n}\n\n.dshgg-stateIcon {\n  display: flex;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-stateTitle {\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-stateDesc {\n  max-width: 280px;\n  margin: 0;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-stateAction {\n  margin-top: 8px;\n}\n\n.dshgg-note {\n  padding: 4px 6px 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-menuNote {\n  padding: 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-clean {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n  padding: 20px 12px;\n  text-align: center;\n}\n\n.dshgg-cleanIcon {\n  display: flex;\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-cleanTitle {\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-cleanDesc {\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* --------------------------------------------------------------- scroll --- */\n\n.dshgg-scroll {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 2px;\n  min-height: 0;\n  padding: 2px 6px 10px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n}\n\n/* -------------------------------------------------------------- section --- */\n\n.dshgg-section {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n}\n\n.dshgg-section[data-section="graph"] {\n  margin-top: 2px;\n  padding-top: 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l1);\n}\n\n.dshgg-sectionHeader {\n  position: relative;\n  display: flex;\n  align-items: center;\n  gap: 2px;\n  height: 30px;\n  padding: 0 4px 0 2px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-sectionToggle {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 26px;\n  padding: 0 4px 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-sectionTitle {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sectionCount {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-sectionActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn svg {\n  width: 13px;\n  height: 13px;\n}\n\n.dshgg-sectionBody {\n  display: flex;\n  flex-direction: column;\n}\n\n@media (hover: hover) {\n  .dshgg-sectionHeader:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n/* ----------------------------------------------------------------- rows --- */\n\n.dshgg-row {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n  padding-right: 6px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-fileRow,\n.dshgg-folderRow {\n  cursor: pointer;\n  user-select: none;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover,\n  .dshgg-folderRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-fileRow:focus-visible,\n.dshgg-folderRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-status {\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n  text-align: center;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-status[data-status="M"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="A"],\n.dshgg-status[data-status="U"] {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-status[data-status="D"] {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-status[data-status="R"],\n.dshgg-status[data-status="C"] {\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-status[data-status="T"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="!"] {\n  color: var(--dsw-alias-state-error-secondary);\n}\n\n.dshgg-fileName,\n.dshgg-folderName {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileName[data-obsolete="true"] {\n  color: var(--dsw-alias-label-secondary);\n  text-decoration: line-through;\n}\n\n.dshgg-fileArrow {\n  flex: none;\n  max-width: 38%;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 0;\n  opacity: 0;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover .dshgg-fileActions {\n    opacity: 1;\n  }\n}\n\n.dshgg-fileRow:focus-within .dshgg-fileActions {\n  opacity: 1;\n}\n\n.dshgg-fileActions .dshgg-iconBtn {\n  width: 22px;\n  height: 22px;\n  padding: 4px;\n}\n\n.dshgg-fileActions .dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n/* ---------------------------------------------------------------- graph --- */\n\n.dshgg-graphRow {\n  display: flex;\n  flex: none;\n  align-items: stretch;\n  gap: 0;\n  height: 28px;\n  min-width: 0;\n  padding: 0 6px 0 4px;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n@media (hover: hover) {\n  .dshgg-graphRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-graphRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-graphSvg {\n  display: block;\n  flex: none;\n  overflow: hidden;\n}\n\n/* One lane color per palette slot; the layout module paints the same slot for\n * every line and node so a branch keeps its color for as long as it is drawn. */\n.dshgg-graphEdge,\n.dshgg-graphNode {\n  --dshgg-lane-color: var(--dsw-alias-label-secondary);\n}\n\n.dshgg-graphEdge[data-lane="0"],\n.dshgg-graphNode[data-lane="0"] {\n  --dshgg-lane-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);\n}\n\n.dshgg-graphEdge[data-lane="1"],\n.dshgg-graphNode[data-lane="1"] {\n  --dshgg-lane-color: var(--dsw-alias-state-done-primary);\n}\n\n.dshgg-graphEdge[data-lane="2"],\n.dshgg-graphNode[data-lane="2"] {\n  --dshgg-lane-color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-graphEdge[data-lane="3"],\n.dshgg-graphNode[data-lane="3"] {\n  --dshgg-lane-color: var(--dsw-alias-state-warn-primary);\n}\n\n.dshgg-graphEdge[data-lane="4"],\n.dshgg-graphNode[data-lane="4"] {\n  --dshgg-lane-color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-graphEdge[data-lane="5"],\n.dshgg-graphNode[data-lane="5"] {\n  --dshgg-lane-color: var(--dsw-alias-chart-system);\n}\n\n.dshgg-graphEdge {\n  fill: none;\n  stroke: var(--dshgg-lane-color);\n  stroke-width: 1.5;\n  stroke-linecap: round;\n  stroke-linejoin: round;\n}\n\n.dshgg-graphNode {\n  fill: var(--dshgg-lane-color);\n}\n\n.dshgg-graphBody {\n  display: flex;\n  flex: 1;\n  min-width: 0;\n  container-type: inline-size;\n}\n\n.dshgg-graphSubjectLine {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n}\n\n.dshgg-graphSubject {\n  flex: 0 1 auto;\n  min-width: min(8ch, 100%);\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphMeta {\n  display: inline-flex;\n  flex: 0 1 auto;\n  align-items: center;\n  gap: 4px;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n}\n\n.dshgg-graphMeta span {\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphAuthor {\n  flex: 0 1 auto;\n  min-width: 0;\n}\n\n.dshgg-graphHash,\n.dshgg-graphTime,\n.dshgg-graphMeta .dshgg-dot {\n  flex: none;\n}\n\n.dshgg-graphHash {\n  font-family: var(--ds-font-family-code);\n}\n\n/* Protect the subject before removing secondary information. Each row\'s text\n * body is a width container, so these thresholds follow the Sidebar pane size\n * rather than the unrelated width of a floating Web window. */\n@container (max-width: 360px) {\n  .dshgg-graphTime,\n  .dshgg-graphTimeDot {\n    display: none;\n  }\n}\n\n@container (max-width: 280px) {\n  .dshgg-graphAuthor,\n  .dshgg-graphAuthorDot {\n    display: none;\n  }\n}\n\n@container (max-width: 200px) {\n  .dshgg-graphMeta,\n  .dshgg-refs {\n    display: none;\n  }\n}\n\n.dshgg-refs {\n  display: inline-flex;\n  flex: 0 1 auto;\n  gap: 4px;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.dshgg-ref {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  max-width: 112px;\n  height: 16px;\n  padding: 0 6px;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 10px;\n  font-weight: 500;\n  line-height: 16px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  border-radius: 999px;\n}\n\n.dshgg-ref[data-kind="head"] {\n  color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);\n  background: color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 12%, transparent);\n}\n\n.dshgg-ref[data-kind="branch"] {\n  color: var(--dsw-alias-label-secondary);\n  background: var(--dsw-alias-bg-module-platform);\n}\n\n.dshgg-ref[data-kind="tag"] {\n  color: var(--dsw-alias-state-warn-label);\n  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent);\n}\n\n.dshgg-ref[data-kind="remote"] {\n  color: var(--dsw-alias-label-tertiary);\n}\n\n/* --------------------------------------------------------- commit detail --- */\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l1);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* ------------------------------------------------------------- confirm --- */\n\n.dshgg-confirm {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 10px;\n  padding: 10px 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-confirmText {\n  flex: 1;\n  min-width: 0;\n}\n\n.dshgg-confirmTitle {\n  font: var(--dsw-font-xs-strong-13);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmDesc {\n  margin-top: 3px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n}\n\n/* ---------------------------------------------------------- branch menu --- */\n\n.dshgg-menu {\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 0;\n  z-index: 20;\n  min-width: 220px;\n  max-width: min(320px, 70vw);\n  max-height: 320px;\n  padding: 4px;\n  overflow-y: auto;\n  background: var(--dsw-specific-menu);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  backdrop-filter: var(--dsw-menu-backdrop-filter);\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-menuItem {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  min-height: 32px;\n  padding: 5px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n.dshgg-menuItem:disabled {\n  color: var(--dsw-alias-label-primary);\n  cursor: default;\n}\n\n@media (hover: hover) {\n  .dshgg-menuItem:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-menuItem:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.dshgg-menuCheck {\n  display: inline-flex;\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-menuCheck svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-menuLabel {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* --------------------------------------------------------------- titles --- */\n\n.dshgg-title {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n}\n\n.dshgg-titleText {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* ----------------------------------------------------------------- diff --- */\n\n.dshgg-diffRoot {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n}\n\n.dshgg-diffHeader {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-width: 0;\n  height: 38px;\n  padding: 0 6px 0 10px;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-diffPath {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 1px;\n  min-width: 0;\n}\n\n.dshgg-diffName {\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffFrom {\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffBadge {\n  flex: none;\n  height: 20px;\n  padding: 0 7px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxxs-strong-11);\n  line-height: 20px;\n  white-space: nowrap;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-diffBadge[data-kind="staged"],\n.dshgg-diffBadge[data-kind="untracked"] {\n  color: var(--dsw-alias-state-success-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);\n}\n\n.dshgg-diffBadge[data-kind="commit"] {\n  color: var(--dsw-alias-state-business-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);\n}\n\n.dshgg-diffStats {\n  display: inline-flex;\n  flex: none;\n  gap: 6px;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-diffAdd {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-diffDel {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-diffBody {\n  flex: 1;\n  min-height: 0;\n  padding: 4px 0 16px;\n  overflow: auto;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 20px;\n}\n\n.dshgg-hunkHeader {\n  padding: 4px 10px 2px;\n  margin-top: 4px;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre;\n}\n\n.dshgg-diffLine {\n  display: grid;\n  grid-template-columns: 40px 40px 14px minmax(0, 1fr);\n  min-width: max-content;\n  min-height: 20px;\n}\n\n.dshgg-gutter {\n  padding-right: 6px;\n  color: var(--dsw-alias-label-tertiary);\n  font-variant-numeric: tabular-nums;\n  text-align: right;\n  user-select: none;\n}\n\n.dshgg-marker {\n  color: var(--dsw-alias-label-tertiary);\n  font-weight: 500;\n  text-align: center;\n  user-select: none;\n}\n\n.dshgg-code {\n  min-width: 0;\n  padding: 0 10px;\n  white-space: pre;\n}\n\n.dshgg-diffLine[data-type="+"] {\n  background: var(--dsw-alias-file-diff-added-bg);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-added-gutter);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="-"] {\n  background: var(--dsw-alias-file-diff-deleted-bg);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-deleted-gutter);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffNote {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 8px;\n  padding: 16px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xs-13);\n}\n\n/* --------------------------------------------------------------- motion --- */\n\n@media (prefers-reduced-motion: reduce) {\n  .dshgg-iconBtn[data-spinning="true"] svg {\n    animation: none;\n  }\n\n  .dshgg-chevron {\n    transition: none;\n  }\n}\n';
+var styles_default = '/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host\'s `--dsw-*`\n * theme tokens, and text uses the host\'s `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH\'s\n * own sidebar surfaces. Sizes follow the host\'s sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n\n/* --------------------------------------------------------------- buttons --- */\n\n.dshgg-iconBtn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n  padding: 6px;\n  color: var(--dsw-alias-label-secondary);\n  line-height: 1;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-iconBtn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-iconBtn[data-spinning="true"] svg {\n  animation: dshgg-spin 1s linear infinite;\n}\n\n@keyframes dshgg-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.dshgg-btn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  height: 28px;\n  padding: 0 12px;\n  border: 0.5px solid transparent;\n  border-radius: var(--dsw-radius-sm);\n  font: var(--dsw-font-xxs-strong-12);\n  white-space: nowrap;\n  cursor: pointer;\n}\n\n.dshgg-btn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-btnPrimary {\n  color: var(--dsw-alias-label-primary-foreground);\n  background: var(--dsw-alias-button-primary-fill);\n}\n\n.dshgg-btnPrimary:hover:not(:disabled) {\n  background: var(--dsw-alias-button-primary-hover);\n}\n\n.dshgg-btnGhost {\n  color: var(--dsw-alias-label-primary);\n  background: transparent;\n  border-color: var(--dsw-alias-border-l3);\n  font-weight: 400;\n}\n\n.dshgg-btnGhost:hover:not(:disabled) {\n  background: var(--dsw-alias-interactive-bg-hover-solid);\n}\n\n.dshgg-linkBtn {\n  flex: none;\n  padding: 0;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-strong-12);\n  background: none;\n  border: none;\n  cursor: pointer;\n}\n\n.dshgg-linkBtn:hover {\n  text-decoration: underline;\n}\n\n/* --------------------------------------------------------------- toolbar --- */\n\n.dshgg-toolbar {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  height: 38px;\n  padding: 0 6px;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l1);\n}\n\n.dshgg-branchWrap {\n  position: relative;\n  display: flex;\n  flex: 0 1 auto;\n  min-width: 0;\n}\n\n.dshgg-branchChip {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  height: 28px;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-branchChip:disabled {\n  color: var(--dsw-alias-label-tertiary);\n  cursor: default;\n}\n\n.dshgg-branchChip svg:first-child {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-branchName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font-weight: 500;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-upstream {\n  display: inline-flex;\n  flex: 0 1000 auto;\n  align-items: center;\n  min-width: 0;\n  max-width: 140px;\n  padding: 0 2px;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sync {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-branchChip .dshgg-chevron {\n  color: var(--dsw-alias-label-caption);\n}\n\n@media (hover: hover) {\n  .dshgg-branchChip:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-chevron {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  color: var(--dsw-alias-label-caption);\n  transition: transform 150ms var(--ds-ease-in-out);\n}\n\n.dshgg-chevron svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-chevron[data-open="true"] {\n  transform: rotate(90deg);\n}\n\n/* ------------------------------------------------------------ commit box --- */\n\n.dshgg-commitBox {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  gap: 8px;\n  padding: 10px 8px 8px;\n}\n\n.dshgg-commitMessage {\n  box-sizing: border-box;\n  width: 100%;\n  min-height: 60px;\n  max-height: 30vh;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  resize: vertical;\n  outline: none;\n}\n\n.dshgg-commitMessage::placeholder {\n  color: var(--dsw-alias-label-dimmed);\n}\n\n.dshgg-commitMessage:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-commitMessage:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-commitRow {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.dshgg-commitHint {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* -------------------------------------------------------------- feedback --- */\n\n.dshgg-banner {\n  display: flex;\n  align-items: flex-start;\n  gap: 8px;\n  margin: 0 8px 8px;\n  padding: 8px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-bannerText {\n  flex: 1;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerText > span {\n  font-weight: 500;\n}\n\n.dshgg-bannerDetail {\n  max-height: 96px;\n  margin-top: 4px;\n  overflow: auto;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  margin: -4px -4px -4px 0;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn svg {\n  width: 12px;\n  height: 12px;\n}\n\n.dshgg-notice {\n  margin: 0 8px 8px;\n  padding: 7px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: var(--dsw-alias-state-success-tertiary);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 24%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-state {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 6px;\n  padding: 28px 16px;\n  text-align: center;\n}\n\n.dshgg-stateIcon {\n  display: flex;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-stateTitle {\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-stateDesc {\n  max-width: 280px;\n  margin: 0;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-stateAction {\n  margin-top: 8px;\n}\n\n.dshgg-note {\n  padding: 4px 6px 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-menuNote {\n  padding: 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-clean {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n  padding: 20px 12px;\n  text-align: center;\n}\n\n.dshgg-cleanIcon {\n  display: flex;\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-cleanTitle {\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-cleanDesc {\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* --------------------------------------------------------------- scroll --- */\n\n.dshgg-scroll {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 2px;\n  min-height: 0;\n  padding: 2px 6px 10px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n}\n\n/* -------------------------------------------------------------- section --- */\n\n.dshgg-section {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n}\n\n.dshgg-section[data-section="graph"] {\n  margin-top: 2px;\n  padding-top: 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l1);\n}\n\n.dshgg-sectionHeader {\n  position: relative;\n  display: flex;\n  align-items: center;\n  gap: 2px;\n  height: 30px;\n  padding: 0 4px 0 2px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-sectionToggle {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 26px;\n  padding: 0 4px 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-sectionTitle {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sectionCount {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-sectionActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn svg {\n  width: 13px;\n  height: 13px;\n}\n\n.dshgg-sectionBody {\n  display: flex;\n  flex-direction: column;\n}\n\n@media (hover: hover) {\n  .dshgg-sectionHeader:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n/* ----------------------------------------------------------------- rows --- */\n\n.dshgg-row {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n  padding: 0 6px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-fileRow {\n  cursor: pointer;\n  user-select: none;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-fileRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-status {\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n  text-align: center;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-status[data-status="M"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="A"],\n.dshgg-status[data-status="U"] {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-status[data-status="D"] {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-status[data-status="R"],\n.dshgg-status[data-status="C"] {\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-status[data-status="T"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="!"] {\n  color: var(--dsw-alias-state-error-secondary);\n}\n\n.dshgg-fileName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* The dimmed parent directory trails the file name: it disambiguates equally\n   named files without turning the flat list back into a hierarchy. */\n.dshgg-fileDir {\n  flex: 1 1 0;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileName[data-obsolete="true"] {\n  color: var(--dsw-alias-label-secondary);\n  text-decoration: line-through;\n}\n\n.dshgg-fileArrow {\n  flex: none;\n  max-width: 38%;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 0;\n  margin-left: auto;\n  opacity: 0;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover .dshgg-fileActions {\n    opacity: 1;\n  }\n}\n\n.dshgg-fileRow:focus-within .dshgg-fileActions {\n  opacity: 1;\n}\n\n.dshgg-fileActions .dshgg-iconBtn {\n  width: 22px;\n  height: 22px;\n  padding: 4px;\n}\n\n.dshgg-fileActions .dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n/* ---------------------------------------------------------------- graph --- */\n\n.dshgg-graphRow {\n  display: flex;\n  flex: none;\n  align-items: stretch;\n  gap: 0;\n  height: 28px;\n  min-width: 0;\n  padding: 0 6px 0 4px;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n@media (hover: hover) {\n  .dshgg-graphRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-graphRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-graphSvg {\n  display: block;\n  flex: none;\n  overflow: hidden;\n}\n\n/* One lane color per palette slot; the layout module paints the same slot for\n * every line and node so a branch keeps its color for as long as it is drawn. */\n.dshgg-graphEdge,\n.dshgg-graphNode {\n  --dshgg-lane-color: var(--dsw-alias-label-secondary);\n}\n\n.dshgg-graphEdge[data-lane="0"],\n.dshgg-graphNode[data-lane="0"] {\n  --dshgg-lane-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);\n}\n\n.dshgg-graphEdge[data-lane="1"],\n.dshgg-graphNode[data-lane="1"] {\n  --dshgg-lane-color: var(--dsw-alias-state-done-primary);\n}\n\n.dshgg-graphEdge[data-lane="2"],\n.dshgg-graphNode[data-lane="2"] {\n  --dshgg-lane-color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-graphEdge[data-lane="3"],\n.dshgg-graphNode[data-lane="3"] {\n  --dshgg-lane-color: var(--dsw-alias-state-warn-primary);\n}\n\n.dshgg-graphEdge[data-lane="4"],\n.dshgg-graphNode[data-lane="4"] {\n  --dshgg-lane-color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-graphEdge[data-lane="5"],\n.dshgg-graphNode[data-lane="5"] {\n  --dshgg-lane-color: var(--dsw-alias-chart-system);\n}\n\n.dshgg-graphEdge {\n  fill: none;\n  stroke: var(--dshgg-lane-color);\n  stroke-width: 1.5;\n  stroke-linecap: round;\n  stroke-linejoin: round;\n}\n\n.dshgg-graphNode {\n  fill: var(--dshgg-lane-color);\n}\n\n.dshgg-graphBody {\n  display: flex;\n  flex: 1;\n  min-width: 0;\n  container-type: inline-size;\n}\n\n.dshgg-graphSubjectLine {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n}\n\n.dshgg-graphSubject {\n  flex: 0 1 auto;\n  min-width: min(8ch, 100%);\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphMeta {\n  display: inline-flex;\n  flex: 0 1 auto;\n  align-items: center;\n  gap: 4px;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n}\n\n.dshgg-graphMeta span {\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphAuthor {\n  flex: 0 1 auto;\n  min-width: 0;\n}\n\n.dshgg-graphHash,\n.dshgg-graphTime,\n.dshgg-graphMeta .dshgg-dot {\n  flex: none;\n}\n\n.dshgg-graphHash {\n  font-family: var(--ds-font-family-code);\n}\n\n/* Protect the subject before removing secondary information. Each row\'s text\n * body is a width container, so these thresholds follow the Sidebar pane size\n * rather than the unrelated width of a floating Web window. */\n@container (max-width: 360px) {\n  .dshgg-graphTime,\n  .dshgg-graphTimeDot {\n    display: none;\n  }\n}\n\n@container (max-width: 280px) {\n  .dshgg-graphAuthor,\n  .dshgg-graphAuthorDot {\n    display: none;\n  }\n}\n\n@container (max-width: 200px) {\n  .dshgg-graphMeta,\n  .dshgg-refs {\n    display: none;\n  }\n}\n\n.dshgg-refs {\n  display: inline-flex;\n  flex: 0 1 auto;\n  gap: 4px;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.dshgg-ref {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  max-width: 112px;\n  height: 16px;\n  padding: 0 6px;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 10px;\n  font-weight: 500;\n  line-height: 16px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  border-radius: 999px;\n}\n\n.dshgg-ref[data-kind="head"] {\n  color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);\n  background: color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 12%, transparent);\n}\n\n.dshgg-ref[data-kind="branch"] {\n  color: var(--dsw-alias-label-secondary);\n  background: var(--dsw-alias-bg-module-platform);\n}\n\n.dshgg-ref[data-kind="tag"] {\n  color: var(--dsw-alias-state-warn-label);\n  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent);\n}\n\n.dshgg-ref[data-kind="remote"] {\n  color: var(--dsw-alias-label-tertiary);\n}\n\n/* --------------------------------------------------------- commit detail --- */\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l1);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* ------------------------------------------------------------- confirm --- */\n\n.dshgg-confirm {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 10px;\n  padding: 10px 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-confirmText {\n  flex: 1;\n  min-width: 0;\n}\n\n.dshgg-confirmTitle {\n  font: var(--dsw-font-xs-strong-13);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmDesc {\n  margin-top: 3px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n}\n\n/* ---------------------------------------------------------- branch menu --- */\n\n.dshgg-menu {\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 0;\n  z-index: 20;\n  min-width: 220px;\n  max-width: min(320px, 70vw);\n  max-height: 320px;\n  padding: 4px;\n  overflow-y: auto;\n  background: var(--dsw-specific-menu);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  backdrop-filter: var(--dsw-menu-backdrop-filter);\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-menuItem {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  min-height: 32px;\n  padding: 5px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n.dshgg-menuItem:disabled {\n  color: var(--dsw-alias-label-primary);\n  cursor: default;\n}\n\n@media (hover: hover) {\n  .dshgg-menuItem:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-menuItem:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.dshgg-menuCheck {\n  display: inline-flex;\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-menuCheck svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-menuLabel {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* --------------------------------------------------------------- titles --- */\n\n.dshgg-title {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n}\n\n.dshgg-titleText {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* ----------------------------------------------------------------- diff --- */\n\n.dshgg-diffRoot {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n}\n\n.dshgg-diffHeader {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-width: 0;\n  height: 38px;\n  padding: 0 6px 0 10px;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-diffPath {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 1px;\n  min-width: 0;\n}\n\n.dshgg-diffName {\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffFrom {\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffBadge {\n  flex: none;\n  height: 20px;\n  padding: 0 7px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxxs-strong-11);\n  line-height: 20px;\n  white-space: nowrap;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-diffBadge[data-kind="staged"],\n.dshgg-diffBadge[data-kind="untracked"] {\n  color: var(--dsw-alias-state-success-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);\n}\n\n.dshgg-diffBadge[data-kind="commit"] {\n  color: var(--dsw-alias-state-business-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);\n}\n\n.dshgg-diffStats {\n  display: inline-flex;\n  flex: none;\n  gap: 6px;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-diffAdd {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-diffDel {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-diffBody {\n  flex: 1;\n  min-height: 0;\n  padding: 4px 0 16px;\n  overflow: auto;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 20px;\n}\n\n.dshgg-hunkHeader {\n  padding: 4px 10px 2px;\n  margin-top: 4px;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre;\n}\n\n.dshgg-diffLine {\n  display: grid;\n  grid-template-columns: 40px 40px 14px minmax(0, 1fr);\n  min-width: max-content;\n  min-height: 20px;\n}\n\n.dshgg-gutter {\n  padding-right: 6px;\n  color: var(--dsw-alias-label-tertiary);\n  font-variant-numeric: tabular-nums;\n  text-align: right;\n  user-select: none;\n}\n\n.dshgg-marker {\n  color: var(--dsw-alias-label-tertiary);\n  font-weight: 500;\n  text-align: center;\n  user-select: none;\n}\n\n.dshgg-code {\n  min-width: 0;\n  padding: 0 10px;\n  white-space: pre;\n}\n\n.dshgg-diffLine[data-type="+"] {\n  background: var(--dsw-alias-file-diff-added-bg);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-added-gutter);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="-"] {\n  background: var(--dsw-alias-file-diff-deleted-bg);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-deleted-gutter);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffNote {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 8px;\n  padding: 16px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xs-13);\n}\n\n/* --------------------------------------------------------------- motion --- */\n\n@media (prefers-reduced-motion: reduce) {\n  .dshgg-iconBtn[data-spinning="true"] svg {\n    animation: none;\n  }\n\n  .dshgg-chevron {\n    transition: none;\n  }\n}\n';
 
 // src/client/styles.js
 if (typeof document !== "undefined" && document.querySelector(`style[data-plugin=${JSON.stringify(PACKAGE_ID)}]`) === null) {

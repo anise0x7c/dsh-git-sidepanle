@@ -16,6 +16,7 @@ import {
   isStaged,
   isUnstaged,
   parseRefs,
+  splitPath,
   statusKey,
   statusLetter,
 } from '../../src/client/git/format.js'
@@ -134,6 +135,18 @@ describe('baseName', () => {
   test('only splits on forward slashes; a trailing slash yields an empty name', () => {
     assert.equal(baseName('src/lib/'), '')
     assert.equal(baseName('C:\\repo\\app.js'), 'C:\\repo\\app.js')
+  })
+})
+
+describe('splitPath', () => {
+  test('splits the parent directory from the file name', () => {
+    assert.deepEqual(splitPath('src/lib/app.js'), { dir: 'src/lib', name: 'app.js' })
+    assert.deepEqual(splitPath('README.md'), { dir: '', name: 'README.md' })
+  })
+
+  test('only splits on forward slashes; a trailing slash yields an empty name', () => {
+    assert.deepEqual(splitPath('src/lib/'), { dir: 'src/lib', name: '' })
+    assert.deepEqual(splitPath('C:\\repo\\app.js'), { dir: '', name: 'C:\\repo\\app.js' })
   })
 })
 

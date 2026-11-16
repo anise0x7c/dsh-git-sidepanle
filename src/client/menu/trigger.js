@@ -7,13 +7,12 @@ import { MENU_TARGET } from '../constants.js'
 
 /**
  * Captured row data handed to a menu contribution; each row family adds its own
- * fields (`section`, `path`, `paths`, `cwd`, `panelId`, `busy`, ...).
+ * fields (`section`, `path`, `cwd`, `panelId`, `busy`, ...).
  * @typedef {object} MenuTargetValue
  * @property {string} sessionId - Session that owns the row.
- * @property {string} kind - row family (`file`, `folder`, `section`, `commit`, `diff`, `commitFile`, `commitFolder`).
+ * @property {string} kind - row family (`file`, `section`, `commit`, `diff`, `commitFile`).
  * @property {string} [section] - change group the row belongs to.
- * @property {string} [path] - repository-relative file or folder path.
- * @property {string[]} [paths] - folder subtree files.
+ * @property {string} [path] - repository-relative file path.
  * @property {string} [cwd] - repository root used for absolute-path copies.
  * @property {string} [panelId] - panel instance that owns the command.
  * @property {boolean} [busy] - a Git operation is running.
@@ -63,7 +62,7 @@ export function bindMenuTrigger(useContextMenu) {
 /**
  * Build one captured context-menu target for a row.
  * @param {string} sessionId - Session that owns the row.
- * @param {string} kind - row family (`file`, `folder`, `section`, `commit`, `diff`, `commitFile`, `commitFolder`).
+ * @param {string} kind - row family (`file`, `section`, `commit`, `diff`, `commitFile`).
  * @param {object} detail - row data merged into the captured value.
  * @returns {MenuTarget} captured target wrapper.
  */

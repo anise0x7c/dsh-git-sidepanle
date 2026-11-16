@@ -1,47 +1,27 @@
 /**
- * Folder and file rows plus the recursive tree renderer.
+ * One changed-file row and the flat-list renderer shared by the change groups
+ * and the commit-details view.
  */
 
 import { createElement } from 'react'
-import { baseName, statusKey } from '../git/format.js'
-import { collectTreePaths } from '../git/tree.js'
-import { ChevronRightIcon, MinusIcon, PlusIcon, UndoIcon } from '../icons.js'
-import { menuTarget } from '../menu/trigger.js'
+import { splitPath, statusKey } from '../git/format.js'
+import { MinusIcon, PlusIcon, UndoIcon } from '../icons.js'
 import { IconButton } from './controls.js'
 
 const h = createElement
 
-export function FolderRow(props) {
-  const keyboard = {
-    onKeyDown: (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        props.onToggle()
-      }
-    },
-  }
-  const menuTrigger = typeof props.menuTrigger === 'function' ? props.menuTrigger : null
-  const rowProps = menuTrigger === null || props.menuTarget === undefined
-    ? keyboard
-    : menuTrigger(props.menuTarget, { ...keyboard, 'aria-haspopup': 'menu', title: props.menuHint })
-  return h('div', {
-    className: 'dshgg-row dshgg-folderRow',
-    style: { paddingLeft: `${6 + props.depth * 14}px` },
-    role: 'button',
-    tabIndex: 0,
-    'aria-expanded': props.open,
-    onClick: props.onToggle,
-    ...rowProps,
-  },
-  h('span', { className: 'dshgg-chevron', 'data-open': props.open === true ? 'true' : 'false' },
-    h(ChevronRightIcon, { size: 12 })),
-  h('span', { className: 'dshgg-folderName' }, props.node.name))
-}
-
+/**
+ * Render the file name with its parent directory on one line: the name keeps
+ * the primary weight, and the dimmed directory keeps two equally named files
+ * distinguishable without reintroducing folder rows. The full path stays in
+ * the row tooltip and in its accessible label.
+ * @param {object} props - file-row props.
+ * @returns {object} the row element.
+ */
 export function FileRow(props) {
   const entry = props.entry
   const letter = props.letter
-  const name = baseName(entry.path)
+  const { dir, name } = splitPath(entry.path)
   const actionButtons = []
   if (props.mode === 'commit') {
     // Historical rows have no staging or discarding actions: the commit is
@@ -87,7 +67,6 @@ export function FileRow(props) {
     : menuTrigger(props.menuTarget, { ...keyboard, 'aria-haspopup': 'menu' })
   return h('div', {
     className: 'dshgg-row dshgg-fileRow',
-    style: { paddingLeft: `${6 + props.depth * 14}px` },
     role: 'button',
     tabIndex: 0,
     'aria-label': `${props.t(statusKey(letter))} ${entry.path}`,
@@ -97,48 +76,33 @@ export function FileRow(props) {
   },
   h('span', { className: 'dshgg-status', 'data-status': letter }, letter),
   h('span', { className: 'dshgg-fileName' }, name),
-  entry.origPath === undefined ? null : h('span', { className: 'dshgg-fileArrow', title: entry.origPath }, `\u2190 ${baseName(entry.origPath)}`),
+  entry.origPath === undefined ? null : h('span', { className: 'dshgg-fileArrow', title: entry.origPath }, `\u2190 ${splitPath(entry.origPath).name}`),
+  dir === '' ? null : h('span', { className: 'dshgg-fileDir', title: entry.path }, dir),
   h('span', { className: 'dshgg-fileActions' }, actionButtons))
 }
 
-export function renderTree(nodes, depth, context) {
-  const rows = []
-  // Change rows register their own target kinds; the commit-details view
-  // passes past-commit kinds so its copy-only menus never offer staging.
-  const fileKind = context.fileKind ?? 'file'
-  const folderKind = context.folderKind ?? 'folder'
-  const target = (kind, detail) => (context.menuTarget === undefined ? undefined : context.menuTarget(kind, detail))
-  for (const node of nodes) {
-    if (node.type === 'folder') {
-      const open = context.collapsed[node.path] !== true
-      rows.push(h(FolderRow, {
-        key: `folder:${node.path}`,
-        node,
-        depth,
-        open,
-        onToggle: () => context.onToggleFolder(node.path),
-        menuTrigger: context.menuTrigger,
-        menuHint: context.menuHint,
-        menuTarget: target(folderKind, { section: context.mode, path: node.path, paths: collectTreePaths(node) }),
-      }))
-      if (open) rows.push(...renderTree(node.children, depth + 1, context))
-      continue
-    }
-    rows.push(h(FileRow, {
-      key: `file:${node.entry.kind}:${node.entry.path}:${node.entry.x}:${node.entry.y}:${node.entry.letter ?? ''}`,
-      entry: node.entry,
-      letter: node.entry.letter ?? '',
-      depth,
-      t: context.t,
-      busy: context.busy,
-      mode: context.mode,
-      onOpen: context.onOpen,
-      onStage: context.onStage,
-      onUnstage: context.onUnstage,
-      onDiscard: context.onDiscard,
-      menuTrigger: context.menuTrigger,
-      menuTarget: target(fileKind, { section: context.mode, path: node.entry.path }),
-    }))
-  }
-  return rows
+/**
+ * Render one flat list of changed-file rows.
+ * @param {object[]} entries - rows in display order, carrying the display `letter` where one applies.
+ * @param {object} context - row wiring:
+ *   `t` (locale binder), `busy` (action running), `mode` (`merge`, `staged`,
+ *   `changes`, or `commit`), `onOpen`, `onStage`, `onUnstage`, `onDiscard`,
+ *   `menuTrigger` (host trigger binding or null), and `menuTarget(entry)`.
+ * @returns {object[]} one file-row element per entry.
+ */
+export function renderFileRows(entries, context) {
+  return entries.map((entry) => h(FileRow, {
+    key: `file:${entry.kind}:${entry.path}:${entry.x}:${entry.y}:${entry.letter ?? ''}`,
+    entry,
+    letter: entry.letter ?? '',
+    t: context.t,
+    busy: context.busy,
+    mode: context.mode,
+    onOpen: context.onOpen,
+    onStage: context.onStage,
+    onUnstage: context.onUnstage,
+    onDiscard: context.onDiscard,
+    menuTrigger: context.menuTrigger,
+    menuTarget: context.menuTarget === undefined ? undefined : context.menuTarget(entry),
+  }))
 }

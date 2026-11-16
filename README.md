@@ -2,7 +2,7 @@
 
 A VS Code-style Git source-control sidebar for the DeepSeek Harness Web GUI.
 It adds a **Source control** tab to the right Sidebar: staged/unstaged/merge
-changes as a folder tree, a commit box, unified diff tabs, a commit graph
+changes as flat, path-sorted lists, a commit box, unified diff tabs, a commit graph
 whose commits open a details view of the files they changed, branch switching,
 and right-click menus for every row.
 

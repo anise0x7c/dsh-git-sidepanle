@@ -136,8 +136,8 @@ function scenarios() {
   return [
     { name: 'changed file row', expected: ['open', 'stage', 'discard', 'copy-relative', 'copy-path'],
       value: change('file', { section: 'changes', path }) },
-    { name: 'folder row', expected: ['stage-all', 'discard-all', 'copy-relative', 'copy-path'],
-      value: change('folder', { section: 'changes', path: 'src/client/menu', paths: [path] }) },
+    { name: 'commit-details file row', expected: ['copy-relative', 'copy-path'],
+      value: change('commitFile', { section: 'commit', path }) },
     { name: 'changes group header', expected: ['stage-all', 'discard-all', 'refresh'], value: { sessionId, kind: 'section', section: 'changes', busy: false, panelId } },
     { name: 'commit row', expected: ['copy-id', 'copy-message'],
       value: { sessionId, kind: 'commit', oid: '7cac4e6b1f9d2a6e0b4c8d7a5f3e1c9b', shortOid: '7cac4e6', subject: 'Fix empty context menus' } },
@@ -204,9 +204,9 @@ async function main() {
     rows.push({ name: scenario.name, count: views.length, ids })
   }
 
-  console.log('\ntarget                 | count | ids')
-  console.log('---------------------- | ----- | ---')
-  for (const row of rows) console.log(`${row.name.padEnd(22)} | ${String(row.count).padEnd(5)} | ${row.ids.join(', ') || '—'}`)
+  console.log('\ntarget                   | count | ids')
+  console.log('------------------------ | ----- | ---')
+  for (const row of rows) console.log(`${row.name.padEnd(24)} | ${String(row.count).padEnd(5)} | ${row.ids.join(', ') || '—'}`)
 
   if (failures.length > 0) {
     console.error('\nverify-contract: FAILED')

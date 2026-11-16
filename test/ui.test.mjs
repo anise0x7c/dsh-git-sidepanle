@@ -295,7 +295,7 @@ test('a secondary-parent line waits for the shared parent row', async () => {
   await mounted.harness.dispose()
 })
 
-test('a conflicted file keeps its folder tree under merge changes', async () => {
+test('a conflicted file is listed directly under merge changes', async () => {
   const status = createStatus({
     files: [
       { kind: 'unmerged', x: 'U', y: 'U', path: 'src/deep/conflicted.txt', conflict: true, untracked: false },
@@ -305,8 +305,37 @@ test('a conflicted file keeps its folder tree under merge changes', async () => 
   const text = mounted.harness.text()
   assert.match(text, /sections\.merge/)
   assert.match(text, /conflicted\.txt/)
-  assert.match(text, /deep/)
+  assert.match(text, /src\/deep/)
   assert.match(text, /!/)
+  assert.equal(mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-folderRow')).length, 0, 'no folder rows are rendered')
+})
+
+test('nested changed files stay in one flat path-sorted layer', async () => {
+  const modified = (path) => ({ kind: 'ordinary', x: '.', y: 'M', path, conflict: false, untracked: false })
+  const status = createStatus({
+    files: [
+      modified('src/z/deep.js'),
+      modified('src/a.js'),
+      modified('docs/readme.md'),
+      modified('a10.js'),
+      modified('a2.js'),
+    ],
+  })
+  const mounted = await mountGit({ status })
+  const fileRows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow'))
+  assert.deepEqual(fileRows.map((row) => row.props.title), [
+    'a2.js',
+    'a10.js',
+    'docs/readme.md',
+    'src/a.js',
+    'src/z/deep.js',
+  ], 'one row per file in path order, with no folder rows between them')
+  assert.equal(mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-folderRow')).length, 0)
+  const texts = fileRows.map(elementText)
+  assert.ok(texts[2].includes('readme.md') && texts[2].includes('docs'), 'the row shows the file name and its parent directory')
+  assert.ok(texts[4].includes('deep.js') && texts[4].includes('src/z'), 'a nested file keeps its whole parent path on one line')
+  for (const row of fileRows) assert.equal(row.props.style, undefined, 'a flat row needs no indentation')
+  await mounted.harness.dispose()
 })
 
 test('row actions stage and unstage through the Host', async () => {
@@ -361,7 +390,8 @@ test('committing with nothing staged offers to stage everything', async () => {
 
 test('discard asks for confirmation before calling the Host', async () => {
   const mounted = await mountGit()
-  mounted.harness.click(buttonByLabel(mounted.harness, 'actions.discard'))
+  const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js')
+  mounted.harness.click(buttonInside(rows.at(-1), 'actions.discard'))
   await mounted.harness.flush()
   assert.equal(mounted.calls.filter((call) => call.op === 'discard').length, 0)
   assert.match(mounted.harness.text(), /confirm\.discardTitle/)
@@ -420,6 +450,9 @@ test('clicking a commit shows its files and a file opens the commit diff', async
   assert.match(text, /renamed\.js/)
   assert.match(text, /old\.js/)
   assert.match(text, /gone\.md/)
+  assert.equal(mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-folderRow')).length, 0, 'commit files are a flat list')
+  const commitTitles = mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow')).map((row) => row.props.title)
+  assert.deepEqual(commitTitles, ['docs/gone.md', 'src/added.js', 'src/app.js', 'src/old.js → src/renamed.js'], 'commit files are listed once each in path order')
   assert.ok(buttonByLabel(mounted.harness, 'commitDetails.back'))
   assert.equal(mounted.harness.findAll((element) => element.type === 'textarea').length, 0, 'the commit box is hidden while details are open')
 
@@ -730,7 +763,6 @@ test('every listed object resolves at least one menu command', async () => {
   const byClass = (name) => mounted.harness.findAll((element) => String(element.props?.className ?? '').includes(name))
   const surfaces = [
     ['changed file', mounted.harness.findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow') && element.props?.title === 'src/app.js').at(-1)],
-    ['folder', byClass('dshgg-folderRow')[0]],
     ['change group header', mounted.harness.findAll((element) => element.props?.['data-section'] === 'changes')[0]?.children[0]],
     ['commit', byClass('dshgg-graphRow')[0]],
   ]

@@ -59,7 +59,7 @@ export function usePanelRefs() {
  * @param {string} options.panelId - per-panel id for command ownership checks.
  * @param {string|null} options.busy - current busy operation name or null.
  * @param {string} [options.cwd] - repository root used to make copied paths absolute.
- * @returns {{sectionTarget: Function, commitTarget: Function, treeTarget: Function}} factories.
+ * @returns {{sectionTarget: Function, commitTarget: Function, rowTarget: Function}} factories.
  */
 export function createMenuTargets({ sessionId, panelId, busy, cwd }) {
   return {
@@ -69,6 +69,6 @@ export function createMenuTargets({ sessionId, panelId, busy, cwd }) {
       shortOid: commit.shortOid,
       subject: commit.subject,
     }),
-    treeTarget: (kind, detail) => menuTarget(sessionId, kind, { ...detail, cwd, busy: busy !== null, panelId }),
+    rowTarget: (kind, detail) => menuTarget(sessionId, kind, { ...detail, cwd, busy: busy !== null, panelId }),
   }
 }

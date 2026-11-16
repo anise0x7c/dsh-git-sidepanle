@@ -535,25 +535,22 @@
   gap: 6px;
   min-width: 0;
   height: 28px;
-  padding-right: 6px;
+  padding: 0 6px;
   border-radius: var(--dsw-radius-md);
 }
 
-.dshgg-fileRow,
-.dshgg-folderRow {
+.dshgg-fileRow {
   cursor: pointer;
   user-select: none;
 }
 
 @media (hover: hover) {
-  .dshgg-fileRow:hover,
-  .dshgg-folderRow:hover {
+  .dshgg-fileRow:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dshgg-fileRow:focus-visible,
-.dshgg-folderRow:focus-visible {
+.dshgg-fileRow:focus-visible {
   outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
 }
@@ -593,12 +590,23 @@
   color: var(--dsw-alias-state-error-secondary);
 }
 
-.dshgg-fileName,
-.dshgg-folderName {
-  flex: 1;
+.dshgg-fileName {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   font: var(--dsw-font-xs-13);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The dimmed parent directory trails the file name: it disambiguates equally
+   named files without turning the flat list back into a hierarchy. */
+.dshgg-fileDir {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -623,6 +631,7 @@
   flex: none;
   align-items: center;
   gap: 0;
+  margin-left: auto;
   opacity: 0;
 }
 

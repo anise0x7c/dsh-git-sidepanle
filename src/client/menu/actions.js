@@ -88,25 +88,6 @@ export function resolveMenuActions(value, t, notify) {
     return actions
   }
 
-  if (value.kind === 'folder') {
-    const folder = value.path
-    const paths = Array.isArray(value.paths) ? value.paths.filter((entry) => typeof entry === 'string' && entry !== '') : []
-    if (typeof folder !== 'string' || folder === '' || paths.length === 0) return []
-    const section = value.section === 'staged' || value.section === 'merge' ? value.section : 'changes'
-    const actions = []
-    if (section === 'staged') {
-      actions.push(menuAction('unstage-all', t('actions.unstage'), command({ type: 'unstage', paths }), blocked))
-    } else {
-      actions.push(menuAction('stage-all', t('actions.stage'), command({ type: 'stage', paths }), blocked))
-      if (section !== 'merge') actions.push(menuAction('discard-all', t('actions.discard'), command({ type: 'discard', paths }), { danger: true, ...blocked }))
-    }
-    actions.push(menuAction('copy-relative', t('menu.copyRelativePath'), copy(folder, 'menu.copiedRelativePath'), { separatorBefore: true }))
-    if (typeof value.cwd === 'string' && value.cwd !== '') {
-      actions.push(menuAction('copy-path', t('menu.copyPath'), copy(absolutePath(value.cwd, folder), 'menu.copiedPath')))
-    }
-    return actions
-  }
-
   if (value.kind === 'section') {
     const section = value.section
     if (section === 'changes') {
@@ -142,7 +123,7 @@ export function resolveMenuActions(value, t, notify) {
     return actions
   }
 
-  if (value.kind === 'commitFile' || value.kind === 'commitFolder') {
+  if (value.kind === 'commitFile') {
     const path = value.path
     if (typeof path !== 'string' || path === '') return []
     const actions = [menuAction('copy-relative', t('menu.copyRelativePath'), copy(path, 'menu.copiedRelativePath'))]

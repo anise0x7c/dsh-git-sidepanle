@@ -128,7 +128,7 @@ describe('resolveMenuActions guards', () => {
   })
 
   test('resolves nothing without a session id, for every target kind', () => {
-    const kinds = ['file', 'folder', 'section', 'commit', 'diff']
+    const kinds = ['file', 'section', 'commit', 'diff', 'commitFile']
     for (const kind of kinds) {
       const complete = { kind, section: 'changes', path: 'src/a.js', paths: ['src/a.js'], oid: 'a'.repeat(40), subject: 'Fix it' }
       assert.deepEqual(resolveMenuActions({ ...complete }, t, notify), [], `${kind} without a session`)
@@ -139,6 +139,9 @@ describe('resolveMenuActions guards', () => {
 
   test('resolves nothing for an unknown target kind', () => {
     assert.deepEqual(resolveMenuActions({ sessionId: SESSION, kind: 'unknown' }, t, notify), [])
+    // Folder rows no longer exist, so their former target kinds resolve nothing.
+    assert.deepEqual(resolveMenuActions({ sessionId: SESSION, kind: 'folder', section: 'changes', path: 'src' }, t, notify), [])
+    assert.deepEqual(resolveMenuActions({ sessionId: SESSION, kind: 'commitFolder', path: 'src' }, t, notify), [])
   })
 
   test('every listed object resolves at least one command (7cac4e6 regression)', () => {
@@ -147,7 +150,6 @@ describe('resolveMenuActions guards', () => {
       ['staged file', fileValue({ section: 'staged' })],
       ['untracked file', fileValue({ path: 'README.md', untracked: true })],
       ['conflicted file', fileValue({ section: 'merge', path: 'merge.txt', conflict: true })],
-      ['folder', { sessionId: SESSION, kind: 'folder', section: 'changes', path: 'src', paths: ['src/a.js'] }],
       ['changes group', { sessionId: SESSION, kind: 'section', section: 'changes' }],
       ['staged group', { sessionId: SESSION, kind: 'section', section: 'staged' }],
       ['merge group', { sessionId: SESSION, kind: 'section', section: 'merge' }],
@@ -262,52 +264,6 @@ describe('resolveMenuActions for files', () => {
   })
 })
 
-describe('resolveMenuActions for folders', () => {
-  test('a changes folder stages and discards the whole subtree', () => {
-    const value = { sessionId: SESSION, panelId: PANEL, kind: 'folder', section: 'changes', path: 'src', paths: ['src/a.js', 'src/b.js'], cwd: '/repo' }
-    const actions = actionsFor(value)
-    assert.deepEqual(publishedIds(actions), [
-      `${MENU_CONTRIBUTION_ID}/stage-all`,
-      `${MENU_CONTRIBUTION_ID}/discard-all`,
-      `${MENU_CONTRIBUTION_ID}/copy-relative`,
-      `${MENU_CONTRIBUTION_ID}/copy-path`,
-    ])
-    assert.deepEqual(labelsOf(actions), [
-      t('actions.stage'),
-      t('actions.discard'),
-      t('menu.copyRelativePath'),
-      t('menu.copyPath'),
-    ])
-    assert.equal(actions[0].separatorBefore, undefined)
-    assert.equal(actions[0].danger, undefined)
-    assert.equal(actions[1].danger, true)
-    assert.equal(actions[1].separatorBefore, undefined)
-    assert.equal(actions[2].separatorBefore, true)
-  })
-
-  test('a staged folder offers unstaging only, and a merge folder no discard', () => {
-    const common = { sessionId: SESSION, kind: 'folder', path: 'src', paths: ['src/a.js'], cwd: '/repo' }
-    assert.deepEqual(publishedIds(actionsFor({ ...common, section: 'staged' })), [
-      `${MENU_CONTRIBUTION_ID}/unstage-all`,
-      `${MENU_CONTRIBUTION_ID}/copy-relative`,
-      `${MENU_CONTRIBUTION_ID}/copy-path`,
-    ])
-    assert.deepEqual(publishedIds(actionsFor({ ...common, section: 'merge' })), [
-      `${MENU_CONTRIBUTION_ID}/stage-all`,
-      `${MENU_CONTRIBUTION_ID}/copy-relative`,
-      `${MENU_CONTRIBUTION_ID}/copy-path`,
-    ])
-  })
-
-  test('resolves nothing for a folder without a path or without resolved paths', () => {
-    const base = { sessionId: SESSION, kind: 'folder', section: 'changes' }
-    assert.deepEqual(actionsFor({ ...base, paths: ['src/a.js'] }), [])
-    assert.deepEqual(actionsFor({ ...base, path: 'src', paths: [] }), [])
-    assert.deepEqual(actionsFor({ ...base, path: 'src' }), [])
-    assert.deepEqual(actionsFor({ ...base, path: 'src', paths: ['', 42, null] }), [])
-  })
-})
-
 describe('resolveMenuActions for group headers', () => {
   test('a changes header offers stage-all, discard-all, and refresh', () => {
     const actions = actionsFor({ sessionId: SESSION, kind: 'section', section: 'changes' })
@@ -394,11 +350,6 @@ describe('resolveMenuActions for past-commit files', () => {
     assert.deepEqual(labelsOf(file), [t('menu.copyRelativePath'), t('menu.copyPath')])
     assert.equal(file.some((action) => ['stage', 'unstage', 'discard'].includes(action.id)), false)
 
-    const folder = actionsFor({ sessionId: SESSION, panelId: PANEL, kind: 'commitFolder', section: 'commit', path: 'src', cwd: '/repo' })
-    assert.deepEqual(publishedIds(folder), [
-      `${MENU_CONTRIBUTION_ID}/copy-relative`,
-      `${MENU_CONTRIBUTION_ID}/copy-path`,
-    ])
   })
 
   test('omits the absolute copy without a repository root and refuses a missing path', () => {
@@ -406,7 +357,6 @@ describe('resolveMenuActions for past-commit files', () => {
       `${MENU_CONTRIBUTION_ID}/copy-relative`,
     ])
     assert.deepEqual(actionsFor({ sessionId: SESSION, kind: 'commitFile', path: '' }), [])
-    assert.deepEqual(actionsFor({ sessionId: SESSION, kind: 'commitFolder' }), [])
   })
 })
 
@@ -464,19 +414,6 @@ describe('menu command payloads', () => {
       actionById(actionsFor(fileValue({ section: 'staged' })), 'unstage').run()
     })
     assert.deepEqual(emitted, [{ sessionId: SESSION, panelId: PANEL, type: 'unstage', paths: ['src/app.js'] }])
-  })
-
-  test('folder commands emit the filtered subtree paths', () => {
-    const value = { sessionId: SESSION, panelId: PANEL, kind: 'folder', section: 'changes', path: 'src', paths: ['src/a.js', '', 42, 'src/b.js'] }
-    const actions = actionsFor(value)
-    const emitted = captureCommands(() => {
-      actionById(actions, 'stage-all').run()
-      actionById(actions, 'discard-all').run()
-    })
-    assert.deepEqual(emitted, [
-      { sessionId: SESSION, panelId: PANEL, type: 'stage', paths: ['src/a.js', 'src/b.js'] },
-      { sessionId: SESSION, panelId: PANEL, type: 'discard', paths: ['src/a.js', 'src/b.js'] },
-    ])
   })
 
   test('group-header commands emit the whole-section operations', () => {

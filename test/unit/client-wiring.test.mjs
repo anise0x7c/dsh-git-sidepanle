@@ -94,8 +94,8 @@ describe('menuTarget', () => {
   })
 
   test('spreads detail last, so a detail field wins over the positional value', () => {
-    const target = menuTarget('session-1', 'file', { sessionId: 'other-session', kind: 'folder' })
-    assert.deepEqual(target.value, { sessionId: 'other-session', kind: 'folder' })
+    const target = menuTarget('session-1', 'file', { sessionId: 'other-session', kind: 'section' })
+    assert.deepEqual(target.value, { sessionId: 'other-session', kind: 'section' })
   })
 
   test('the contribution receives the captured value, never the wrapper (7cac4e6)', () => {

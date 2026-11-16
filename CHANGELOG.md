@@ -3,6 +3,30 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## 0.6.0
+
+Flat change lists. The staging area and a commit's changed files are now one
+single-layer, path-sorted list instead of a folder tree:
+
+- Each changed file occupies one row; folder rows and their collapse state are
+  gone. The row keeps the status letter and shows the file name with its
+  dimmed parent directory, with the full path in the tooltip and accessible
+  label. Rows are ordered by repository-relative path, case-insensitively and
+  with numeric runs compared as numbers.
+- The commit-details file list uses the same flat list, so a commit's changed
+  files no longer need folders opened to be read. Status letters, rename
+  sources, activation, loading, empty, truncated and failure states are
+  unchanged.
+- Folder context menus and the former folder target kinds are gone with the
+  folder rows. File and group-header menus keep opening diffs, staging,
+  unstaging, discarding, and copying relative or absolute paths; group-header
+  actions still cover every file in the group.
+- Staging, discarding, committing, diffing, history, branch switching, Host
+  APIs and theme behavior are unchanged. This browser-only change needs no
+  Host restart.
+- Tests: 208 (was 210). The tree-builder units are replaced by flat-list
+  ordering and path-splitting units, plus rendered flat-list checks.
+
 ## 0.5.2
 
 Defer every shared-parent join to the parent's own row so a branch line no

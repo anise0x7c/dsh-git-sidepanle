@@ -230,18 +230,8 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
   // A captured target without a path or session resolves to nothing.
   assert.deepEqual(ids({ sessionId: 's1', kind: 'file', section: 'changes' }), [])
   assert.deepEqual(ids({ kind: 'file', section: 'changes', path: 'a' }), [])
-
-  // Folders act on everything below them.
-  const folder = resolve({ sessionId: 's1', kind: 'folder', section: 'changes', path: 'src', paths: ['src/a.js', 'src/b.js'], cwd: '/repo' })
-  assert.deepEqual(MENU_IDS(folder), [
-    menuActionId('stage-all'),
-    menuActionId('discard-all'),
-    menuActionId('copy-relative'),
-    menuActionId('copy-path'),
-  ])
-  assert.deepEqual(ids({ sessionId: 's1', kind: 'folder', section: 'staged', path: 'src', paths: ['src/a.js'], cwd: '/repo' }),
-    [menuActionId('unstage-all'), menuActionId('copy-relative'), menuActionId('copy-path')])
-  assert.deepEqual(ids({ sessionId: 's1', kind: 'folder', section: 'changes', path: 'src', paths: [] }), [])
+  // Folder rows are gone: their former target kinds have no commands.
+  assert.deepEqual(ids({ sessionId: 's1', kind: 'folder', section: 'changes', path: 'src', paths: ['src/a.js'] }), [])
 
   // Group headers stage, unstage, discard, and refresh the whole group.
   assert.deepEqual(ids({ sessionId: 's1', kind: 'section', section: 'changes' }),
