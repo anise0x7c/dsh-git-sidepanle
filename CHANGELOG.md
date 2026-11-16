@@ -5,6 +5,25 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+Paged commit graph:
+
+- The commit graph no longer stops at the 60 newest commits. Reaching the end
+  of the graph pane appends the next page of earlier commits below the loaded
+  rows, and the end of the list offers a "Load earlier commits" control as the
+  keyboard path. The loaded rows keep their place and scroll position, lines
+  that ended at the old bottom connect to their commits, and the graph offers no
+  further page once the oldest commit arrives. A failed page keeps the loaded
+  rows and offers retry; refresh, including after a commit or a branch switch,
+  starts over from the newest page.
+- Host: the `history` operation takes an `offset` and reports whether older
+  commits remain, so each page is one bounded Git read and the browser never
+  receives unbounded history. An invalid offset is refused as a bad request.
+- Tests: 272 (was 264), adding Host offset paging over a 61-commit fixture,
+  pure near-end units, and rendered-panel checks for scroll loading, the manual
+  control, a failed page's retry and a refresh back to the first page.
+- This change touches the Host half: restart the Host together with the page
+  reload so the new `history` value is served.
+
 Resizable change and graph panes, plus panel detail polish:
 
 - The change groups and the commit graph now scroll in two independent panes,

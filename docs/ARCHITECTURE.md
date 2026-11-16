@@ -54,6 +54,7 @@ src/
       confirm.ts              confirmation wording
       menu.ts                 panel-scoped command wiring
       split.ts                pure split-ratio range, pointer mapping and key steps
+      scroll.ts               pure near-end rule that pages the commit history
       hooks/                  repository/history/branches/details/action hooks
       views/                  branch/commit/change/graph sections and the split view
       GitPanel.ts             hook and view assembly
@@ -90,10 +91,12 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
    tab-info and context-menu hooks.
 2. `useRepoStatus` creates a caller for `/api/dsh-git-graph/rpc`, loads status and
    polls every 5 seconds while visible and no modal/operation is in flight.
-3. History and branches load on mount/on demand. `history` returns commits in
-   `--topo-order` with full decorations plus the checked-out, upstream and base
-   references; `git/graph.ts` turns them into VS Code swimlane view models, SVG
-   paths, node shapes and reference badges (a port of VS Code's
+3. History loads one page on mount and more on demand. `history` returns commits
+   in `--topo-order` with full decorations, an `offset` for earlier pages, a
+   `hasMore` flag, and the checked-out, upstream and base references; reaching
+   the end of the graph pane (`panel/scroll.ts`) asks the history hook to append
+   the next page. `git/graph.ts` turns the loaded commits into VS Code swimlane
+   view models, SVG paths, node shapes and reference badges (a port of VS Code's
    `scmHistory.ts`, checked against a literal transcription in
    `test/support/vscode-scm-history.ts`).
 4. The body is a resizable split: change groups scroll above the graph in their
