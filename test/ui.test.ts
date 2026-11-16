@@ -569,6 +569,7 @@ test('a merge fans out to the right and joins its fork point like VS Code', asyn
         parents: [],
       },
     ],
+    hasMore: false,
     references: {
       current: { id: 'refs/heads/main', name: 'main', revision: 'd'.repeat(40) },
       remote: null,
@@ -693,6 +694,7 @@ test('lanes right of a joined lane shift left with VS Code curves', async () => 
       entry('e', ['f']),
       entry('f', []),
     ],
+    hasMore: false,
     references: { current: null, remote: null, base: null },
   }
   const mounted = await mountGit({ history })

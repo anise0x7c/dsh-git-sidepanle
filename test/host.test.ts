@@ -323,6 +323,7 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
   const history = await call('history')
   assert.equal(history.body.ok, true)
   assert.equal(history.body.value.commits.length, 2)
+  assert.equal(history.body.value.hasMore, false)
   assert.equal(history.body.value.commits[0].subject, 'change alpha and add beta')
   assert.equal(history.body.value.commits[0].refs.includes('main'), true)
   assert.deepEqual(history.body.value.commits[0].parents, [history.body.value.commits[1].oid])
@@ -342,6 +343,50 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
   const badOp = await callUnknown('nonsense')
   assert.equal(badOp.body.ok, false)
   assert.equal(badOp.body.error.code, 'unknown-operation')
+})
+
+test('history pages backwards by offset and reports when older commits remain', async () => {
+  const pagedRepo = await mkdtemp(join(tmpRoot, 'paged-'))
+  await git(pagedRepo, 'init', '-b', 'main')
+  await git(pagedRepo, 'config', 'user.name', 'Git Graph Test')
+  await git(pagedRepo, 'config', 'user.email', 'git-graph@example.test')
+  for (let index = 0; index < 61; index += 1) {
+    await git(pagedRepo, 'commit', '--allow-empty', '-m', `commit ${index}`)
+  }
+
+  await withSessionServer(pagedRepo, async (baseUrl) => {
+    const first = await callAt(baseUrl, 'history')
+    assert.equal(first.status, 200)
+    assert.equal(first.body.ok, true)
+    assert.equal(first.body.value.commits.length, 60)
+    assert.equal(first.body.value.hasMore, true)
+    assert.equal(first.body.value.commits[0].subject, 'commit 60')
+    assert.equal(first.body.value.commits[59].subject, 'commit 1')
+
+    const second = await callAt(baseUrl, 'history', { offset: 60 })
+    assert.equal(second.body.ok, true)
+    assert.equal(second.body.value.commits.length, 1)
+    assert.equal(second.body.value.hasMore, false)
+    assert.equal(second.body.value.commits[0].subject, 'commit 0')
+    assert.deepEqual(second.body.value.commits[0].parents, [])
+    assert.deepEqual(
+      second.body.value.commits[0].oid,
+      first.body.value.commits[59].parents[0],
+      'the page continues below the previous one',
+    )
+
+    const beyond = await callAt(baseUrl, 'history', { offset: 61 })
+    assert.equal(beyond.body.ok, true)
+    assert.equal(beyond.body.value.commits.length, 0)
+    assert.equal(beyond.body.value.hasMore, false)
+
+    for (const offset of [-1, 1.5, '10']) {
+      const refused = await callAt(baseUrl, 'history', { offset })
+      assert.equal(refused.status, 400, `offset ${String(offset)}`)
+      assert.equal(refused.body.ok, false)
+      assert.equal(refused.body.error.code, 'bad-request')
+    }
+  })
 })
 
 test('a commit reports its metadata and changed files, and its files diff against the first parent', async () => {

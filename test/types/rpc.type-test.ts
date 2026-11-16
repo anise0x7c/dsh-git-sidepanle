@@ -5,6 +5,10 @@ import type { GitGraphRequest, HistoryResult } from '../../src/shared/git.ts'
 export function assertRpcTypes(call: RpcCall, status: StatusResult): void {
   const history: Promise<HistoryResult> = call('history')
   void history
+  const earlierHistory: Promise<HistoryResult> = call('history', { offset: 60 })
+  void earlierHistory
+  // @ts-expect-error The history offset is a commit count, not text.
+  void call('history', { offset: '60' })
   void call('stage', { paths: ['src/example.ts'] })
   void call('commit', { message: 'Keep the wire contract checked' })
   void call('diff', { path: 'src/example.ts', staged: true })

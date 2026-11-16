@@ -421,7 +421,7 @@ var MAX_COMMIT_FILES = 1e3;
 var FULL_OID2 = /^[0-9a-f]{40}$/;
 var COMMIT_META_FORMAT = "%H%x00%h%x00%an%x00%at%x00%D%x00%P%x00%s%x00%b";
 var HISTORY_FORMAT = "%H%x09%h%x09%an%x09%at%x09%D%x09%P%x09%s";
-async function readHistory(root) {
+async function readHistory(root, offset = 0) {
   const result = await runGit(
     root,
     [
@@ -432,18 +432,24 @@ async function readHistory(root) {
       "--topo-order",
       "--decorate=full",
       `--pretty=format:${HISTORY_FORMAT}`,
+      "--skip",
+      String(offset),
       "-n",
-      String(MAX_GRAPH_COMMITS)
+      String(MAX_GRAPH_COMMITS + 1)
     ],
     { timeout: 3e4 }
   );
   if (!result.ok) {
-    if (/does not have any commits yet|bad default revision/i.test(result.stderr)) return [];
+    if (/does not have any commits yet|bad default revision/i.test(result.stderr)) {
+      return { commits: [], hasMore: false };
+    }
     if (result.code === "ENOENT")
       throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
     throw new GitGraphError("git-command-failed", result.stderr.trim() || "git log failed", 409);
   }
-  return parseHistory(result.stdout);
+  const commits = parseHistory(result.stdout);
+  if (commits.length <= MAX_GRAPH_COMMITS) return { commits, hasMore: false };
+  return { commits: commits.slice(0, MAX_GRAPH_COMMITS), hasMore: true };
 }
 function parseHistory(stdout) {
   const commits = [];
@@ -788,11 +794,19 @@ async function dispatch(ctx, payload) {
     );
   switch (op) {
     case "history": {
-      const [commits, references] = await Promise.all([
-        readHistory(root),
+      const offset = payload.offset;
+      if (offset !== void 0 && (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0)) {
+        throw new GitGraphError(
+          "bad-request",
+          "The history offset must be a non-negative integer.",
+          400
+        );
+      }
+      const [page, references] = await Promise.all([
+        readHistory(root, offset ?? 0),
         readGraphReferences(root)
       ]);
-      return { commits, references };
+      return { commits: page.commits, hasMore: page.hasMore, references };
     }
     case "commit-details": {
       const oid = payload.oid;

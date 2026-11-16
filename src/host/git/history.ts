@@ -18,17 +18,31 @@ const COMMIT_META_FORMAT = '%H%x00%h%x00%an%x00%at%x00%D%x00%P%x00%s%x00%b'
 // it cannot shift the fields before it.
 const HISTORY_FORMAT = '%H%x09%h%x09%an%x09%at%x09%D%x09%P%x09%s'
 
+/** One page of the commit graph. */
+export interface HistoryPage {
+  /** Graph rows in topological display order, newest page first. */
+  commits: CommitSummary[]
+  /** Whether commits older than this page remain. */
+  hasMore: boolean
+}
+
 /**
- * Read recent commits across local branches, tags, and remote-tracking branches,
- * the way VS Code's Source Control Graph reads its "All" filter.
+ * Read one page of recent commits across local branches, tags, and
+ * remote-tracking branches, the way VS Code's Source Control Graph reads its
+ * "All" filter. The revision set and ordering do not depend on the offset, so
+ * the next page always continues the topological order below the previous one.
+ *
  * `--topo-order` keeps parents after all of their children and a line of
  * history together, which is what lets the browser draw the commit graph from
  * the parent list alone; `--decorate=full` reports full reference names so a
  * local branch containing a slash is not mistaken for a remote-tracking one.
+ * One extra row is read so the page can report whether older commits remain
+ * without a second Git call.
  * @param root - repository root.
- * @returns graph rows.
+ * @param offset - number of newest commits to skip before the page.
+ * @returns one page of graph rows and whether older commits remain.
  */
-export async function readHistory(root: string): Promise<CommitSummary[]> {
+export async function readHistory(root: string, offset = 0): Promise<HistoryPage> {
   const result = await runGit(
     root,
     [
@@ -39,19 +53,25 @@ export async function readHistory(root: string): Promise<CommitSummary[]> {
       '--topo-order',
       '--decorate=full',
       `--pretty=format:${HISTORY_FORMAT}`,
+      '--skip',
+      String(offset),
       '-n',
-      String(MAX_GRAPH_COMMITS),
+      String(MAX_GRAPH_COMMITS + 1),
     ],
     { timeout: 30_000 },
   )
   if (!result.ok) {
     // An unborn branch has no commits; every other failure is real.
-    if (/does not have any commits yet|bad default revision/i.test(result.stderr)) return []
+    if (/does not have any commits yet|bad default revision/i.test(result.stderr)) {
+      return { commits: [], hasMore: false }
+    }
     if (result.code === 'ENOENT')
       throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
     throw new GitGraphError('git-command-failed', result.stderr.trim() || 'git log failed', 409)
   }
-  return parseHistory(result.stdout)
+  const commits = parseHistory(result.stdout)
+  if (commits.length <= MAX_GRAPH_COMMITS) return { commits, hasMore: false }
+  return { commits: commits.slice(0, MAX_GRAPH_COMMITS), hasMore: true }
 }
 
 /**

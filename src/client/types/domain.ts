@@ -82,11 +82,12 @@ export interface CallerFailure extends Error {
 /**
  * Required argument tuple of one RPC operation.
  *
- * Operations with an empty payload map accept no argument; every other
- * operation requires its payload, so `call('commit')` is a type error.
+ * Operations whose payload has no required field accept an optional argument
+ * (`{}` for none, `{ offset }` for a later history page); every operation with
+ * a required field requires its payload, so `call('commit')` is a type error.
  */
 export type RpcArgs<Operation extends GitGraphOperation> =
-  keyof GitGraphPayloads[Operation] extends never
+  Partial<GitGraphPayloads[Operation]> extends GitGraphPayloads[Operation]
     ? [payload?: GitGraphPayloads[Operation]]
     : [payload: GitGraphPayloads[Operation]]
 

@@ -62,11 +62,22 @@ export async function dispatch(
 
   switch (op) {
     case 'history': {
-      const [commits, references] = await Promise.all([
-        readHistory(root),
+      const offset = payload.offset
+      if (
+        offset !== undefined &&
+        (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0)
+      ) {
+        throw new GitGraphError(
+          'bad-request',
+          'The history offset must be a non-negative integer.',
+          400,
+        )
+      }
+      const [page, references] = await Promise.all([
+        readHistory(root, offset ?? 0),
         readGraphReferences(root),
       ])
-      return { commits, references }
+      return { commits: page.commits, hasMore: page.hasMore, references }
     }
     case 'commit-details': {
       const oid = payload.oid

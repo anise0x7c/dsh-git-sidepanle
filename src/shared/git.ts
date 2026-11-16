@@ -162,8 +162,10 @@ export interface GraphReferences {
 
 /** Value of the `history` operation. */
 export interface HistoryResult {
-  /** Graph rows in topological display order. */
+  /** Graph rows in topological display order, newest page first. */
   commits: CommitSummary[]
+  /** Whether commits older than this page remain. */
+  hasMore: boolean
   /** References with fixed graph colors. */
   references: GraphReferences
 }
@@ -295,7 +297,8 @@ export type GitGraphRpcValue = GitGraphRpcValues[GitGraphOperation]
 /** Operation arguments, excluding the Session identity both halves add. */
 export interface GitGraphPayloads {
   status: Record<never, never>
-  history: Record<never, never>
+  /** `offset` skips that many of the newest commits; the first page omits it. */
+  history: { offset?: number }
   'commit-details': { oid: string }
   branches: Record<never, never>
   stage: { paths: string[] }
