@@ -31,7 +31,8 @@
 }
 
 .dshgg-root :focus-visible {
-  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline: var(--dsw-focus-ring-width) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
 }
 
@@ -214,10 +215,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.dshgg-branchChip .dshgg-chevron {
-  color: var(--dsw-alias-label-caption);
-}
-
 @media (hover: hover) {
   .dshgg-branchChip:hover:not(:disabled) {
     background: var(--dsw-alias-interactive-bg-hover);
@@ -233,6 +230,7 @@
   transition: transform 150ms var(--ds-ease-in-out);
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: Component SVG sizing does not override the spinner animation. */
 .dshgg-chevron svg {
   width: 14px;
   height: 14px;
@@ -551,7 +549,8 @@
 }
 
 .dshgg-fileRow:focus-visible {
-  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline: var(--dsw-focus-ring-width) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
 }
 
@@ -677,7 +676,8 @@
 }
 
 .dshgg-graphRow:focus-visible {
-  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline: var(--dsw-focus-ring-width) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
 }
 
@@ -844,7 +844,11 @@
 
 .dshgg-ref[data-kind="head"] {
   color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
-  background: color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 12%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--dsw-alias-brand-primary-new-colorprimary-new-color) 12%,
+    transparent
+  );
 }
 
 .dshgg-ref[data-kind="branch"] {
@@ -1037,6 +1041,7 @@
   color: var(--dsw-alias-state-business-primary);
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: Menu SVG sizing is independent of the icon-button spinner animation. */
 .dshgg-menuCheck svg {
   width: 14px;
   height: 14px;
