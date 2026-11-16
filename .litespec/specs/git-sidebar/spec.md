@@ -736,3 +736,48 @@ graph SHALL NOT offer another page.
 - **WHEN** the panel refreshes the history, including after a commit or a branch
   switch
 - **THEN** the graph shows only the newest page again
+
+### Requirement: Section headers stay pinned while scrolling
+
+Each collapsible section header SHALL remain visible at the top edge of its
+scrolling pane for as long as any part of its own section still reaches below
+that edge. A pinned header SHALL paint the host's surface, so the rows scrolling
+beneath it are hidden. At most one header SHALL be pinned at a time: while a
+header is pinned, the next section's header SHALL keep its normal position until
+the pinned header's section has left the top edge, and SHALL then take that
+place. A pinned header SHALL keep its toggle, count and context menu usable. A
+pane whose content fits without scrolling SHALL show every header in its normal
+position.
+
+#### Scenario: A group header stays while its rows scroll
+
+- **GIVEN** the changes group is taller than its pane
+- **WHEN** the user scrolls the change list down
+- **THEN** the changes header stays at the top edge of that pane while its rows pass beneath it
+
+#### Scenario: Rows do not show through a pinned header
+
+- **WHEN** rows scroll under a pinned header
+- **THEN** the header's surface hides them
+
+#### Scenario: Only one header is pinned
+
+- **GIVEN** a group header is pinned
+- **WHEN** the user scrolls past that group's last row and the next group reaches the top edge
+- **THEN** the previous header leaves with its group and only the next group's header is pinned
+
+#### Scenario: The pinned header keeps its controls
+
+- **WHEN** the user activates a pinned header's toggle or opens its context menu
+- **THEN** the section collapses or expands as usual and the menu opens with that group's actions
+
+#### Scenario: The graph pane pins its own header
+
+- **WHEN** the user scrolls the graph pane
+- **THEN** the graph header stays at that pane's top edge while the change pane keeps its own scroll position
+
+#### Scenario: Short panes keep their headers in place
+
+- **GIVEN** the change list fits in its pane without scrolling
+- **WHEN** the panel is shown
+- **THEN** every group header stays in its normal position
