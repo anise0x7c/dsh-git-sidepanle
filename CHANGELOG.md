@@ -3,7 +3,7 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
-## Unreleased
+## 0.8.1
 
 Pinned section headers keep their hover highlight:
 
