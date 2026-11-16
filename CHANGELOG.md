@@ -3,7 +3,10 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
-## Unreleased
+## 0.8.0
+
+Section headers now stay pinned to their pane's top edge while their group or
+the commit graph scrolls, and only the nearest header is stuck at a time.
 
 Pinned section headers:
 
