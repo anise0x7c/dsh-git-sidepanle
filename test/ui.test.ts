@@ -37,6 +37,7 @@ import type {
   TestComponent,
   TestContextMenusService,
   TestElement,
+  TestEventTarget,
   TestHarness,
   TestMenuActionView,
   TestNode,
@@ -335,6 +336,132 @@ test('the panel renders branch, change groups, status letters, and the graph', a
   const initial = mounted.calls.filter((call) => call.op === 'status')
   assert.ok(initial.length >= 1)
   assert.equal(typeof mounted.harness.hookStoreSize(), 'number')
+  await mounted.harness.dispose()
+})
+
+test('change groups and graph are independent scroll panes with a resizable divider', async () => {
+  const mounted = await mountGit()
+  const panes = mounted.harness.findAll((element) =>
+    String(element.props?.className ?? '').includes('dshgg-pane'),
+  )
+  assert.equal(panes.length, 2, 'the changes and graph each get a scroll pane')
+  const [changesPane, graphPane] = panes
+  assert.ok(changesPane)
+  assert.ok(graphPane)
+  for (const pane of panes) {
+    assert.ok(String(pane.props.className).includes('dshgg-scroll'))
+  }
+  const sectionsIn = (pane: TestElement): unknown[] =>
+    collectElements(pane, (element) => element.props['data-section'] !== undefined).map(
+      (element) => element.props['data-section'],
+    )
+  assert.deepEqual(sectionsIn(changesPane), ['merge', 'staged', 'changes'])
+  assert.deepEqual(sectionsIn(graphPane), ['graph'])
+  assert.equal(changesPane.props.style?.flexBasis, '50%')
+  const divider = (): TestElement => {
+    const [element] = mounted.harness.findAll((candidate) => candidate.props.role === 'separator')
+    assert.ok(element, 'no split divider rendered')
+    return element
+  }
+  assert.equal(divider().props['aria-orientation'], 'horizontal')
+  assert.equal(divider().props['aria-valuemin'], 20)
+  assert.equal(divider().props['aria-valuemax'], 80)
+  assert.equal(divider().props['aria-valuenow'], 50)
+  assert.equal(divider().props.tabIndex, 0)
+  assert.match(String(divider().props['aria-label']), /split\.label/)
+  mounted.harness.keydown(divider(), { key: 'ArrowDown' })
+  await mounted.harness.flush()
+  assert.equal(divider().props['aria-valuenow'], 55)
+  const paneTop = (): TestElement | undefined =>
+    mounted.harness.findAll((element) =>
+      String(element.props?.className ?? '').includes('dshgg-paneTop'),
+    )[0]
+  assert.equal(paneTop()?.props.style?.flexBasis, '55%')
+
+  const rect = { left: 0, top: 100, width: 320, height: 400, bottom: 500 }
+  const target: TestEventTarget = {
+    getBoundingClientRect: () => rect,
+    focus() {},
+    setPointerCapture() {},
+    releasePointerCapture() {},
+    hasPointerCapture: () => true,
+    parentElement: { getBoundingClientRect: () => rect },
+  }
+  mounted.harness.pointer(divider(), 'down', {
+    pointerId: 7,
+    clientY: 200,
+    currentTarget: target,
+  })
+  await mounted.harness.flush()
+  assert.equal(divider().props['data-dragging'], 'true')
+  mounted.harness.pointer(divider(), 'move', {
+    pointerId: 7,
+    clientY: 240,
+    currentTarget: target,
+  })
+  await mounted.harness.flush()
+  assert.equal(divider().props['aria-valuenow'], 65, 'a 40px drag over 400px moves 10%')
+  assert.equal(paneTop()?.props.style?.flexBasis, '65%')
+  mounted.harness.pointer(divider(), 'move', {
+    pointerId: 7,
+    clientY: 900,
+    currentTarget: target,
+  })
+  await mounted.harness.flush()
+  assert.equal(divider().props['aria-valuenow'], 80, 'a drag beyond the edge clamps')
+  mounted.harness.pointer(divider(), 'up', {
+    pointerId: 7,
+    clientY: 900,
+    currentTarget: target,
+  })
+  await mounted.harness.flush()
+  assert.equal(divider().props['data-dragging'], undefined)
+  await mounted.harness.dispose()
+})
+
+test('commit details replace the split and return with the chosen ratio', async () => {
+  const mounted = await mountGit()
+  const divider = (): TestElement => {
+    const [element] = mounted.harness.findAll((candidate) => candidate.props.role === 'separator')
+    assert.ok(element, 'no split divider rendered')
+    return element
+  }
+  mounted.harness.keydown(divider(), { key: 'PageDown' })
+  await mounted.harness.flush()
+  assert.equal(divider().props['aria-valuenow'], 60)
+  const graphRow = mounted.harness.findAll((element) =>
+    String(element.props?.className ?? '').includes('dshgg-graphRow'),
+  )[0]
+  assert.ok(graphRow)
+  mounted.harness.click(graphRow)
+  await mounted.harness.flush()
+  assert.equal(mounted.harness.findAll((element) => element.props.role === 'separator').length, 0)
+  assert.match(mounted.harness.text(), /commitDetails\.files/)
+  mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
+  await mounted.harness.flush()
+  assert.equal(divider().props['aria-valuenow'], 60)
+  await mounted.harness.dispose()
+})
+
+test('a clean repository shows the clean text without a check icon', async () => {
+  const mounted = await mountGit({ status: createStatus({ files: [] }) })
+  const clean = mounted.harness.findAll(
+    (element) => String(element.props?.className ?? '') === 'dshgg-clean',
+  )[0]
+  assert.ok(clean, 'no clean-workspace state rendered')
+  assert.match(elementText(clean), /clean\.title/)
+  assert.match(elementText(clean), /clean\.desc/)
+  assert.equal(
+    collectElements(clean, (element) => element.type === 'svg').length,
+    0,
+    'the clean state carries no icon',
+  )
+  assert.equal(
+    mounted.harness.findAll((element) =>
+      String(element.props?.className ?? '').includes('dshgg-cleanIcon'),
+    ).length,
+    0,
+  )
   await mounted.harness.dispose()
 })
 

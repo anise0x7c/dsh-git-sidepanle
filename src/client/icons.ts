@@ -148,14 +148,6 @@ export function AlertIcon(props: IconProps): React.ReactElement {
   ])
 }
 
-export function CheckCircleIcon(props: IconProps): React.ReactElement {
-  const size = props?.size ?? 28
-  return svgIcon(size, [
-    h('circle', { key: 'a', cx: 8, cy: 8, r: 6.4 }),
-    h('path', { key: 'b', d: 'M5 8.2 7.2 10.4 11.2 6' }),
-  ])
-}
-
 /** Checked-out branch reference, after VS Code's `target` codicon. */
 export function TargetIcon(props: IconProps): React.ReactElement {
   const size = props?.size ?? 16

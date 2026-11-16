@@ -40,6 +40,8 @@ export const zh: Record<GitGraphLocaleKey, string> = {
   'sections.staged': '已暂存的更改',
   'sections.changes': '更改',
   'sections.graph': '提交图',
+  'split.label': '调整更改与提交图的比例',
+  'split.hint': '拖动调整比例，聚焦后可用方向键',
   'actions.stage': '暂存更改',
   'actions.unstage': '取消暂存',
   'actions.discard': '放弃更改',

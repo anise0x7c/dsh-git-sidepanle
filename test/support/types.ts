@@ -75,15 +75,28 @@ export interface TestProps {
   cy?: number
   r?: number
   d?: string
-  style?: { marginLeft?: string; [property: string]: string | number | undefined }
+  style?: {
+    marginLeft?: string
+    flexBasis?: string
+    [property: string]: string | number | undefined
+  }
   children?: TestNode
   onClick?: TestEventHandler
   onContextMenu?: TestEventHandler
   onKeyDown?: TestEventHandler
   onChange?: TestEventHandler
+  onPointerDown?: TestEventHandler
+  onPointerMove?: TestEventHandler
+  onPointerUp?: TestEventHandler
+  onPointerCancel?: TestEventHandler
   'aria-label'?: string
   'aria-haspopup'?: string
   'aria-hidden'?: string | boolean
+  'aria-orientation'?: string
+  'aria-valuemin'?: number
+  'aria-valuemax'?: number
+  'aria-valuenow'?: number
+  'data-dragging'?: string
   'data-lane'?: string
   'data-kind'?: string
   'data-section'?: string
@@ -92,14 +105,34 @@ export interface TestProps {
   'data-dsh-git-graph-diff'?: string
 }
 
+/** A rectangle stand-in for `getBoundingClientRect` in tests. */
+export interface TestRect {
+  left: number
+  top: number
+  width: number
+  height: number
+  bottom: number
+}
+
+/** The element a test event reports as its current target. */
+export interface TestEventTarget {
+  getBoundingClientRect(): TestRect
+  focus?(): void
+  setPointerCapture?(pointerId: number): void
+  releasePointerCapture?(pointerId: number): void
+  hasPointerCapture?(pointerId: number): boolean
+  parentElement?: TestEventTarget | null
+}
+
 /** Event object the harness hands to a component handler. */
 export interface TestEvent {
   stopPropagation(): void
   preventDefault(): void
   target: Record<string, unknown>
-  currentTarget?: { getBoundingClientRect(): { left: number; bottom: number }; focus?(): void }
+  currentTarget?: TestEventTarget
   clientX?: number
   clientY?: number
+  pointerId?: number
   defaultPrevented?: boolean
   key?: string
   repeat?: boolean
@@ -108,6 +141,9 @@ export interface TestEvent {
   metaKey?: boolean
   shiftKey?: boolean
 }
+
+/** Pointer gesture phase the harness can invoke. */
+export type TestPointerPhase = 'down' | 'move' | 'up' | 'cancel'
 
 /** Handler signature the harness calls with a {@link TestEvent}. */
 export type TestEventHandler = (event: TestEvent) => unknown
@@ -172,6 +208,11 @@ export interface TestHarness {
   contextmenu(element: TestElement | undefined, event?: Partial<TestEvent>): unknown
   keydown(element: TestElement | undefined, event?: Partial<TestEvent>): unknown
   change(element: TestElement | undefined, value: string): unknown
+  pointer(
+    element: TestElement | undefined,
+    phase: TestPointerPhase,
+    event?: Partial<TestEvent>,
+  ): unknown
   dispose(): Promise<void>
   setComponent(component: TestComponent, props: TestProps): void
   hookStoreSize(): number

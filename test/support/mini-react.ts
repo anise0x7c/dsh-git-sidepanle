@@ -12,8 +12,10 @@ import type {
   TestComponent,
   TestElement,
   TestEvent,
+  TestEventTarget,
   TestHarness,
   TestNode,
+  TestPointerPhase,
   TestProps,
 } from './types.ts'
 
@@ -79,6 +81,18 @@ function sameDeps(
 /** Narrow a rendered node to an element object. */
 function isTestElement(node: TestNode): node is TestElement {
   return typeof node === 'object' && node !== null && !Array.isArray(node)
+}
+
+/** Build the current-target stand-in a test event carries by default. */
+function eventTargetStub(): TestEventTarget {
+  return {
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 0, height: 0, bottom: 0 }),
+    focus() {},
+    setPointerCapture() {},
+    releasePointerCapture() {},
+    hasPointerCapture: () => true,
+    parentElement: null,
+  }
 }
 
 /**
@@ -303,7 +317,7 @@ export function createHarness(options: HarnessOptions): TestHarness {
       stopPropagation() {},
       preventDefault() {},
       target: {},
-      currentTarget: { getBoundingClientRect: () => ({ left: 0, bottom: 0 }), focus() {} },
+      currentTarget: eventTargetStub(),
       clientX: 0,
       clientY: 0,
       defaultPrevented: false,
@@ -318,7 +332,7 @@ export function createHarness(options: HarnessOptions): TestHarness {
       stopPropagation() {},
       preventDefault() {},
       target: {},
-      currentTarget: { getBoundingClientRect: () => ({ left: 0, bottom: 0 }), focus() {} },
+      currentTarget: eventTargetStub(),
       key: '',
       repeat: false,
       ...event,
@@ -329,6 +343,31 @@ export function createHarness(options: HarnessOptions): TestHarness {
     const handler = element?.props?.onChange
     if (typeof handler !== 'function') throw new Error('element has no onChange handler')
     return handler({ target: { value }, preventDefault() {}, stopPropagation() {} })
+  }
+
+  function pointer(
+    element: TestElement | undefined,
+    phase: TestPointerPhase,
+    event: Partial<TestEvent> = {},
+  ): unknown {
+    const handlers = {
+      down: element?.props?.onPointerDown,
+      move: element?.props?.onPointerMove,
+      up: element?.props?.onPointerUp,
+      cancel: element?.props?.onPointerCancel,
+    }
+    const handler = handlers[phase]
+    if (typeof handler !== 'function') throw new Error(`element has no onPointer${phase} handler`)
+    return handler({
+      stopPropagation() {},
+      preventDefault() {},
+      target: {},
+      currentTarget: eventTargetStub(),
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+      ...event,
+    })
   }
 
   async function dispose(): Promise<void> {
@@ -355,6 +394,7 @@ export function createHarness(options: HarnessOptions): TestHarness {
     contextmenu,
     keydown,
     change,
+    pointer,
     dispose,
     setComponent(component, props) {
       options.component = component

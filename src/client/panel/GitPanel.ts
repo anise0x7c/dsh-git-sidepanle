@@ -6,7 +6,7 @@
  */
 
 import type React from 'react'
-import { createElement, Fragment, useCallback, useMemo, useState } from 'react'
+import { createElement, useCallback, useMemo, useState } from 'react'
 import { DIFF_KIND } from '../constants.ts'
 import { errorText, isStaged, isUnstaged, statusLetter } from '../git/format.ts'
 import { sortChangeEntries } from '../git/list.ts'
@@ -22,11 +22,13 @@ import { useHistory } from './hooks/useHistory.ts'
 import { useMenuCommands } from './hooks/useMenuCommands.ts'
 import { useRepoStatus } from './hooks/useRepoStatus.ts'
 import { createMenuTargets, usePanelRefs } from './menu.ts'
+import { DEFAULT_SPLIT_RATIO } from './split.ts'
 import { BranchHeader } from './views/BranchHeader.ts'
 import { ChangeGroups } from './views/ChangeGroups.ts'
 import { CommitBox } from './views/CommitBox.ts'
 import { CommitDetails } from './views/CommitDetails.ts'
 import { GraphSection } from './views/GraphSection.ts'
+import { SplitView } from './views/SplitView.ts'
 
 const h = createElement
 
@@ -70,6 +72,8 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     changes: true,
     graph: true,
   })
+  // The split outlives the commit-details view so returning restores the ratio.
+  const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT_RATIO)
   const repo = status?.repo ?? null
   // The change list uses repository-relative paths, so the directory that
   // makes them absolute is the repository root, not the Session directory.
@@ -306,47 +310,50 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           rowTarget: targets.rowTarget,
         })
 
+  const singlePane = renderState() ?? commitBody
   const body =
-    renderState() ??
-    commitBody ??
-    h(
-      Fragment,
-      null,
-      h(ChangeGroups, {
-        t,
-        clean,
-        mergeRows,
-        stagedRows,
-        changedRows,
-        openSections,
-        busy: busy !== null,
-        canAct,
-        onToggleSection: toggleSection,
-        onStage: stage,
-        onUnstage: unstage,
-        onOpenDiff: openDiff,
-        onDiscard: (entry) => setConfirm({ kind: 'discard', entry }),
-        onDiscardAll: () => setConfirm({ kind: 'discardAll', entries: changedRows }),
-        menuTrigger,
-        sectionTarget: targets.sectionTarget,
-        rowTarget: targets.rowTarget,
-      }),
-      h(GraphSection, {
-        t,
-        commits: graph,
-        references,
-        graphId: panelId,
-        loading: graphLoading,
-        failure: graphFailure,
-        open: openSections.graph === true,
-        onSelect: commitState.selectCommit,
-        onToggle: () => toggleSection('graph'),
-        onRetry: () => {
-          void loadGraph()
-        },
-        menu: graphMenu,
-      }),
-    )
+    singlePane !== null
+      ? h('div', { className: 'dshgg-scroll' }, singlePane)
+      : h(SplitView, {
+          ratio: splitRatio,
+          onRatioChange: setSplitRatio,
+          label: t('split.label'),
+          hint: t('split.hint'),
+          changes: h(ChangeGroups, {
+            t,
+            clean,
+            mergeRows,
+            stagedRows,
+            changedRows,
+            openSections,
+            busy: busy !== null,
+            canAct,
+            onToggleSection: toggleSection,
+            onStage: stage,
+            onUnstage: unstage,
+            onOpenDiff: openDiff,
+            onDiscard: (entry) => setConfirm({ kind: 'discard', entry }),
+            onDiscardAll: () => setConfirm({ kind: 'discardAll', entries: changedRows }),
+            menuTrigger,
+            sectionTarget: targets.sectionTarget,
+            rowTarget: targets.rowTarget,
+          }),
+          graph: h(GraphSection, {
+            t,
+            commits: graph,
+            references,
+            graphId: panelId,
+            loading: graphLoading,
+            failure: graphFailure,
+            open: openSections.graph === true,
+            onSelect: commitState.selectCommit,
+            onToggle: () => toggleSection('graph'),
+            onRetry: () => {
+              void loadGraph()
+            },
+            menu: graphMenu,
+          }),
+        })
 
   const commitHint = stagedFiles.length > 0 ? t('commit.hint') : t('commit.hintNone')
   const placeholder =
@@ -408,7 +415,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
         })
       : null,
     notice !== null ? h('div', { className: 'dshgg-notice', role: 'status' }, notice) : null,
-    h('div', { className: 'dshgg-scroll' }, body),
+    body,
     confirm !== null
       ? h(
           'div',

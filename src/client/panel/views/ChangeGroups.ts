@@ -1,12 +1,12 @@
 /**
  * The three change groups — merge conflicts, staged files, unstaged changes —
  * as flat, path-sorted file lists with their section actions, plus the
- * clean-workspace mark.
+ * clean-workspace text.
  */
 
 import type React from 'react'
 import { createElement, Fragment } from 'react'
-import { CheckCircleIcon, MinusIcon, PlusIcon, UndoIcon } from '../../icons.ts'
+import { MinusIcon, PlusIcon, UndoIcon } from '../../icons.ts'
 import type {
   MenuTarget,
   MenuTargetDetail,
@@ -60,7 +60,7 @@ export interface ChangeGroupsProps {
 }
 
 /**
- * Render the three groups plus the clean mark.
+ * Render the three groups plus the clean-workspace text.
  * @param props - change-group props.
  * @returns the groups as one fragment.
  */
@@ -196,7 +196,6 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
       ? h(
           'div',
           { className: 'dshgg-clean' },
-          h('span', { className: 'dshgg-cleanIcon' }, h(CheckCircleIcon, { size: 26 })),
           h('span', { className: 'dshgg-cleanTitle' }, t('clean.title')),
           h('span', { className: 'dshgg-cleanDesc' }, t('clean.desc')),
         )

@@ -39,6 +39,8 @@ export const en = {
   'sections.staged': 'Staged changes',
   'sections.changes': 'Changes',
   'sections.graph': 'Graph',
+  'split.label': 'Resize changes and graph',
+  'split.hint': 'Drag to resize; use the arrow keys when focused',
   'actions.stage': 'Stage change',
   'actions.unstage': 'Unstage change',
   'actions.discard': 'Discard changes',

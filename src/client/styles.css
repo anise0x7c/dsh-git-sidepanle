@@ -148,7 +148,9 @@
   gap: 4px;
   height: 38px;
   padding: 0 6px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+  /* Include the hairline: the host's 38px tab strip and 38px header meet at 76px. */
+  box-sizing: border-box;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
 }
 
 .dshgg-branchWrap {
@@ -414,11 +416,6 @@
   text-align: center;
 }
 
-.dshgg-cleanIcon {
-  display: flex;
-  color: var(--dsw-alias-state-success-primary);
-}
-
 .dshgg-cleanTitle {
   color: var(--dsw-alias-label-primary);
   font: var(--dsw-font-xs-strong-13);
@@ -443,18 +440,56 @@
   overscroll-behavior: contain;
 }
 
+/* ---------------------------------------------------------------- split --- */
+
+.dshgg-split {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dshgg-paneTop {
+  flex: 0 0 auto;
+}
+
+.dshgg-paneBottom {
+  flex: 1 1 0;
+}
+
+.dshgg-splitter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 9px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.dshgg-splitterLine {
+  display: block;
+  width: 100%;
+  height: 0.5px;
+  background: var(--dsw-alias-border-l3);
+}
+
+@media (hover: hover) {
+  .dshgg-splitter:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dshgg-splitter[data-dragging="true"],
+.dshgg-splitter:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
 /* -------------------------------------------------------------- section --- */
 
 .dshgg-section {
   display: flex;
   flex: none;
   flex-direction: column;
-}
-
-.dshgg-section[data-section="graph"] {
-  margin-top: 2px;
-  padding-top: 4px;
-  border-top: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 .dshgg-sectionHeader {
@@ -476,7 +511,8 @@
   height: 26px;
   padding: 0 4px 0 6px;
   color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xs-strong-13);
+  font: var(--dsw-font-s-strong-14);
+  font-weight: 600;
   text-align: left;
   background: transparent;
   border: none;
@@ -872,7 +908,7 @@ body[data-ds-dark-theme] .dshgg-root {
   height: 30px;
   margin-top: 6px;
   padding: 0 4px;
-  border-top: 0.5px solid var(--dsw-alias-border-l1);
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
   color: var(--dsw-alias-label-secondary);
   font: var(--dsw-font-xxs-strong-12);
 }
@@ -1025,6 +1061,8 @@ body[data-ds-dark-theme] .dshgg-root {
   min-width: 0;
   height: 38px;
   padding: 0 6px 0 10px;
+  /* Include the hairline, like the panel toolbar: 38px + the 38px tab strip. */
+  box-sizing: border-box;
   border-bottom: 0.5px solid var(--dsw-alias-border-l3);
 }
 

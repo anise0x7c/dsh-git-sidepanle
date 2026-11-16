@@ -123,6 +123,31 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /\.dshgg-graphRow:hover \.dshgg-graphGap\s*\{[^}]*r: var\(--dshgg-gap-hover\);/,
   )
+  // Panel chrome follows the host: standard divider color, larger section
+  // titles and two independently scrolling panes.
+  assert.match(
+    graphStyles,
+    /\.dshgg-toolbar\s*\{[^}]*height: 38px;[^}]*box-sizing: border-box;[^}]*border-bottom: 0\.5px solid var\(--dsw-alias-border-l3\);/,
+  )
+  assert.match(
+    graphStyles,
+    /\.dshgg-commitFilesHeader\s*\{[^}]*border-top: 0\.5px solid var\(--dsw-alias-border-l3\);/,
+  )
+  assert.match(
+    graphStyles,
+    /\.dshgg-diffHeader\s*\{[^}]*height: 38px;[^}]*box-sizing: border-box;[^}]*border-bottom: 0\.5px solid var\(--dsw-alias-border-l3\);/,
+  )
+  assert.match(
+    graphStyles,
+    /\.dshgg-splitterLine\s*\{[^}]*background: var\(--dsw-alias-border-l3\);/,
+  )
+  assert.match(
+    graphStyles,
+    /\.dshgg-sectionToggle\s*\{[^}]*font: var\(--dsw-font-s-strong-14\);[^}]*font-weight: 600;/,
+  )
+  assert.match(graphStyles, /\.dshgg-paneTop\s*\{[^}]*flex: 0 0 auto;/)
+  assert.match(graphStyles, /\.dshgg-paneBottom\s*\{[^}]*flex: 1 1 0;/)
+  assert.doesNotMatch(graphStyles, /\.dshgg-cleanIcon/)
   assert.equal(records.localeDictionaries.length, 1)
   const registrationRecord = records.localeDictionaries[0]
   assert.ok(registrationRecord)
