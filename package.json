@@ -13,6 +13,7 @@
   },
   "files": [
     "index.js",
+    "index.js.map",
     "client.js",
     "client.js.map",
     "cordis.patch.yml",
@@ -41,15 +42,26 @@
       ]
     }
   },
+  "packageManager": "pnpm@11.28.5",
   "scripts": {
-    "build": "node scripts/build-client.mjs",
-    "dev": "node scripts/build-client.mjs --watch",
-    "pretest": "node scripts/build-client.mjs",
-    "test": "node --test test/*.test.mjs test/unit/*.test.mjs",
-    "check:build": "node scripts/build-client.mjs --check",
-    "verify:contract": "node scripts/verify-contract.mjs"
+    "build": "node --import tsx scripts/build.ts",
+    "dev": "node --import tsx scripts/build.ts --watch",
+    "test": "pnpm build && pnpm test:run",
+    "test:run": "node --import tsx --test test/*.test.ts test/unit/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check --error-on-warnings .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "check": "pnpm typecheck && pnpm lint && pnpm test:run && pnpm check:build",
+    "check:build": "node --import tsx scripts/build.ts --check",
+    "verify:contract": "node --import tsx scripts/verify-contract.ts"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "@biomejs/biome": "2.6.7",
+    "@types/node": "^22.19.0",
+    "@types/react": "^18.3.27",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.20.6",
+    "typescript": "~5.9.3"
   }
 }
