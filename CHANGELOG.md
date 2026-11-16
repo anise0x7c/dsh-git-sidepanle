@@ -3,6 +3,18 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## Unreleased
+
+Pinned section headers keep their hover highlight:
+
+- The opaque surface that hides the rows beneath a pinned header now sits on
+  the header itself, with the host hover highlight painted above it, so section
+  headers highlight on hover again — inside their rounded corners — while the
+  rows stay hidden. Pinning and the single-pinned-header rule are unchanged.
+- Tests stay at 273; the stylesheet assertions were updated to the new surface
+  and hover arrangement.
+- This is a browser-only change: no Host restart is needed.
+
 ## 0.8.0
 
 Section headers now stay pinned to their pane's top edge while their group or
