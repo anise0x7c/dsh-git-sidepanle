@@ -6,12 +6,19 @@
  * record (`createRepo`) and the shared file list, so every default record stays
  * identical across the suite.
  */
+import type {
+  BranchesResult,
+  CommitDetails,
+  HistoryResult,
+  RepositoryStatus,
+  StatusResult,
+} from '../../src/shared/git.ts'
 
 /** Seconds captured once per test process, so relative commit times stay stable. */
 const now = Math.floor(Date.now() / 1000)
 
 /** Repository record of a successful status call (`cwd` may sit below `root`). */
-export const REPO = {
+export const REPO: RepositoryStatus = {
   root: '/repo',
   cwd: '/repo',
   branch: 'main',
@@ -24,7 +31,7 @@ export const REPO = {
 }
 
 /** Default `status` response: an ordinary change, an untracked file, and a conflict. */
-export const STATUS = {
+export const STATUS: StatusResult = {
   repo: REPO,
   files: [
     { kind: 'ordinary', x: 'M', y: 'M', path: 'src/app.js', conflict: false, untracked: false },
@@ -34,7 +41,7 @@ export const STATUS = {
 }
 
 /** Default `history` response with one local/upstream commit and one tagged commit. */
-export const HISTORY = {
+export const HISTORY: HistoryResult = {
   commits: [
     {
       oid: 'a'.repeat(40),
@@ -59,24 +66,19 @@ export const HISTORY = {
 
 /**
  * Build a branch-list response.
- * @param {string[]} names - branch names in display order.
- * @param {string} [current] - name rendered as current; defaults to the first.
- * @returns {object} `branches` RPC value.
+ * @param names - branch names in display order.
+ * @param current - name rendered as current; defaults to the first.
+ * @returns `branches` RPC value.
  */
-export function createBranches(names, current = names[0]) {
+export function createBranches(names: string[], current: string = names[0] ?? ''): BranchesResult {
   return { branches: names.map((name) => ({ name, current: name === current })) }
 }
 
 /** Default `branches` response: the checked-out branch plus one other local branch. */
-export const BRANCHES = createBranches(['main', 'feature/sidebar'])
+export const BRANCHES: BranchesResult = createBranches(['main', 'feature/sidebar'])
 
-/**
- * Default `commit-details` response for the head commit of `HISTORY`.
- *
- * It carries one entry of each interesting family: modified, added, deleted,
- * and renamed with its original path.
- */
-export const COMMIT_DETAILS = {
+/** Default `commit-details` response for the head commit of `HISTORY`. */
+export const COMMIT_DETAILS: CommitDetails = {
   commit: {
     oid: 'a'.repeat(40),
     shortOid: 'aaaaaaa',
@@ -98,21 +100,33 @@ export const COMMIT_DETAILS = {
 
 /**
  * Build a repository record from the shared one.
- * @param {object} overrides - fields to replace (`cwd`, `upstream`, ...).
- * @returns {object} repository record.
+ * @param overrides - fields to replace (`cwd`, `upstream`, ...).
+ * @returns repository record.
  */
-export function createRepo(overrides = {}) {
+export function createRepo(overrides: Partial<RepositoryStatus> = {}): RepositoryStatus {
   return { ...REPO, ...overrides }
 }
 
 /**
  * Build a `status` response.
- * @param {object} [options] - overrides.
- * @param {object|null} [options.repo] - repository record; null means "not a repository".
- * @param {object[]} [options.files] - changed-file records.
- * @param {string} [options.cwd] - top-level Session directory the Host reports.
- * @returns {object} `status` RPC value.
+ *
+ * The wire omits top-level `cwd` when the repository resolved, so the two
+ * variants stay distinct instead of always carrying both fields.
+ * @param options - overrides.
+ * @param options.repo - repository record; null means "not a repository".
+ * @param options.files - changed-file records.
+ * @param options.cwd - top-level Session directory the Host reports.
+ * @returns `status` RPC value.
  */
-export function createStatus({ repo = REPO, files = [], cwd } = {}) {
+export function createStatus({
+  repo = REPO,
+  files = [],
+  cwd,
+}: {
+  repo?: RepositoryStatus | null
+  files?: StatusResult['files']
+  cwd?: string
+} = {}): StatusResult {
+  if (repo === null) return { repo: null, cwd: cwd ?? '/tmp/plain', files }
   return cwd === undefined ? { repo, files } : { repo, files, cwd }
 }

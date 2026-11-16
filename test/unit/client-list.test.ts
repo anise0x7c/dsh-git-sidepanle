@@ -1,31 +1,32 @@
 /**
  * Direct unit tests for the browser half's pure flat change-list ordering.
  *
- * These import `src/client/git/list.js` directly — no React and no plugin
+ * These import `src/client/git/list.ts` directly — no React and no plugin
  * context. Expectations describe the implementation: one layer ordered by
  * repository-relative path, case-insensitively and with numeric runs compared
  * as numbers; the input rows are carried through unchanged.
  */
-import { describe, test } from 'node:test'
+
 import assert from 'node:assert/strict'
-import { sortChangeEntries } from '../../src/client/git/list.js'
+import { describe, test } from 'node:test'
+import { sortChangeEntries } from '../../src/client/git/list.ts'
 
 /**
  * Build a list input entry. The extra field proves the original row record is
  * carried through the sort.
- * @param {string} path - repository-relative path.
- * @returns {object} entry.
+ * @param path - repository-relative path.
+ * @returns entry carrying an extra field, to prove the record is carried through.
  */
-function entry(path) {
+function entry(path: string): { path: string; source: string } {
   return { path, source: `row:${path}` }
 }
 
 /**
  * Read the paths of sorted rows.
- * @param {object[]} entries - rows.
- * @returns {string[]} paths in display order.
+ * @param entries - rows.
+ * @returns paths in display order.
  */
-function paths(entries) {
+function paths(entries: readonly { path: string }[]): string[] {
   return entries.map((row) => row.path)
 }
 
@@ -35,22 +36,32 @@ describe('sortChangeEntries', () => {
   })
 
   test('orders rows by repository-relative path', () => {
-    assert.deepEqual(paths(sortChangeEntries([
-      entry('src/b.js'),
-      entry('README.md'),
-      entry('src/a.js'),
-      entry('src2/a.js'),
-    ])), ['README.md', 'src/a.js', 'src/b.js', 'src2/a.js'])
+    assert.deepEqual(
+      paths(
+        sortChangeEntries([
+          entry('src/b.js'),
+          entry('README.md'),
+          entry('src/a.js'),
+          entry('src2/a.js'),
+        ]),
+      ),
+      ['README.md', 'src/a.js', 'src/b.js', 'src2/a.js'],
+    )
   })
 
   test('compares case-insensitively and numeric runs as numbers', () => {
-    assert.deepEqual(paths(sortChangeEntries([
-      entry('a10.js'),
-      entry('B.js'),
-      entry('a2.js'),
-      entry('a1.js'),
-      entry('b.js'),
-    ])), ['a1.js', 'a2.js', 'a10.js', 'B.js', 'b.js'])
+    assert.deepEqual(
+      paths(
+        sortChangeEntries([
+          entry('a10.js'),
+          entry('B.js'),
+          entry('a2.js'),
+          entry('a1.js'),
+          entry('b.js'),
+        ]),
+      ),
+      ['a1.js', 'a2.js', 'a10.js', 'B.js', 'b.js'],
+    )
   })
 
   test('keeps the original row records and does not mutate the input', () => {

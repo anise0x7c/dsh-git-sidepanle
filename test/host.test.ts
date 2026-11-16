@@ -5,60 +5,102 @@
  * body handling, JSON envelope, and every Git operation run exactly as the
  * browser will call them.
  */
-import { test, before, after } from 'node:test'
+
 import assert from 'node:assert/strict'
 import { execFile as execFileCallback } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { createServer } from 'node:http'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
-import { promisify } from 'node:util'
 import { join } from 'node:path'
-import { apply } from '../index.js'
+import { after, before, test } from 'node:test'
+import { promisify } from 'node:util'
+import type {
+  HostContext,
+  SessionPersistenceService,
+  SessionsService,
+  WebServerRoute,
+  WorkingDirectoryService,
+} from '../src/host/context.ts'
+import { apply } from '../src/host-entry.ts'
+import type {
+  ChangeEntry,
+  GitGraphOperation,
+  GitGraphRpcValues,
+  RepositoryStatus,
+  StatusResult,
+} from '../src/shared/git.ts'
+import type { RpcReply } from './support/types.ts'
 
 const execFile = promisify(execFileCallback)
-/** @type {string} */
-let tmpRoot
+let tmpRoot = ''
+let repo = ''
+let server: Server | undefined
+let base = ''
 
-/** @type {string} */
-let repo
-/** @type {import('node:http').Server} */
-let server
-/** @type {string} */
-let base
-
-async function git(cwd, ...args) {
+async function git(cwd: string, ...args: string[]): Promise<string> {
   const { stdout } = await execFile('git', args, { cwd })
   return stdout
 }
 
-function createFakeContext(cwd) {
-  const routes = new Map()
-  const ctx = {
-    effect(callback) {
-      const disposer = callback()
-      return () => { if (typeof disposer === 'function') disposer() }
+/** Read one changed file from a status result, failing when Git did not report it. */
+function fileByPath(files: readonly ChangeEntry[], path: string): ChangeEntry {
+  const file = files.find((entry) => entry.path === path)
+  assert.ok(file, `the status did not report ${path}`)
+  return file
+}
+
+/** Read the repository summary of a status result that must have one. */
+function requireRepo(status: StatusResult): RepositoryStatus {
+  assert.ok(status.repo !== null, 'the directory should be inside a repository')
+  return status.repo
+}
+
+/**
+ * Build a fake Host context and register the bundle's routes with it.
+ * @param cwd - Session working directory the fake services report.
+ * @returns registered routes by path.
+ */
+function createFakeContext(cwd: string): Map<string, WebServerRoute> {
+  const routes = new Map<string, WebServerRoute>()
+  function get(name: 'sessions'): SessionsService | undefined
+  function get(name: 'workingDirectory'): WorkingDirectoryService | undefined
+  function get(name: 'sessionPersistence'): SessionPersistenceService | undefined
+  function get(name: string): unknown
+  function get(
+    name: string,
+  ): SessionsService | WorkingDirectoryService | SessionPersistenceService | undefined {
+    if (name === 'sessions')
+      return { get: (id: string) => (id === 'session-1' ? { header: { cwd } } : undefined) }
+    if (name === 'workingDirectory') return { get: () => cwd }
+    if (name === 'sessionPersistence')
+      return { stat: async (id: string) => (id === 'session-1' ? { header: { cwd } } : undefined) }
+    return undefined
+  }
+  const ctx: HostContext = {
+    effect(setup) {
+      const disposer = setup()
+      return () => {
+        if (typeof disposer === 'function') disposer()
+      }
     },
     webServer: {
       register(route) {
         if (routes.has(route.path)) throw new Error(`duplicate route ${route.path}`)
         routes.set(route.path, route)
-        return () => { routes.delete(route.path) }
+        return () => {
+          routes.delete(route.path)
+        }
       },
     },
-    get(name) {
-      if (name === 'sessions') return { get: (id) => (id === 'session-1' ? { header: { cwd } } : undefined) }
-      if (name === 'workingDirectory') return { get: () => cwd }
-      if (name === 'sessionPersistence') return { stat: async (id) => (id === 'session-1' ? { header: { cwd } } : undefined) }
-      return undefined
-    },
+    get,
   }
   apply(ctx)
   return routes
 }
 
-async function withSessionServer(cwd, operation) {
-  const routes = createFakeContext(cwd)
-  const other = createServer((request, response) => {
+/** Serve the routes through a real loopback server. */
+function routeServer(routes: Map<string, WebServerRoute>): Server {
+  return createServer((request, response) => {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname
     const route = routes.get(path)
     if (route === undefined) {
@@ -68,33 +110,82 @@ async function withSessionServer(cwd, operation) {
     }
     void route.handler(request, response)
   })
-  await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve))
+}
+
+/** Read the bound port of a listening test server. */
+function serverPort(target: Server): number {
+  const address = target.address()
+  assert.ok(address !== null && typeof address === 'object', 'the test server has no TCP address')
+  return address.port
+}
+
+async function withSessionServer<T>(
+  cwd: string,
+  operation: (baseUrl: string) => Promise<T>,
+): Promise<T> {
+  const routes = createFakeContext(cwd)
+  const other = routeServer(routes)
+  await new Promise<void>((resolve) => {
+    other.listen(0, '127.0.0.1', resolve)
+  })
   try {
-    const address = other.address()
-    return await operation(`http://127.0.0.1:${address.port}`)
+    return await operation(`http://127.0.0.1:${serverPort(other)}`)
   } finally {
-    await new Promise((resolve) => other.close(resolve))
+    await new Promise<void>((resolve) => {
+      other.close(() => resolve())
+    })
   }
 }
 
-async function callAt(baseUrl, op, payload = {}) {
-  const response = await fetch(`${baseUrl}/api/dsh-git-graph/rpc`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
-    body: JSON.stringify({ sessionId: 'session-1', op, ...payload }),
-  })
-  return { status: response.status, body: await response.json() }
+/** One RPC reply plus the HTTP status the test server answered. */
+interface CallResult<T> {
+  status: number
+  body: RpcReply<T>
 }
 
-async function call(op, payload = {}, options = {}) {
-  const headers = { 'content-type': 'application/json', ...(options.untrusted === true ? {} : { 'x-dsh-git-graph': '1' }) }
-  const response = await fetch(`${base}/api/dsh-git-graph/rpc`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ sessionId: 'session-1', op, ...payload }),
-  })
-  const body = await response.json()
-  return { status: response.status, body }
+/** One call's options. */
+interface CallOptions {
+  untrusted?: boolean
+}
+
+async function request<T>(
+  url: string,
+  payload: Record<string, unknown>,
+  trusted = true,
+): Promise<CallResult<T>> {
+  const headers = {
+    'content-type': 'application/json',
+    ...(trusted ? { 'x-dsh-git-graph': '1' } : {}),
+  }
+  const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) })
+  return { status: response.status, body: (await response.json()) as RpcReply<T> }
+}
+
+async function callAt<Operation extends GitGraphOperation>(
+  baseUrl: string,
+  op: Operation,
+  payload: Record<string, unknown> = {},
+): Promise<CallResult<GitGraphRpcValues[Operation]>> {
+  return request(`${baseUrl}/api/dsh-git-graph/rpc`, { sessionId: 'session-1', op, ...payload })
+}
+
+async function call<Operation extends GitGraphOperation>(
+  op: Operation,
+  payload: Record<string, unknown> = {},
+  options: CallOptions = {},
+): Promise<CallResult<GitGraphRpcValues[Operation]>> {
+  return request(
+    `${base}/api/dsh-git-graph/rpc`,
+    { sessionId: 'session-1', op, ...payload },
+    options.untrusted !== true,
+  )
+}
+
+async function callUnknown(
+  op: string,
+  payload: Record<string, unknown> = {},
+): Promise<CallResult<unknown>> {
+  return request(`${base}/api/dsh-git-graph/rpc`, { sessionId: 'session-1', op, ...payload })
 }
 
 before(async () => {
@@ -108,28 +199,25 @@ before(async () => {
   await git(repo, 'commit', '-m', 'initial commit')
 
   const routes = createFakeContext(repo)
-  server = createServer((request, response) => {
-    const path = new URL(request.url ?? '/', 'http://localhost').pathname
-    const route = routes.get(path)
-    if (route === undefined) {
-      response.writeHead(404)
-      response.end()
-      return
-    }
-    void route.handler(request, response)
+  server = routeServer(routes)
+  await new Promise<void>((resolve) => {
+    server?.listen(0, '127.0.0.1', resolve)
   })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const address = server.address()
-  base = `http://127.0.0.1:${address.port}`
+  base = `http://127.0.0.1:${serverPort(server)}`
 })
 
 after(async () => {
-  if (server !== undefined) await new Promise((resolve) => server.close(resolve))
+  if (server !== undefined)
+    await new Promise<void>((resolve) => {
+      server?.close(() => resolve())
+    })
   await rm(tmpRoot, { recursive: true, force: true })
 })
 
 test('health route answers only trusted loopback requests', async () => {
-  const trusted = await fetch(`${base}/api/dsh-git-graph/health`, { headers: { 'x-dsh-git-graph': '1' } })
+  const trusted = await fetch(`${base}/api/dsh-git-graph/health`, {
+    headers: { 'x-dsh-git-graph': '1' },
+  })
   assert.equal(trusted.status, 200)
   assert.deepEqual(await trusted.json(), { ok: true, service: '@local/dsh-git-graph' })
   const untrusted = await fetch(`${base}/api/dsh-git-graph/health`)
@@ -142,17 +230,18 @@ test('status reports the branch and change groups', async () => {
   const { status, body } = await call('status')
   assert.equal(status, 200)
   assert.equal(body.ok, true)
-  assert.equal(body.value.repo.root, repo)
-  assert.equal(body.value.repo.branch, 'main')
-  assert.equal(body.value.repo.unborn, false)
+  const repository = requireRepo(body.value)
+  assert.equal(repository.root, repo)
+  assert.equal(repository.branch, 'main')
+  assert.equal(repository.unborn, false)
   assert.deepEqual(body.value.files, [])
 
   await writeFile(join(repo, 'alpha.txt'), 'one\nTWO\n')
   await writeFile(join(repo, 'beta.txt'), 'new file\n')
   const next = await call('status')
   const files = next.body.value.files
-  const alpha = files.find((file) => file.path === 'alpha.txt')
-  const beta = files.find((file) => file.path === 'beta.txt')
+  const alpha = fileByPath(files, 'alpha.txt')
+  const beta = fileByPath(files, 'beta.txt')
   assert.equal(alpha.kind, 'ordinary')
   assert.equal(alpha.x, '.')
   assert.equal(alpha.y, 'M')
@@ -193,7 +282,7 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
   const staged = await call('stage', { paths: ['alpha.txt'] })
   assert.equal(staged.body.ok, true)
   let status = (await call('status')).body.value
-  assert.equal(status.files.find((file) => file.path === 'alpha.txt').x, 'M')
+  assert.equal(fileByPath(status.files, 'alpha.txt').x, 'M')
 
   const stagedDiff = await call('diff', { path: 'alpha.txt', staged: true })
   assert.equal(stagedDiff.body.ok, true)
@@ -212,7 +301,7 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
 
   await call('unstage', { paths: ['alpha.txt'] })
   status = (await call('status')).body.value
-  assert.equal(status.files.find((file) => file.path === 'alpha.txt').x, '.')
+  assert.equal(fileByPath(status.files, 'alpha.txt').x, '.')
 
   const emptyCommit = await call('commit', { message: '   ' })
   assert.equal(emptyCommit.body.ok, false)
@@ -224,7 +313,9 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
 
   const commit = await call('commit', { message: 'change alpha and add beta', stageAll: true })
   assert.equal(commit.body.ok, true)
-  assert.match(commit.body.value.commit, /^[0-9a-f]{7,}$/)
+  const commitOid = commit.body.value.commit
+  assert.ok(typeof commitOid === 'string', 'the commit operation reports the new HEAD')
+  assert.match(commitOid, /^[0-9a-f]{7,}$/)
 
   status = (await call('status')).body.value
   assert.deepEqual(status.files, [])
@@ -238,7 +329,7 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
   assert.deepEqual(history.body.value.commits[1].parents, [])
   assert.equal('graph' in history.body.value.commits[0], false)
 
-  const badOp = await call('nonsense')
+  const badOp = await callUnknown('nonsense')
   assert.equal(badOp.body.ok, false)
   assert.equal(badOp.body.error.code, 'unknown-operation')
 })
@@ -257,13 +348,14 @@ test('a commit reports its metadata and changed files, and its files diff agains
   assert.equal(details.body.value.commit.parents.length, 1)
   assert.equal(details.body.value.truncated, false)
   const changed = details.body.value.files
-  assert.deepEqual(
-    changed.map((file) => [file.letter, file.path]).sort(),
-    [['A', 'beta.txt'], ['M', 'alpha.txt']],
-  )
+  assert.deepEqual(changed.map((file) => [file.letter, file.path]).sort(), [
+    ['A', 'beta.txt'],
+    ['M', 'alpha.txt'],
+  ])
 
   const commitDiff = await call('diff', { path: 'alpha.txt', commit: head.oid })
   assert.equal(commitDiff.body.ok, true)
+  assert.ok('commit' in commitDiff.body.value)
   assert.equal(commitDiff.body.value.commit, head.oid)
   assert.equal(commitDiff.body.value.additions, 1)
   assert.equal(commitDiff.body.value.deletions, 1)
@@ -328,15 +420,22 @@ test('commit details follow the first parent for renames, deletions, and merges'
     const details = await callAt(baseUrl, 'commit-details', { oid: second })
     assert.equal(details.body.ok, true)
     const files = details.body.value.files
-    assert.deepEqual(
-      files.map((file) => [file.letter, file.path]).sort(),
-      [['A', 'src/new.txt'], ['D', 'doomed.txt'], ['M', 'src/alpha.txt'], ['R', 'renamed.txt']],
-    )
+    assert.deepEqual(files.map((file) => [file.letter, file.path]).sort(), [
+      ['A', 'src/new.txt'],
+      ['D', 'doomed.txt'],
+      ['M', 'src/alpha.txt'],
+      ['R', 'renamed.txt'],
+    ])
     const renamed = files.find((file) => file.letter === 'R')
+    assert.ok(renamed, 'the rename is listed')
     assert.equal(renamed.origPath, 'keep.txt')
     assert.equal(details.body.value.commit.parents.length, 1)
 
-    const renameDiff = await callAt(baseUrl, 'diff', { path: 'renamed.txt', commit: second, origPath: 'keep.txt' })
+    const renameDiff = await callAt(baseUrl, 'diff', {
+      path: 'renamed.txt',
+      commit: second,
+      origPath: 'keep.txt',
+    })
     assert.equal(renameDiff.body.ok, true)
     assert.equal(renameDiff.body.value.renameFrom, 'keep.txt')
     assert.equal(renameDiff.body.value.renameTo, 'renamed.txt')
@@ -367,7 +466,16 @@ test('commit details follow the first parent for renames, deletions, and merges'
     for (const entry of entries) {
       for (const parent of entry.parents) {
         if (position.has(parent)) {
-          assert.ok(position.get(parent) > position.get(entry.oid), `${entry.oid} is listed after its parent ${parent}`)
+          const childPosition = position.get(entry.oid)
+          const parentPosition = position.get(parent)
+          assert.ok(
+            childPosition !== undefined && parentPosition !== undefined,
+            'both positions are listed',
+          )
+          assert.ok(
+            parentPosition > childPosition,
+            `${entry.oid} is listed after its parent ${parent}`,
+          )
         }
       }
     }
@@ -391,9 +499,9 @@ test('discard restores tracked files and deletes untracked files', async () => {
   status = (await call('status')).body.value
   assert.deepEqual(status.files, [])
 
-  const escape = await call('discard', { path: '../outside.txt', untracked: true })
-  assert.equal(escape.body.ok, false)
-  assert.equal(escape.body.error.code, 'path-outside-repository')
+  const escapeAttempt = await call('discard', { path: '../outside.txt', untracked: true })
+  assert.equal(escapeAttempt.body.ok, false)
+  assert.equal(escapeAttempt.body.error.code, 'path-outside-repository')
 })
 
 test('branches list and checkout switch the worktree', async () => {
@@ -403,12 +511,15 @@ test('branches list and checkout switch the worktree', async () => {
 
   await git(repo, 'branch', 'feature/sidebar')
   const listed = await call('branches')
-  assert.deepEqual(listed.body.value.branches.map((branch) => branch.name), ['feature/sidebar', 'main'])
+  assert.deepEqual(
+    listed.body.value.branches.map((branch) => branch.name),
+    ['feature/sidebar', 'main'],
+  )
 
   const switched = await call('checkout', { branch: 'feature/sidebar' })
   assert.equal(switched.body.ok, true)
   const status = (await call('status')).body.value
-  assert.equal(status.repo.branch, 'feature/sidebar')
+  assert.equal(requireRepo(status).branch, 'feature/sidebar')
 
   const missing = await call('checkout', { branch: 'no-such-branch' })
   assert.equal(missing.body.ok, false)
@@ -428,8 +539,8 @@ test('an unborn repository stages, unstages, and takes its first commit', async 
 
   await withSessionServer(unborn, async (baseUrl) => {
     let status = await callAt(baseUrl, 'status')
-    assert.equal(status.body.value.repo.unborn, true)
-    assert.equal(status.body.value.repo.branch, 'main')
+    assert.equal(requireRepo(status.body.value).unborn, true)
+    assert.equal(requireRepo(status.body.value).branch, 'main')
     assert.equal(status.body.value.files[0].kind, 'untracked')
 
     const history = await callAt(baseUrl, 'history')
@@ -450,7 +561,7 @@ test('an unborn repository stages, unstages, and takes its first commit', async 
     assert.equal(commit.body.ok, true)
     status = await callAt(baseUrl, 'status')
     assert.deepEqual(status.body.value.files, [])
-    assert.equal(status.body.value.repo.unborn, false)
+    assert.equal(requireRepo(status.body.value).unborn, false)
 
     const after = await callAt(baseUrl, 'history')
     assert.equal(after.body.value.commits.length, 1)
@@ -476,26 +587,30 @@ test('a directory outside a repository reports no repository', async () => {
     }
     void route.handler(request, response)
   })
-  await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve))
+  await new Promise<void>((resolve) => {
+    other.listen(0, '127.0.0.1', resolve)
+  })
+  const endpoint = `http://127.0.0.1:${serverPort(other)}/api/dsh-git-graph/rpc`
   try {
-    const address = other.address()
-    const response = await fetch(`http://127.0.0.1:${address.port}/api/dsh-git-graph/rpc`, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
       body: JSON.stringify({ sessionId: 'session-1', op: 'status' }),
     })
-    const body = await response.json()
+    const body = (await response.json()) as RpcReply<StatusResult>
     assert.equal(body.ok, true)
     assert.equal(body.value.repo, null)
-    const refused = await fetch(`http://127.0.0.1:${address.port}/api/dsh-git-graph/rpc`, {
+    const refused = await fetch(endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
       body: JSON.stringify({ sessionId: 'session-1', op: 'history' }),
     })
-    const refusedBody = await refused.json()
+    const refusedBody = (await refused.json()) as RpcReply<unknown>
     assert.equal(refusedBody.ok, false)
     assert.equal(refusedBody.error.code, 'not-a-repository')
   } finally {
-    await new Promise((resolve) => other.close(resolve))
+    await new Promise<void>((resolve) => {
+      other.close(() => resolve())
+    })
   }
 })

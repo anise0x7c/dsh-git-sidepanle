@@ -1,54 +1,64 @@
 /**
  * Direct unit tests for the browser half's pure commit-graph layout.
  *
- * These import `src/client/git/graph.js` directly — no React, no DOM, no plugin
+ * These import `src/client/git/graph.ts` directly — no React, no DOM, no plugin
  * context. Expectations describe the visible graph: a linear history is one
  * lane, a merge fans its parents into their own lanes, a parent another branch
  * already expects stays on that branch's lane, and the geometry keeps the graph
  * column narrow by squeezing lanes instead of widening the column.
  */
-import { describe, test } from 'node:test'
+
 import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
 import {
+  computeGraph,
+  edgePath,
+  graphRowGeometry,
   LANE_COLORS,
   LANE_PADDING,
   LANE_WIDTH,
+  laneStep,
   MAX_GRAPH_WIDTH,
   MIN_LANE_WIDTH,
   NODE_Y,
   ROW_HEIGHT,
-  computeGraph,
-  edgePath,
-  graphRowGeometry,
-  laneStep,
-} from '../../src/client/git/graph.js'
+} from '../../src/client/git/graph.ts'
+
+/** One commit input accepted by the layout. */
+type GraphCommit = Parameters<typeof computeGraph>[0][number]
+/** One laid-out row. */
+type GraphRow = ReturnType<typeof computeGraph>['rows'][number]
+/** One edge of a laid-out row. */
+type GraphEdge = GraphRow['edges'][number]
+/** Edge fields whose values the assertions compare. */
+type EdgeShape = Pick<GraphEdge, 'kind' | 'from' | 'to' | 'color'>
 
 /**
  * Build one history commit record.
- * @param {string} oid - commit identifier.
- * @param {string[]} [parents] - parent identifiers.
- * @returns {{oid: string, parents: string[]}} commit.
+ * @param oid - commit identifier.
+ * @param parents - parent identifiers.
+ * @returns commit.
  */
-function commit(oid, parents = []) {
+function commit(oid: string, parents: string[] = []): GraphCommit {
   return { oid, parents }
 }
 
 /**
  * Index laid-out rows by their commit id.
- * @param {object[]} rows - computed rows.
- * @returns {Record<string, object>} rows by oid.
+ * @param rows - computed rows.
+ * @returns rows by oid.
  */
-function byOid(rows) {
+function byOid(rows: readonly GraphRow[]): Record<string, GraphRow> {
   return Object.fromEntries(rows.map((row) => [row.oid, row]))
 }
 
 /**
  * Reduce an edge list to a comparable shape.
- * @param {object[]} edges - row edges.
- * @returns {object[]} edges without implementation-only fields.
+ * @param list - row edges.
+ * @returns edges without implementation-only fields.
  */
-function edgeShape(edges) {
-  return edges.map((edge) => ({ kind: edge.kind, from: edge.from, to: edge.to, color: edge.color }))
+function edgeShape(list: readonly GraphEdge[]): EdgeShape[] {
+  return list.map((edge) => ({ kind: edge.kind, from: edge.from, to: edge.to, color: edge.color }))
 }
 
 describe('computeGraph', () => {
@@ -63,9 +73,18 @@ describe('computeGraph', () => {
       commit('c1'),
     ])
     assert.equal(laneCount, 1)
-    assert.deepEqual(rows.map((row) => row.oid), ['c3', 'c2', 'c1'])
-    assert.deepEqual(rows.map((row) => row.lane), [0, 0, 0])
-    assert.deepEqual(rows.map((row) => row.color), [0, 0, 0])
+    assert.deepEqual(
+      rows.map((row) => row.oid),
+      ['c3', 'c2', 'c1'],
+    )
+    assert.deepEqual(
+      rows.map((row) => row.lane),
+      [0, 0, 0],
+    )
+    assert.deepEqual(
+      rows.map((row) => row.color),
+      [0, 0, 0],
+    )
     assert.deepEqual(edges(rows[0]), [{ kind: 'out', from: 0, to: 0, color: 0 }])
     assert.deepEqual(edges(rows[1]), [
       { kind: 'in', from: 0, to: 0, color: 0 },
@@ -89,11 +108,15 @@ describe('computeGraph', () => {
       { kind: 'in', from: 1, to: 1, color: 1 },
       { kind: 'out', from: 1, to: 1, color: 1 },
     ])
-    assert.deepEqual(edges(row['side-1']), [
-      { kind: 'through', from: 0, to: 0, color: 0 },
-      { kind: 'in', from: 1, to: 1, color: 1 },
-      { kind: 'out', from: 1, to: 1, color: 1 },
-    ], 'the intermediate update must not turn toward the already-reserved base')
+    assert.deepEqual(
+      edges(row['side-1']),
+      [
+        { kind: 'through', from: 0, to: 0, color: 0 },
+        { kind: 'in', from: 1, to: 1, color: 1 },
+        { kind: 'out', from: 1, to: 1, color: 1 },
+      ],
+      'the intermediate update must not turn toward the already-reserved base',
+    )
     assert.deepEqual(edges(row.base), [
       { kind: 'in', from: 1, to: 0, color: 1 },
       { kind: 'in', from: 0, to: 0, color: 0 },
@@ -116,21 +139,33 @@ describe('computeGraph', () => {
     const row = byOid(rows)
     assert.equal(laneCount, 3)
     assert.equal(row.merge.lane, 1)
-    assert.deepEqual(edges(row.merge), [
-      { kind: 'through', from: 0, to: 0, color: 0 },
-      { kind: 'in', from: 1, to: 1, color: 1 },
-      { kind: 'out', from: 1, to: 1, color: 1 },
-      { kind: 'out', from: 1, to: 2, color: 1 },
-    ], 'the second parent opens its own lane instead of joining the reserved shared lane')
-    assert.deepEqual(edges(row.first), [
-      { kind: 'through', from: 0, to: 0, color: 0 },
-      { kind: 'through', from: 2, to: 2, color: 1 },
-      { kind: 'in', from: 1, to: 1, color: 1 },
-    ], 'the intermediate row keeps the arriving line vertical')
-    assert.deepEqual(edges(row.shared), [
-      { kind: 'in', from: 2, to: 0, color: 1 },
-      { kind: 'in', from: 0, to: 0, color: 0 },
-    ], 'both lanes reach the shared node and turn there')
+    assert.deepEqual(
+      edges(row.merge),
+      [
+        { kind: 'through', from: 0, to: 0, color: 0 },
+        { kind: 'in', from: 1, to: 1, color: 1 },
+        { kind: 'out', from: 1, to: 1, color: 1 },
+        { kind: 'out', from: 1, to: 2, color: 1 },
+      ],
+      'the second parent opens its own lane instead of joining the reserved shared lane',
+    )
+    assert.deepEqual(
+      edges(row.first),
+      [
+        { kind: 'through', from: 0, to: 0, color: 0 },
+        { kind: 'through', from: 2, to: 2, color: 1 },
+        { kind: 'in', from: 1, to: 1, color: 1 },
+      ],
+      'the intermediate row keeps the arriving line vertical',
+    )
+    assert.deepEqual(
+      edges(row.shared),
+      [
+        { kind: 'in', from: 2, to: 0, color: 1 },
+        { kind: 'in', from: 0, to: 0, color: 0 },
+      ],
+      'both lanes reach the shared node and turn there',
+    )
     const geometry = graphRowGeometry(row.shared, laneCount)
     assert.equal(geometry.edges[0].d, 'M30 0Q30 6 26 6H10Q6 6 6 10V14')
     assert.equal(geometry.textOffset, 36, 'the subject clears the arriving lane')
@@ -147,24 +182,40 @@ describe('computeGraph', () => {
       commit('s'),
     ])
     const row = byOid(rows)
-    assert.deepEqual(edges(row.m), [
-      { kind: 'through', from: 3, to: 3, color: 3 },
-      { kind: 'in', from: 1, to: 1, color: 1 },
-      { kind: 'out', from: 1, to: 1, color: 1 },
-      { kind: 'out', from: 1, to: 2, color: 1 },
-    ], 'the connector opens the free lane between its source and the older expectation')
+    assert.deepEqual(
+      edges(row.m),
+      [
+        { kind: 'through', from: 3, to: 3, color: 3 },
+        { kind: 'in', from: 1, to: 1, color: 1 },
+        { kind: 'out', from: 1, to: 1, color: 1 },
+        { kind: 'out', from: 1, to: 2, color: 1 },
+      ],
+      'the connector opens the free lane between its source and the older expectation',
+    )
     assert.equal(row.s.lane, 3, 'the older expectation keeps the node and its branch color')
     assert.equal(row.s.color, 3)
-    assert.deepEqual(edges(row.s), [
-      { kind: 'in', from: 2, to: 3, color: 1 },
-      { kind: 'in', from: 3, to: 3, color: 3 },
-    ], 'the connector joins the older lane at the shared node')
+    assert.deepEqual(
+      edges(row.s),
+      [
+        { kind: 'in', from: 2, to: 3, color: 1 },
+        { kind: 'in', from: 3, to: 3, color: 3 },
+      ],
+      'the connector joins the older lane at the shared node',
+    )
     assert.equal(laneCount, 4)
-    assert.deepEqual(graphRowGeometry(row.s, laneCount).edges, [
-      { d: 'M30 0Q30 6 34 6H38Q42 6 42 10V14', color: 1 },
-      { d: 'M42 0V14', color: 3 },
-    ], 'a left-side incoming line still turns inside the graph column')
-    assert.equal(graphRowGeometry(row.s, laneCount).textOffset, 52, 'the right-hand node keeps its text beside it')
+    assert.deepEqual(
+      graphRowGeometry(row.s, laneCount).edges,
+      [
+        { d: 'M30 0Q30 6 34 6H38Q42 6 42 10V14', color: 1 },
+        { d: 'M42 0V14', color: 3 },
+      ],
+      'a left-side incoming line still turns inside the graph column',
+    )
+    assert.equal(
+      graphRowGeometry(row.s, laneCount).textOffset,
+      52,
+      'the right-hand node keeps its text beside it',
+    )
   })
 
   test('folds a secondary parent below the visible window into its existing line', () => {
@@ -177,12 +228,16 @@ describe('computeGraph', () => {
     const row = byOid(rows)
     assert.equal(laneCount, 2, 'an invisible parent does not open another trailing lane')
     assert.equal(row.outside, undefined)
-    assert.deepEqual(edges(row.m2), [
-      { kind: 'through', from: 1, to: 1, color: 1 },
-      { kind: 'in', from: 0, to: 0, color: 0 },
-      { kind: 'out', from: 0, to: 0, color: 0 },
-      { kind: 'out', from: 0, to: 1, color: 0 },
-    ], 'the connector keeps the source color and joins the line already heading below the window')
+    assert.deepEqual(
+      edges(row.m2),
+      [
+        { kind: 'through', from: 1, to: 1, color: 1 },
+        { kind: 'in', from: 0, to: 0, color: 0 },
+        { kind: 'out', from: 0, to: 0, color: 0 },
+        { kind: 'out', from: 0, to: 1, color: 0 },
+      ],
+      'the connector keeps the source color and joins the line already heading below the window',
+    )
   })
 
   test('fans a merge commit into one lane per parent', () => {
@@ -226,11 +281,7 @@ describe('computeGraph', () => {
   })
 
   test('starts a new lane for a branch tip and joins it at the shared parent', () => {
-    const { rows, laneCount } = computeGraph([
-      commit('x', ['r']),
-      commit('y', ['r']),
-      commit('r'),
-    ])
+    const { rows, laneCount } = computeGraph([commit('x', ['r']), commit('y', ['r']), commit('r')])
     const row = byOid(rows)
     assert.equal(laneCount, 2)
     assert.deepEqual(edges(row.x), [{ kind: 'out', from: 0, to: 0, color: 0 }])
@@ -280,11 +331,20 @@ describe('computeGraph', () => {
     ]
     const row = byOid(computeGraph(history).rows)
     assert.equal(row.high.lane, 6, 'the fixture exercises the six-color palette boundary')
-    const incoming = [row.base, row.high].map((branch) => branch.edges.find((edge) => edge.kind === 'out').color)
+    const incoming = [row.base, row.high].map((branch) => {
+      const out = branch.edges.find((edge) => edge.kind === 'out')
+      assert.ok(out)
+      return out.color
+    })
     assert.equal(new Set([...incoming, row.shared.color]).size, 3)
     assert.notEqual(row.high.color, row.shared.color)
     const join = row.high.edges.find((edge) => edge.kind === 'out')
-    assert.equal(join.color, row.high.color, 'the join reserves its source color, not the target lane color')
+    assert.ok(join)
+    assert.equal(
+      join.color,
+      row.high.color,
+      'the join reserves its source color, not the target lane color',
+    )
   })
 
   test('leaves a lane pointing below the visible history when a parent is not listed', () => {
@@ -304,12 +364,16 @@ describe('computeGraph', () => {
     const commits = [commit('octopus', parents), ...parents.map((oid) => commit(oid))]
     const { rows, laneCount } = computeGraph(commits)
     assert.equal(laneCount, parents.length)
-    assert.deepEqual(rows[0].edges.map((edge) => edge.to), parents.map((_, index) => index))
+    assert.deepEqual(
+      rows[0].edges.map((edge) => edge.to),
+      parents.map((_, index) => index),
+    )
     assert.equal(rows[0].edges[LANE_COLORS].color, 0, 'the palette cycles after the last color')
     assert.equal(rows[0].color, 0)
     // Every parent starts on the lane the fan-out opened for it.
     parents.forEach((parent, index) => {
       const row = rows.find((entry) => entry.oid === parent)
+      assert.ok(row)
       assert.equal(row.lane, index)
     })
   })
@@ -326,13 +390,21 @@ describe('computeGraph', () => {
     assert.equal(new Set(layout.rows[0].edges.map((edge) => edge.color)).size, LANE_COLORS)
     const join = row.root.edges.find((edge) => edge.kind === 'in' && edge.from === 6)
     const target = row.root.edges.find((edge) => edge.kind === 'in' && edge.from === row.p0.lane)
-    assert.notEqual(join.color, target.color, 'reuse occurs away from the point where the two branches meet')
+    assert.ok(join)
+    assert.ok(target)
+    assert.notEqual(
+      join.color,
+      target.color,
+      'reuse occurs away from the point where the two branches meet',
+    )
     assert.equal(join.color, row.p6.color)
-    assert.notEqual(row.p0.edges.find((edge) => edge.kind === 'out').color, join.color)
-    assert.deepEqual(graphRowGeometry(row.root, layout.laneCount).edges.map((edge) => edge.d), [
-      'M78 0Q78 6 74 6H10Q6 6 6 10V14',
-      'M6 0V14',
-    ])
+    const p0Out = row.p0.edges.find((edge) => edge.kind === 'out')
+    assert.ok(p0Out)
+    assert.notEqual(p0Out.color, join.color)
+    assert.deepEqual(
+      graphRowGeometry(row.root, layout.laneCount).edges.map((edge) => edge.d),
+      ['M78 0Q78 6 74 6H10Q6 6 6 10V14', 'M6 0V14'],
+    )
   })
 
   test('tolerates a missing or malformed parent list', () => {
@@ -342,7 +414,10 @@ describe('computeGraph', () => {
       { oid: 'bad-parents', parents: [''] },
     ])
     assert.equal(laneCount, 1)
-    assert.deepEqual(rows.map((row) => row.oid), ['no-parents', 'empty-parents', 'bad-parents'])
+    assert.deepEqual(
+      rows.map((row) => row.oid),
+      ['no-parents', 'empty-parents', 'bad-parents'],
+    )
     assert.deepEqual(edges(rows[0]), [])
   })
 })
@@ -363,7 +438,7 @@ describe('laneStep', () => {
 })
 
 describe('graphRowGeometry', () => {
-  const row = {
+  const row: GraphRow = {
     oid: 'row',
     lane: 0,
     color: 0,
@@ -384,7 +459,10 @@ describe('graphRowGeometry', () => {
     assert.equal(geometry.edges.length, 3)
     assert.deepEqual(geometry.edges[0], { d: `M6 0V${NODE_Y}`, color: 0 })
     assert.deepEqual(geometry.edges[1], { d: 'M18 0V28', color: 1 })
-    assert.deepEqual(geometry.edges[2], { d: `M6 ${NODE_Y}Q6 20 10 20H14Q18 20 18 24V28`, color: 1 })
+    assert.deepEqual(geometry.edges[2], {
+      d: `M6 ${NODE_Y}Q6 20 10 20H14Q18 20 18 24V28`,
+      color: 1,
+    })
   })
 
   test('slightly enlarges the node on the one-line commit row', () => {
@@ -400,23 +478,29 @@ describe('graphRowGeometry', () => {
   })
 
   test('clears active right-hand lines without imposing the widest lane on quiet rows', () => {
-    const crossing = graphRowGeometry({
-      ...row,
-      edges: [{ kind: 'out', color: 1, from: 0, to: 3 }],
-    }, 4)
+    const crossing = graphRowGeometry(
+      {
+        ...row,
+        edges: [{ kind: 'out', color: 1, from: 0, to: 3 }],
+      },
+      4,
+    )
     assert.equal(crossing.textOffset, 48)
     const quiet = graphRowGeometry({ ...row, edges: [] }, 4)
     assert.equal(quiet.textOffset, 16)
-    const incoming = graphRowGeometry({
-      ...row,
-      lane: 3,
-      edges: [{ kind: 'out', color: 1, from: 3, to: 0 }],
-    }, 4)
+    const incoming = graphRowGeometry(
+      {
+        ...row,
+        lane: 3,
+        edges: [{ kind: 'out', color: 1, from: 3, to: 0 }],
+      },
+      4,
+    )
     assert.equal(incoming.textOffset, 52)
   })
 
   test('squeezes wide lanes and reserves clearance beyond their rightmost node', () => {
-    const wide = graphRowGeometry({ ...row, lanes: 0, edges: [] }, 24)
+    const wide = graphRowGeometry({ ...row, edges: [] }, 24)
     assert.equal(wide.width, 24 * Math.max(MIN_LANE_WIDTH, MAX_GRAPH_WIDTH / 24) + LANE_PADDING)
     assert.ok(wide.node.r >= 2)
     assert.ok(wide.node.cx - wide.node.r >= 0)
@@ -424,11 +508,14 @@ describe('graphRowGeometry', () => {
   })
 
   test('mirrors a leftward join and keeps it inside the graph column', () => {
-    const geometry = graphRowGeometry({
-      ...row,
-      lane: 1,
-      edges: [{ kind: 'out', color: 1, from: 1, to: 0 }],
-    }, 2)
+    const geometry = graphRowGeometry(
+      {
+        ...row,
+        lane: 1,
+        edges: [{ kind: 'out', color: 1, from: 1, to: 0 }],
+      },
+      2,
+    )
     assert.deepEqual(geometry.edges, [{ d: `M18 ${NODE_Y}Q18 20 14 20H10Q6 20 6 24V28`, color: 1 }])
     assert.ok(geometry.node.cx < geometry.width)
   })
@@ -451,10 +538,11 @@ describe('edgePath', () => {
 })
 
 /**
+ /**
  * Shorthand for {@link edgeShape}.
- * @param {object} row - laid-out row.
- * @returns {object[]} comparable edges.
+ * @param row - laid-out row.
+ * @returns comparable edges.
  */
-function edges(row) {
+function edges(row: GraphRow): EdgeShape[] {
   return edgeShape(row.edges)
 }

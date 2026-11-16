@@ -1,14 +1,14 @@
 /**
  * Direct unit tests for the browser half's pure formatting helpers.
  *
- * These import `src/client/git/format.js` directly — no React, no plugin
+ * These import `src/client/git/format.ts` directly — no React, no plugin
  * context, no built `client.js`. `t` is a recording locale-binder stand-in that
  * returns a marker, so label assertions prove the text comes through `t`.
  */
-import { describe, test } from 'node:test'
+
 import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
 import {
-  STATUS_LETTERS,
   baseName,
   distinctRefs,
   errorText,
@@ -16,18 +16,48 @@ import {
   isStaged,
   isUnstaged,
   parseRefs,
+  STATUS_LETTERS,
   splitPath,
   statusKey,
   statusLetter,
-} from '../../src/client/git/format.js'
+} from '../../src/client/git/format.ts'
+import type { LocaleBinder, LocaleParams } from '../../src/client/types/dsh.ts'
+
+/** One changed-file row with every wire field the staging guards read. */
+type ChangeEntry = Parameters<typeof isStaged>[0]
+/**
+ * Build one changed-file row; the staging guards read only x, y, conflict and
+ * untracked, but the wire row always carries all of them.
+ * @param x - index status character.
+ * @param y - worktree status character.
+ * @param conflict - unmerged row.
+ * @param untracked - untracked row.
+ * @returns changed-file row.
+ */
+function changedEntry(x: string, y: string, conflict = false, untracked = false): ChangeEntry {
+  return {
+    kind: untracked ? 'untracked' : conflict ? 'unmerged' : 'ordinary',
+    x,
+    y,
+    path: 'src/app.js',
+    conflict,
+    untracked,
+  }
+}
+
+/** One recorded translation call. */
+interface TranslationCall {
+  key: string
+  params?: LocaleParams
+}
 
 /**
  * Locale-binder spy: records `(key, params)` and returns a marked string.
- * @returns {{t: (key: string, params?: object) => string, calls: object[]}} spy.
+ * @returns translation spy and its call record.
  */
-function recordingTranslator() {
-  const calls = []
-  const t = (key, params) => {
+function recordingTranslator(): { t: LocaleBinder; calls: TranslationCall[] } {
+  const calls: TranslationCall[] = []
+  const t: LocaleBinder = (key, params) => {
     calls.push(params === undefined ? { key } : { key, params })
     return params === undefined ? `T(${key})` : `T(${key}:${String(params.n)})`
   }
@@ -84,38 +114,42 @@ describe('statusKey', () => {
 
 describe('isStaged and isUnstaged', () => {
   test('a row changed in the index and the working tree counts in both groups', () => {
-    const entry = { x: 'M', y: 'M', conflict: false }
+    const entry = changedEntry('M', 'M')
     assert.equal(isStaged(entry), true)
     assert.equal(isUnstaged(entry), true)
   })
 
   test('an index-only change is staged and not unstaged', () => {
-    const entry = { x: 'M', y: '.', conflict: false }
+    const entry = changedEntry('M', '.')
     assert.equal(isStaged(entry), true)
     assert.equal(isUnstaged(entry), false)
   })
 
   test('a working-tree-only change is unstaged and not staged', () => {
-    const entry = { x: '.', y: 'M', conflict: false }
+    const entry = changedEntry('.', 'M')
     assert.equal(isStaged(entry), false)
     assert.equal(isUnstaged(entry), true)
   })
 
   test('an untracked row is unstaged only', () => {
-    const entry = { x: '?', y: '?', conflict: false, untracked: true }
+    const entry = changedEntry('?', '?', false, true)
     assert.equal(isStaged(entry), false)
     assert.equal(isUnstaged(entry), true)
   })
 
   test('an untracked index marker counts as unstaged even when y is clean', () => {
-    const entry = { x: '?', y: '.', conflict: false, untracked: true }
+    const entry = changedEntry('?', '.', false, true)
     assert.equal(isStaged(entry), false)
     assert.equal(isUnstaged(entry), true)
   })
 
   test('conflicted rows never appear in either change group', () => {
-    for (const [x, y] of [['U', 'U'], ['A', 'A'], ['A', 'U']]) {
-      const entry = { x, y, conflict: true }
+    for (const [x, y] of [
+      ['U', 'U'],
+      ['A', 'A'],
+      ['A', 'U'],
+    ]) {
+      const entry = changedEntry(x, y, true)
       assert.equal(isStaged(entry), false, `staged for ${x}${y}`)
       assert.equal(isUnstaged(entry), false, `unstaged for ${x}${y}`)
     }
@@ -155,7 +189,7 @@ describe('formatAgo', () => {
     const originalNow = Date.now
     const nowSeconds = 1_700_000_000
     Date.now = () => nowSeconds * 1000
-    const cases = [
+    const cases: Array<[age: number, key: string, n?: number]> = [
       [0, 'time.now'],
       [44, 'time.now'],
       [45, 'time.minutes', 1],
@@ -241,7 +275,9 @@ describe('parseRefs', () => {
 
 describe('distinctRefs', () => {
   test('drops a remote-tracking spelling of a shown local branch', () => {
-    assert.deepEqual(distinctRefs(parseRefs('HEAD -> main, origin/main')), [{ label: 'main', kind: 'head' }])
+    assert.deepEqual(distinctRefs(parseRefs('HEAD -> main, origin/main')), [
+      { label: 'main', kind: 'head' },
+    ])
     assert.deepEqual(distinctRefs(parseRefs('main, origin/main, tag: v1.0')), [
       { label: 'main', kind: 'branch' },
       { label: 'v1.0', kind: 'tag' },
@@ -249,15 +285,18 @@ describe('distinctRefs', () => {
   })
 
   test('drops the remote spelling of a slash-named branch', () => {
-    assert.deepEqual(
-      distinctRefs(parseRefs('feature/graph-lanes, origin/feature/graph-lanes')),
-      [{ label: 'feature/graph-lanes', kind: 'remote' }],
-    )
+    assert.deepEqual(distinctRefs(parseRefs('feature/graph-lanes, origin/feature/graph-lanes')), [
+      { label: 'feature/graph-lanes', kind: 'remote' },
+    ])
   })
 
   test('keeps a remote-tracking label when no other ref names that branch', () => {
-    assert.deepEqual(distinctRefs(parseRefs('origin/main')), [{ label: 'origin/main', kind: 'remote' }])
-    assert.deepEqual(distinctRefs(parseRefs('HEAD -> feature/x')), [{ label: 'feature/x', kind: 'head' }])
+    assert.deepEqual(distinctRefs(parseRefs('origin/main')), [
+      { label: 'origin/main', kind: 'remote' },
+    ])
+    assert.deepEqual(distinctRefs(parseRefs('HEAD -> feature/x')), [
+      { label: 'feature/x', kind: 'head' },
+    ])
   })
 
   test('keeps distinct refs and their order', () => {

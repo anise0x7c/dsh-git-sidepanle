@@ -1,69 +1,91 @@
 /**
  * Direct unit tests for the browser half's pure context-menu action resolver.
  *
- * These import `src/client/menu/actions.js` directly — no React, no plugin
+ * These import `src/client/menu/actions.ts` directly — no React, no plugin
  * context, no built `client.js`. `resolveMenuActions` receives the captured
  * target's VALUE, exactly as the shared host registry hands it to a
  * contribution; never the `{ kind, value }` wrapper a trigger received (the
  * 7cac4e6 defect). Published command ids are `<contributionId>/<actionId>`.
  */
-import { describe, test } from 'node:test'
+
 import assert from 'node:assert/strict'
-import { MENU_CONTRIBUTION_ID } from '../../src/client/constants.js'
-import { menuAction, resolveMenuActions } from '../../src/client/menu/actions.js'
-import { panelCommands } from '../../src/client/menu/bus.js'
-import { menuTarget } from '../../src/client/menu/trigger.js'
+import { describe, test } from 'node:test'
+import { MENU_CONTRIBUTION_ID } from '../../src/client/constants.ts'
+import type { MenuAction } from '../../src/client/menu/actions.ts'
+import { menuAction, resolveMenuActions } from '../../src/client/menu/actions.ts'
+import type { PanelCommand } from '../../src/client/menu/bus.ts'
+import { panelCommands } from '../../src/client/menu/bus.ts'
+import type { MenuTargetValue } from '../../src/client/menu/trigger.ts'
+import { menuTarget } from '../../src/client/menu/trigger.ts'
+import type { LocaleBinder } from '../../src/client/types/dsh.ts'
+
+/** Captured file value plus the row flags the panel carries but the resolver ignores. */
+type TestTargetValue = MenuTargetValue & { untracked?: boolean; conflict?: boolean }
+
+/** One toast callback record. */
+interface ToastNote {
+  text: string
+  success: boolean
+}
 
 const SESSION = 'session-1'
 const PANEL = 'git-panel-7'
 /** Locale binder stand-in; the marker proves labels are routed through `t`. */
-const t = (key) => `T(${key})`
+const t: LocaleBinder = (key) => `T(${key})`
 /** Toast recorder stand-in for copy commands. */
-const notify = () => {}
+const notify = (): void => {}
 
 /**
  * A captured file row value with overridable fields.
- * @param {object} [overrides] - fields to replace.
- * @returns {object} captured target value.
+ * @param overrides - fields to replace.
+ * @returns captured target value.
  */
-function fileValue(overrides = {}) {
-  return { sessionId: SESSION, panelId: PANEL, kind: 'file', section: 'changes', path: 'src/app.js', cwd: '/repo', ...overrides }
+function fileValue(overrides: Partial<TestTargetValue> = {}): TestTargetValue {
+  return {
+    sessionId: SESSION,
+    panelId: PANEL,
+    kind: 'file',
+    section: 'changes',
+    path: 'src/app.js',
+    cwd: '/repo',
+    ...overrides,
+  }
 }
 
 /**
  * Published ids of resolved actions (`<contributionId>/<actionId>`).
- * @param {object[]} actions - resolved actions.
- * @returns {string[]} published command ids.
+ * @param actions - resolved actions.
+ * @returns published command ids.
  */
-function publishedIds(actions) {
+function publishedIds(actions: readonly MenuAction[]): string[] {
   return actions.map((action) => `${MENU_CONTRIBUTION_ID}/${action.id}`)
 }
 
 /**
  * Resolve actions for a captured value.
- * @param {object} value - captured target value.
- * @returns {object[]} resolved actions.
+ * @param value - captured target value, or a malformed wire value.
+ * @returns resolved actions.
  */
-function actionsFor(value) {
+function actionsFor(value: unknown): MenuAction[] {
   return resolveMenuActions(value, t, notify)
 }
 
 /**
  * Labels of resolved actions.
- * @param {object[]} actions - resolved actions.
- * @returns {string[]} labels.
+ * @param actions - resolved actions.
+ * @returns labels.
  */
-function labelsOf(actions) {
+function labelsOf(actions: readonly MenuAction[]): string[] {
   return actions.map((action) => action.label)
 }
 
 /**
  * Find one resolved action by its contribution-relative id.
- * @param {object[]} actions - resolved actions.
- * @param {string} id - action id.
- * @returns {object} action.
+ * @param actions - resolved actions.
+ * @param id - action id.
+ * @returns action.
  */
-function actionById(actions, id) {
+function actionById(actions: readonly MenuAction[], id: string): MenuAction {
   const action = actions.find((candidate) => candidate.id === id)
   assert.ok(action, `no action "${id}" in ${JSON.stringify(publishedIds(actions))}`)
   return action
@@ -71,11 +93,11 @@ function actionById(actions, id) {
 
 /**
  * Run a callback while subscribing to the shared command bus.
- * @param {() => void} run - emits commands through action callbacks.
- * @returns {object[]} emitted commands.
+ * @param run - emits commands through action callbacks.
+ * @returns emitted commands.
  */
-function captureCommands(run) {
-  const emitted = []
+function captureCommands(run: () => void): PanelCommand[] {
+  const emitted: PanelCommand[] = []
   const unsubscribe = panelCommands.subscribe((command) => emitted.push(command))
   try {
     run()
@@ -87,21 +109,30 @@ function captureCommands(run) {
 
 /**
  * Run one copy action with a stubbed clipboard.
- * @param {() => Promise<void>} writeText - clipboard writer.
- * @param {object} value - captured target value.
- * @param {string} id - action id to run.
- * @returns {Promise<object[]>} recorded toast calls.
+ * @param writeText - clipboard writer.
+ * @param value - captured target value.
+ * @param id - action id to run.
+ * @returns recorded toast calls.
  */
-async function runCopy(writeText, value, id) {
+async function runCopy(
+  writeText: (text: string) => Promise<void>,
+  value: unknown,
+  id: string,
+): Promise<ToastNote[]> {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
   try {
-    Object.defineProperty(globalThis, 'navigator', { value: { clipboard: { writeText } }, configurable: true })
-    const notes = []
-    const actions = resolveMenuActions(value, t, (text, success) => notes.push({ text, success }))
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { clipboard: { writeText } },
+      configurable: true,
+    })
+    const notes: ToastNote[] = []
+    const actions = resolveMenuActions(value, t, (text: string, success: boolean) =>
+      notes.push({ text, success }),
+    )
     await actionById(actions, id).run()
     return notes
   } finally {
-    if (previous === undefined) delete globalThis.navigator
+    if (previous === undefined) Reflect.deleteProperty(globalThis, 'navigator')
     else Object.defineProperty(globalThis, 'navigator', previous)
   }
 }
@@ -130,18 +161,47 @@ describe('resolveMenuActions guards', () => {
   test('resolves nothing without a session id, for every target kind', () => {
     const kinds = ['file', 'section', 'commit', 'diff', 'commitFile']
     for (const kind of kinds) {
-      const complete = { kind, section: 'changes', path: 'src/a.js', paths: ['src/a.js'], oid: 'a'.repeat(40), subject: 'Fix it' }
-      assert.deepEqual(resolveMenuActions({ ...complete }, t, notify), [], `${kind} without a session`)
-      assert.deepEqual(resolveMenuActions({ ...complete, sessionId: '' }, t, notify), [], `${kind} with an empty session`)
-      assert.deepEqual(resolveMenuActions({ ...complete, sessionId: 42 }, t, notify), [], `${kind} with a non-string session`)
+      const complete = {
+        kind,
+        section: 'changes',
+        path: 'src/a.js',
+        paths: ['src/a.js'],
+        oid: 'a'.repeat(40),
+        subject: 'Fix it',
+      }
+      assert.deepEqual(
+        resolveMenuActions({ ...complete }, t, notify),
+        [],
+        `${kind} without a session`,
+      )
+      assert.deepEqual(
+        resolveMenuActions({ ...complete, sessionId: '' }, t, notify),
+        [],
+        `${kind} with an empty session`,
+      )
+      assert.deepEqual(
+        resolveMenuActions({ ...complete, sessionId: 42 }, t, notify),
+        [],
+        `${kind} with a non-string session`,
+      )
     }
   })
 
   test('resolves nothing for an unknown target kind', () => {
     assert.deepEqual(resolveMenuActions({ sessionId: SESSION, kind: 'unknown' }, t, notify), [])
     // Folder rows no longer exist, so their former target kinds resolve nothing.
-    assert.deepEqual(resolveMenuActions({ sessionId: SESSION, kind: 'folder', section: 'changes', path: 'src' }, t, notify), [])
-    assert.deepEqual(resolveMenuActions({ sessionId: SESSION, kind: 'commitFolder', path: 'src' }, t, notify), [])
+    assert.deepEqual(
+      resolveMenuActions(
+        { sessionId: SESSION, kind: 'folder', section: 'changes', path: 'src' },
+        t,
+        notify,
+      ),
+      [],
+    )
+    assert.deepEqual(
+      resolveMenuActions({ sessionId: SESSION, kind: 'commitFolder', path: 'src' }, t, notify),
+      [],
+    )
   })
 
   test('every listed object resolves at least one command (7cac4e6 regression)', () => {
@@ -154,7 +214,16 @@ describe('resolveMenuActions guards', () => {
       ['staged group', { sessionId: SESSION, kind: 'section', section: 'staged' }],
       ['merge group', { sessionId: SESSION, kind: 'section', section: 'merge' }],
       ['graph group', { sessionId: SESSION, kind: 'section', section: 'graph' }],
-      ['commit', { sessionId: SESSION, kind: 'commit', oid: 'a'.repeat(40), shortOid: 'aaaaaaa', subject: 'Fix it' }],
+      [
+        'commit',
+        {
+          sessionId: SESSION,
+          kind: 'commit',
+          oid: 'a'.repeat(40),
+          shortOid: 'aaaaaaa',
+          subject: 'Fix it',
+        },
+      ],
       ['diff', { sessionId: SESSION, kind: 'diff', path: 'src/app.js' }],
     ]
     for (const [label, value] of listed) {
@@ -163,7 +232,12 @@ describe('resolveMenuActions guards', () => {
   })
 
   test('the captured wrapper is not accepted in place of its value (7cac4e6)', () => {
-    const wrapper = menuTarget(SESSION, 'file', { panelId: PANEL, section: 'changes', path: 'src/app.js', cwd: '/repo' })
+    const wrapper = menuTarget(SESSION, 'file', {
+      panelId: PANEL,
+      section: 'changes',
+      path: 'src/app.js',
+      cwd: '/repo',
+    })
     // The registry calls `resolve(target.value, signal)`; passing the wrapper
     // itself has no session id and must not resolve anything.
     assert.deepEqual(resolveMenuActions(wrapper, t, notify), [])
@@ -260,6 +334,7 @@ describe('resolveMenuActions for files', () => {
 
   test('resolves nothing for a file without a path', () => {
     assert.deepEqual(actionsFor(fileValue({ path: '' })), [])
+    // @ts-expect-error -- the resolver is a wire boundary: a non-string path must resolve nothing.
     assert.deepEqual(actionsFor(fileValue({ path: 42 })), [])
   })
 })
@@ -272,7 +347,11 @@ describe('resolveMenuActions for group headers', () => {
       `${MENU_CONTRIBUTION_ID}/discard-all`,
       `${MENU_CONTRIBUTION_ID}/refresh`,
     ])
-    assert.deepEqual(labelsOf(actions), [t('actions.stageAll'), t('actions.discardAll'), t('refresh')])
+    assert.deepEqual(labelsOf(actions), [
+      t('actions.stageAll'),
+      t('actions.discardAll'),
+      t('refresh'),
+    ])
     assert.equal(actions[1].danger, true)
     assert.equal(actions[2].separatorBefore, true)
   })
@@ -306,7 +385,13 @@ describe('resolveMenuActions for group headers', () => {
 
 describe('resolveMenuActions for commit and diff targets', () => {
   test('a commit row copies the full id and the subject', () => {
-    const value = { sessionId: SESSION, kind: 'commit', oid: 'a'.repeat(40), shortOid: 'aaaaaaa', subject: 'Fix it' }
+    const value = {
+      sessionId: SESSION,
+      kind: 'commit',
+      oid: 'a'.repeat(40),
+      shortOid: 'aaaaaaa',
+      subject: 'Fix it',
+    }
     const actions = actionsFor(value)
     // The published ids are `copy-id`/`copy-message`, not `copy-commit-*`.
     assert.deepEqual(publishedIds(actions), [
@@ -320,42 +405,62 @@ describe('resolveMenuActions for commit and diff targets', () => {
 
   test('a commit row omits the command for a missing or empty field', () => {
     const base = { sessionId: SESSION, kind: 'commit' }
-    assert.deepEqual(publishedIds(actionsFor({ ...base, oid: 'a'.repeat(40) })), [`${MENU_CONTRIBUTION_ID}/copy-id`])
-    assert.deepEqual(publishedIds(actionsFor({ ...base, subject: 'Fix it' })), [`${MENU_CONTRIBUTION_ID}/copy-message`])
+    assert.deepEqual(publishedIds(actionsFor({ ...base, oid: 'a'.repeat(40) })), [
+      `${MENU_CONTRIBUTION_ID}/copy-id`,
+    ])
+    assert.deepEqual(publishedIds(actionsFor({ ...base, subject: 'Fix it' })), [
+      `${MENU_CONTRIBUTION_ID}/copy-message`,
+    ])
     assert.deepEqual(actionsFor({ ...base, oid: '', subject: '' }), [])
     assert.deepEqual(actionsFor(base), [])
   })
 
   test('a diff header copies the relative path and, with a cwd, the absolute path', () => {
-    const actions = actionsFor({ sessionId: SESSION, kind: 'diff', path: 'src/app.js', cwd: '/repo' })
+    const actions = actionsFor({
+      sessionId: SESSION,
+      kind: 'diff',
+      path: 'src/app.js',
+      cwd: '/repo',
+    })
     assert.deepEqual(publishedIds(actions), [
       `${MENU_CONTRIBUTION_ID}/copy-relative`,
       `${MENU_CONTRIBUTION_ID}/copy-path`,
     ])
     assert.deepEqual(labelsOf(actions), [t('menu.copyRelativePath'), t('menu.copyPath')])
-    assert.deepEqual(publishedIds(actionsFor({ sessionId: SESSION, kind: 'diff', path: 'src/app.js' })), [
-      `${MENU_CONTRIBUTION_ID}/copy-relative`,
-    ])
+    assert.deepEqual(
+      publishedIds(actionsFor({ sessionId: SESSION, kind: 'diff', path: 'src/app.js' })),
+      [`${MENU_CONTRIBUTION_ID}/copy-relative`],
+    )
     assert.deepEqual(actionsFor({ sessionId: SESSION, kind: 'diff', path: '' }), [])
   })
 })
 
 describe('resolveMenuActions for past-commit files', () => {
   test('offers the path copies and no staging or discarding commands', () => {
-    const file = actionsFor({ sessionId: SESSION, panelId: PANEL, kind: 'commitFile', section: 'commit', path: 'src/app.js', cwd: '/repo' })
+    const file = actionsFor({
+      sessionId: SESSION,
+      panelId: PANEL,
+      kind: 'commitFile',
+      section: 'commit',
+      path: 'src/app.js',
+      cwd: '/repo',
+    })
     assert.deepEqual(publishedIds(file), [
       `${MENU_CONTRIBUTION_ID}/copy-relative`,
       `${MENU_CONTRIBUTION_ID}/copy-path`,
     ])
     assert.deepEqual(labelsOf(file), [t('menu.copyRelativePath'), t('menu.copyPath')])
-    assert.equal(file.some((action) => ['stage', 'unstage', 'discard'].includes(action.id)), false)
-
+    assert.equal(
+      file.some((action) => ['stage', 'unstage', 'discard'].includes(action.id)),
+      false,
+    )
   })
 
   test('omits the absolute copy without a repository root and refuses a missing path', () => {
-    assert.deepEqual(publishedIds(actionsFor({ sessionId: SESSION, kind: 'commitFile', path: 'src/app.js' })), [
-      `${MENU_CONTRIBUTION_ID}/copy-relative`,
-    ])
+    assert.deepEqual(
+      publishedIds(actionsFor({ sessionId: SESSION, kind: 'commitFile', path: 'src/app.js' })),
+      [`${MENU_CONTRIBUTION_ID}/copy-relative`],
+    )
     assert.deepEqual(actionsFor({ sessionId: SESSION, kind: 'commitFile', path: '' }), [])
   })
 })
@@ -363,28 +468,50 @@ describe('resolveMenuActions for past-commit files', () => {
 describe('resolveMenuActions busy state', () => {
   test('disables mutating file actions but keeps the copy commands active', () => {
     const actions = actionsFor(fileValue({ busy: true }))
-    assert.deepEqual(actions.filter((action) => action.disabled === true).map((action) => action.id),
-      ['open', 'stage', 'discard'])
+    assert.deepEqual(
+      actions.filter((action) => action.disabled === true).map((action) => action.id),
+      ['open', 'stage', 'discard'],
+    )
     assert.equal(actionById(actions, 'copy-relative').disabled, undefined)
     assert.equal(actionById(actions, 'copy-path').disabled, undefined)
   })
 
   test('disables every group-header action while the panel is busy', () => {
-    const actions = actionsFor({ sessionId: SESSION, kind: 'section', section: 'changes', busy: true })
+    const actions = actionsFor({
+      sessionId: SESSION,
+      kind: 'section',
+      section: 'changes',
+      busy: true,
+    })
     assert.ok(actions.every((action) => action.disabled === true))
   })
 
   test('leaves copy-only targets enabled while the panel is busy', () => {
-    const commit = actionsFor({ sessionId: SESSION, kind: 'commit', oid: 'a'.repeat(40), subject: 'Fix it', busy: true })
+    const commit = actionsFor({
+      sessionId: SESSION,
+      kind: 'commit',
+      oid: 'a'.repeat(40),
+      subject: 'Fix it',
+      busy: true,
+    })
     assert.ok(commit.every((action) => action.disabled === undefined))
-    const diff = actionsFor({ sessionId: SESSION, kind: 'diff', path: 'src/app.js', cwd: '/repo', busy: true })
+    const diff = actionsFor({
+      sessionId: SESSION,
+      kind: 'diff',
+      path: 'src/app.js',
+      cwd: '/repo',
+      busy: true,
+    })
     assert.ok(diff.every((action) => action.disabled === undefined))
   })
 
   test('adds no disabled flag when the panel is not busy', () => {
     for (const busy of [false, undefined]) {
       const actions = actionsFor(fileValue({ busy }))
-      assert.ok(actions.every((action) => action.disabled === undefined), `busy ${String(busy)}`)
+      assert.ok(
+        actions.every((action) => action.disabled === undefined),
+        `busy ${String(busy)}`,
+      )
     }
   })
 })
@@ -406,19 +533,28 @@ describe('menu command payloads', () => {
     const emitted = captureCommands(() => {
       actionById(actionsFor(fileValue({ section: 'renamed' })), 'open').run()
     })
-    assert.deepEqual(emitted, [{ sessionId: SESSION, panelId: PANEL, type: 'open', section: 'changes', path: 'src/app.js' }])
+    assert.deepEqual(emitted, [
+      { sessionId: SESSION, panelId: PANEL, type: 'open', section: 'changes', path: 'src/app.js' },
+    ])
   })
 
   test('a staged file emits the unstage operation', () => {
     const emitted = captureCommands(() => {
       actionById(actionsFor(fileValue({ section: 'staged' })), 'unstage').run()
     })
-    assert.deepEqual(emitted, [{ sessionId: SESSION, panelId: PANEL, type: 'unstage', paths: ['src/app.js'] }])
+    assert.deepEqual(emitted, [
+      { sessionId: SESSION, panelId: PANEL, type: 'unstage', paths: ['src/app.js'] },
+    ])
   })
 
   test('group-header commands emit the whole-section operations', () => {
     const changes = captureCommands(() => {
-      const actions = actionsFor({ sessionId: SESSION, panelId: PANEL, kind: 'section', section: 'changes' })
+      const actions = actionsFor({
+        sessionId: SESSION,
+        panelId: PANEL,
+        kind: 'section',
+        section: 'changes',
+      })
       for (const id of ['stage-all', 'discard-all', 'refresh']) actionById(actions, id).run()
     })
     assert.deepEqual(changes, [
@@ -427,14 +563,22 @@ describe('menu command payloads', () => {
       { sessionId: SESSION, panelId: PANEL, type: 'refresh' },
     ])
     const staged = captureCommands(() => {
-      actionById(actionsFor({ sessionId: SESSION, panelId: PANEL, kind: 'section', section: 'staged' }), 'unstage-all').run()
+      actionById(
+        actionsFor({ sessionId: SESSION, panelId: PANEL, kind: 'section', section: 'staged' }),
+        'unstage-all',
+      ).run()
     })
-    assert.deepEqual(staged, [{ sessionId: SESSION, panelId: PANEL, type: 'unstageSection', section: 'staged' }])
+    assert.deepEqual(staged, [
+      { sessionId: SESSION, panelId: PANEL, type: 'unstageSection', section: 'staged' },
+    ])
   })
 
   test('commands carry the captured panel id, undefined when the panel had none', () => {
     const captured = captureCommands(() => {
-      actionById(actionsFor({ sessionId: SESSION, kind: 'section', section: 'graph' }), 'refresh').run()
+      actionById(
+        actionsFor({ sessionId: SESSION, kind: 'section', section: 'graph' }),
+        'refresh',
+      ).run()
     })
     assert.deepEqual(captured, [{ sessionId: SESSION, panelId: undefined, type: 'refresh' }])
   })
@@ -451,38 +595,74 @@ describe('menu command payloads', () => {
 
 describe('copy command execution', () => {
   test('copies the relative path and reports success through the toast', async () => {
-    const copied = []
-    const notes = await runCopy(async (text) => { copied.push(text) }, fileValue(), 'copy-relative')
+    const copied: string[] = []
+    const notes = await runCopy(
+      async (text: string) => {
+        copied.push(text)
+      },
+      fileValue(),
+      'copy-relative',
+    )
     assert.deepEqual(copied, ['src/app.js'])
     assert.deepEqual(notes, [{ text: t('menu.copiedRelativePath'), success: true }])
   })
 
   test('copies the absolute path below the repository root', async () => {
-    const copied = []
-    const notes = await runCopy(async (text) => { copied.push(text) }, fileValue(), 'copy-path')
+    const copied: string[] = []
+    const notes = await runCopy(
+      async (text: string) => {
+        copied.push(text)
+      },
+      fileValue(),
+      'copy-path',
+    )
     assert.deepEqual(copied, ['/repo/src/app.js'])
     assert.deepEqual(notes, [{ text: t('menu.copiedPath'), success: true }])
   })
 
   test('keeps native separators for a Windows working directory', async () => {
-    const copied = []
-    await runCopy(async (text) => { copied.push(text) }, fileValue({ cwd: 'C:\\repo' }), 'copy-path')
+    const copied: string[] = []
+    await runCopy(
+      async (text: string) => {
+        copied.push(text)
+      },
+      fileValue({ cwd: 'C:\\repo' }),
+      'copy-path',
+    )
     assert.deepEqual(copied, ['C:\\repo\\src\\app.js'])
   })
 
   test('reports a refusing clipboard instead of staying silent', async () => {
-    const notes = await runCopy(async () => { throw new Error('denied') }, fileValue(), 'copy-relative')
+    const notes = await runCopy(
+      async () => {
+        throw new Error('denied')
+      },
+      fileValue(),
+      'copy-relative',
+    )
     assert.deepEqual(notes, [{ text: t('menu.copyFailed'), success: false }])
   })
 
   test('commit copies use the full identifier and the subject', async () => {
     const value = { sessionId: SESSION, kind: 'commit', oid: 'a'.repeat(40), subject: 'Fix it' }
-    const ids = []
-    const idNotes = await runCopy(async (text) => { ids.push(text) }, value, 'copy-id')
+    const ids: string[] = []
+    const idNotes = await runCopy(
+      async (text: string) => {
+        ids.push(text)
+      },
+      value,
+      'copy-id',
+    )
     assert.deepEqual(ids, ['a'.repeat(40)])
     assert.deepEqual(idNotes, [{ text: t('menu.copiedCommitId'), success: true }])
-    const subjects = []
-    const subjectNotes = await runCopy(async (text) => { subjects.push(text) }, value, 'copy-message')
+    const subjects: string[] = []
+    const subjectNotes = await runCopy(
+      async (text: string) => {
+        subjects.push(text)
+      },
+      value,
+      'copy-message',
+    )
     assert.deepEqual(subjects, ['Fix it'])
     assert.deepEqual(subjectNotes, [{ text: t('menu.copiedCommitSubject'), success: true }])
   })

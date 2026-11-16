@@ -6,14 +6,15 @@
  * `git status --porcelain=v2 --branch -z` and `git diff --no-color`, with NUL
  * record separators kept explicit because `-z` parsing depends on them.
  */
-import { describe, test } from 'node:test'
+
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
-import { GitGraphError } from '../../src/host/errors.js'
-import { resolveRepositoryPath, resolveRepositoryPaths } from '../../src/host/git/exec.js'
-import { parseStatus } from '../../src/host/git/status.js'
-import { parseUnifiedDiff } from '../../src/host/git/diff.js'
-import { parseCommitMeta, parseHistory, parseNameStatus } from '../../src/host/git/history.js'
+import { describe, test } from 'node:test'
+import { GitGraphError } from '../../src/host/errors.ts'
+import { parseUnifiedDiff } from '../../src/host/git/diff.ts'
+import { resolveRepositoryPath, resolveRepositoryPaths } from '../../src/host/git/exec.ts'
+import { parseCommitMeta, parseHistory, parseNameStatus } from '../../src/host/git/history.ts'
+import { parseStatus } from '../../src/host/git/status.ts'
 
 const NUL = '\0'
 /** 40-character object ids, the shape real porcelain output carries. */
@@ -25,29 +26,29 @@ const ROOT = resolve('/tmp', 'git-graph-unit-repo')
 
 /**
  * Build one NUL-terminated porcelain payload from text records.
- * @param {...string} records - records without their trailing NUL.
- * @returns {string} output in the shape Git writes with `-z`.
+ * @param records - records without their trailing NUL.
+ * @returns output in the shape Git writes with `-z`.
  */
-function porcelain(...records) {
+function porcelain(...records: string[]): string {
   return records.map((record) => record + NUL).join('')
 }
 
 /**
  * One ordinary (`1`) porcelain-v2 record.
- * @param {string} xy - two status characters.
- * @param {string} path - repository-relative path.
- * @returns {string} record.
+ * @param xy - two status characters.
+ * @param path - repository-relative path.
+ * @returns record.
  */
-function ordinaryRecord(xy, path) {
+function ordinaryRecord(xy: string, path: string): string {
   return `1 ${xy} N... 100644 100644 100644 ${OID_A} ${OID_B} ${path}`
 }
 
 /**
  * Run a call that must fail with a stable `GitGraphError`.
- * @param {() => unknown} call - call expected to throw.
- * @returns {GitGraphError} the thrown failure.
+ * @param call - call expected to throw.
+ * @returns the thrown failure.
  */
-function captureFailure(call) {
+function captureFailure(call: () => unknown): GitGraphError {
   try {
     call()
   } catch (error) {
@@ -94,24 +95,22 @@ describe('parseStatus', () => {
   })
 
   test('marks an unborn branch as having no HEAD oid', () => {
-    const output = porcelain(
-      '# branch.oid (initial)',
-      '# branch.head main',
-      '? first.txt',
-    )
+    const output = porcelain('# branch.oid (initial)', '# branch.head main', '? first.txt')
     const { repo, files } = parseStatus(output)
     assert.equal(repo.unborn, true)
     assert.equal(repo.headOid, null)
     assert.equal(repo.branch, 'main')
     assert.equal(repo.detached, false)
-    assert.deepEqual(files, [{
-      kind: 'untracked',
-      x: '?',
-      y: '?',
-      path: 'first.txt',
-      conflict: false,
-      untracked: true,
-    }])
+    assert.deepEqual(files, [
+      {
+        kind: 'untracked',
+        x: '?',
+        y: '?',
+        path: 'first.txt',
+        conflict: false,
+        untracked: true,
+      },
+    ])
   })
 
   test('marks a detached HEAD with no branch name', () => {
@@ -178,7 +177,10 @@ describe('parseStatus', () => {
     )
     const { files } = parseStatus(output)
     assert.equal(files.length, 2)
-    assert.deepEqual(files.map((file) => file.path), ['conflict.txt', 'src/deep/conflict.txt'])
+    assert.deepEqual(
+      files.map((file) => file.path),
+      ['conflict.txt', 'src/deep/conflict.txt'],
+    )
     for (const file of files) {
       assert.equal(file.kind, 'unmerged')
       assert.equal(file.x, 'U')
@@ -191,7 +193,10 @@ describe('parseStatus', () => {
   test('ignores records it does not understand', () => {
     const output = porcelain('! unknown record', '# weird header', '? kept.txt')
     const { files } = parseStatus(output)
-    assert.deepEqual(files.map((file) => file.path), ['kept.txt'])
+    assert.deepEqual(
+      files.map((file) => file.path),
+      ['kept.txt'],
+    )
   })
 })
 
@@ -228,12 +233,14 @@ describe('parseUnifiedDiff', () => {
     assert.equal(parsed.additions, 4)
     assert.equal(parsed.deletions, 3)
     assert.equal(parsed.hunks.length, 3)
-    assert.deepEqual(parsed.hunks.map((hunk) => hunk.header), [
-      '@@ -1,3 +1,4 @@ function name()',
-      '@@ -10,2 +11,2 @@',
-      '@@ -1 +1 @@',
-    ])
-    assert.deepEqual(parsed.hunks[0].lines.map((line) => line.t), [' ', '-', '+', '+', ' '])
+    assert.deepEqual(
+      parsed.hunks.map((hunk) => hunk.header),
+      ['@@ -1,3 +1,4 @@ function name()', '@@ -10,2 +11,2 @@', '@@ -1 +1 @@'],
+    )
+    assert.deepEqual(
+      parsed.hunks[0].lines.map((line) => line.t),
+      [' ', '-', '+', '+', ' '],
+    )
     assert.deepEqual(parsed.hunks[0].lines[1], { t: '-', text: 'removed line' })
     assert.deepEqual(parsed.hunks[0].lines[2], { t: '+', text: 'added line' })
   })
@@ -268,16 +275,18 @@ describe('parseUnifiedDiff', () => {
   })
 
   test('drops the no-newline marker instead of counting it as a change', () => {
-    const parsed = parseUnifiedDiff([
-      '--- a/a.txt',
-      '+++ b/a.txt',
-      '@@ -1,2 +1,2 @@',
-      ' keep',
-      '-gone',
-      '+added',
-      '\\ No newline at end of file',
-      '',
-    ].join('\n'))
+    const parsed = parseUnifiedDiff(
+      [
+        '--- a/a.txt',
+        '+++ b/a.txt',
+        '@@ -1,2 +1,2 @@',
+        ' keep',
+        '-gone',
+        '+added',
+        '\\ No newline at end of file',
+        '',
+      ].join('\n'),
+    )
     assert.equal(parsed.additions, 1)
     assert.equal(parsed.deletions, 1)
     assert.deepEqual(parsed.hunks[0].lines, [
@@ -288,12 +297,14 @@ describe('parseUnifiedDiff', () => {
   })
 
   test('reports binary diffs without hunks', () => {
-    const parsed = parseUnifiedDiff([
-      'diff --git a/logo.png b/logo.png',
-      'index 1111111..2222222 100644',
-      'Binary files a/logo.png and b/logo.png differ',
-      '',
-    ].join('\n'))
+    const parsed = parseUnifiedDiff(
+      [
+        'diff --git a/logo.png b/logo.png',
+        'index 1111111..2222222 100644',
+        'Binary files a/logo.png and b/logo.png differ',
+        '',
+      ].join('\n'),
+    )
     assert.equal(parsed.binary, true)
     assert.equal(parsed.additions, 0)
     assert.equal(parsed.deletions, 0)
@@ -318,7 +329,10 @@ describe('parseUnifiedDiff', () => {
     const parsed = parseUnifiedDiff('+not in a hunk\n@@ -1 +1 @@\n-a\n+b\n')
     assert.equal(parsed.additions, 1)
     assert.equal(parsed.deletions, 1)
-    assert.deepEqual(parsed.hunks[0].lines.map((line) => line.t), ['-', '+'])
+    assert.deepEqual(
+      parsed.hunks[0].lines.map((line) => line.t),
+      ['-', '+'],
+    )
   })
 
   test('keeps /dev/null as the compared path for created and deleted files', () => {
@@ -414,23 +428,33 @@ describe('resolveRepositoryPaths', () => {
   })
 })
 
-
 describe('parseCommitMeta', () => {
   /**
    * Build one `git log --format` record the way the Host commands it.
    * @param {object} fields - record fields.
    * @returns {string} NUL-separated record with Git's trailing newline.
    */
-  function record({ oid = OID_A, shortOid = 'aaaaaaa', author = 'Ann', authoredAt = 1700000000, refs = '', parents = '', subject = 'Fix the sidebar', body = '' } = {}) {
-    return [oid, shortOid, author, String(authoredAt), refs, parents, subject, body].join(NUL) + '\n'
+  function record({
+    oid = OID_A,
+    shortOid = 'aaaaaaa',
+    author = 'Ann',
+    authoredAt = 1700000000,
+    refs = '',
+    parents = '',
+    subject = 'Fix the sidebar',
+    body = '',
+  } = {}) {
+    return `${[oid, shortOid, author, String(authoredAt), refs, parents, subject, body].join(NUL)}\n`
   }
 
   test('reads every field and keeps multi-line bodies', () => {
-    const parsed = parseCommitMeta(record({
-      refs: 'HEAD -> main, tag: v1',
-      parents: `${OID_B} ${OID_C}`,
-      body: 'Body line one\nBody line two',
-    }))
+    const parsed = parseCommitMeta(
+      record({
+        refs: 'HEAD -> main, tag: v1',
+        parents: `${OID_B} ${OID_C}`,
+        body: 'Body line one\nBody line two',
+      }),
+    )
     assert.deepEqual(parsed, {
       oid: OID_A,
       shortOid: 'aaaaaaa',
@@ -445,6 +469,7 @@ describe('parseCommitMeta', () => {
 
   test('reports a root commit with no parents and an empty body', () => {
     const parsed = parseCommitMeta(record({ parents: '', body: '' }))
+    assert.ok(parsed)
     assert.deepEqual(parsed.parents, [])
     assert.equal(parsed.body, '')
   })
@@ -459,23 +484,47 @@ describe('parseCommitMeta', () => {
 describe('parseHistory', () => {
   /**
    * Build one `git log` history line in the shape the Host requests.
-   * @param {object} fields - record fields.
-   * @param {string} fields.oid - full commit id.
-   * @param {string} [fields.shortOid] - abbreviated id.
-   * @param {string} [fields.author] - author name.
-   * @param {string} [fields.authoredAt] - author timestamp.
-   * @param {string} [fields.refs] - decoration string.
-   * @param {string} [fields.parents] - space-separated parents.
-   * @param {string} [fields.subject] - subject line.
-   * @returns {string} one log line.
+   * @param fields - record fields.
+   * @param fields.oid - full commit id.
+   * @param fields.shortOid - abbreviated id.
+   * @param fields.author - author name.
+   * @param fields.authoredAt - author timestamp.
+   * @param fields.refs - decoration string.
+   * @param fields.parents - space-separated parents.
+   * @param fields.subject - subject line.
+   * @returns one log line.
    */
-  function logLine({ oid, shortOid = 'abc1234', author = 'Ann', authoredAt = '1700000000', refs = '', parents = '', subject = 'Fix it' }) {
+  function logLine({
+    oid,
+    shortOid = 'abc1234',
+    author = 'Ann',
+    authoredAt = '1700000000',
+    refs = '',
+    parents = '',
+    subject = 'Fix it',
+  }: {
+    oid: string
+    shortOid?: string
+    author?: string
+    authoredAt?: string
+    refs?: string
+    parents?: string
+    subject?: string
+  }): string {
     return [oid, shortOid, author, authoredAt, refs, parents, subject].join('\t')
   }
 
   test('reads commits, their decorations, parents, and timestamps', () => {
     const payload = [
-      logLine({ oid: OID_A, shortOid: 'aaaaaaa', author: 'Ann', authoredAt: '1700000123', refs: 'HEAD -> main, origin/main', parents: `${OID_B} ${OID_C}`, subject: 'Merge the sidebar work' }),
+      logLine({
+        oid: OID_A,
+        shortOid: 'aaaaaaa',
+        author: 'Ann',
+        authoredAt: '1700000123',
+        refs: 'HEAD -> main, origin/main',
+        parents: `${OID_B} ${OID_C}`,
+        subject: 'Merge the sidebar work',
+      }),
       logLine({ oid: OID_B, refs: 'tag: v1.0', parents: OID_C, subject: 'Sidebar work' }),
       logLine({ oid: OID_C, parents: '', subject: 'Initial commit' }),
     ].join('\n')
@@ -522,7 +571,10 @@ describe('parseHistory', () => {
       [OID_A, 'abc1234', 'Ann'].join('\t'),
       logLine({ oid: OID_B, subject: 'kept' }),
     ].join('\n')
-    assert.deepEqual(parseHistory(payload).map((commit) => commit.oid), [OID_B])
+    assert.deepEqual(
+      parseHistory(payload).map((commit) => commit.oid),
+      [OID_B],
+    )
   })
 
   test('keeps a tab inside the subject in the subject field', () => {
@@ -536,12 +588,20 @@ describe('parseHistory', () => {
 describe('parseNameStatus', () => {
   test('reads modified, added, deleted, renamed, and copied entries', () => {
     const payload = [
-      'M', 'src/a.txt',
-      'A', 'src/new.txt',
-      'D', 'gone.txt',
-      'R100', 'old.txt', 'renamed.txt',
-      'C075', 'src/from.js', 'src/to.js',
-      'T', 'script.sh',
+      'M',
+      'src/a.txt',
+      'A',
+      'src/new.txt',
+      'D',
+      'gone.txt',
+      'R100',
+      'old.txt',
+      'renamed.txt',
+      'C075',
+      'src/from.js',
+      'src/to.js',
+      'T',
+      'script.sh',
       '',
     ].join(NUL)
     assert.deepEqual(parseNameStatus(payload), [

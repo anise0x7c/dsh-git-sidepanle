@@ -2,13 +2,14 @@
  * Direct unit tests for the browser half's shared constants and the menu
  * trigger adapter.
  *
- * These import `src/client/constants.js` and `src/client/menu/trigger.js`
+ * These import `src/client/constants.ts` and `src/client/menu/trigger.ts`
  * directly — no React, no plugin context, no built `client.js`. The route
  * invariant is checked against the Host module that registers the same path.
  */
-import { describe, test } from 'node:test'
+
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { describe, test } from 'node:test'
 import {
   DIFF_ID,
   DIFF_KIND,
@@ -19,18 +20,31 @@ import {
   MENU_CONTRIBUTION_ID,
   MENU_TARGET,
   NS,
+  nextPanelId,
   PACKAGE_ID,
   POLL_INTERVAL_MS,
   RPC_PATH,
-  nextPanelId,
-} from '../../src/client/constants.js'
-import { HEALTH_PATH, RPC_PATH as HOST_RPC_PATH } from '../../src/host/rpc.js'
-import { resolveMenuActions } from '../../src/client/menu/actions.js'
-import { bindMenuTrigger, menuTarget } from '../../src/client/menu/trigger.js'
+} from '../../src/client/constants.ts'
+import { resolveMenuActions } from '../../src/client/menu/actions.ts'
+import { bindMenuTrigger, menuTarget } from '../../src/client/menu/trigger.ts'
+import type {
+  ContextMenuBindings,
+  ContextMenuTriggerTarget,
+  MenuTriggerHandlers,
+} from '../../src/client/types/dsh.ts'
+import { HEALTH_PATH, RPC_PATH as HOST_RPC_PATH } from '../../src/host/rpc.ts'
 
-const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
+/** One captured target stand-in the binding recorder receives. */
+type TriggerBindingCall = {
+  target: ContextMenuTriggerTarget
+  handlers: MenuTriggerHandlers | undefined
+}
+
+const manifest = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+) as { name: string }
 /** Locale binder stand-in for the captured-value contract check. */
-const t = (key) => key
+const t = (key: string): string => key
 
 describe('constants', () => {
   test('the package id matches the manifest name and namespaces both tabs', () => {
@@ -71,7 +85,10 @@ describe('nextPanelId', () => {
     for (let index = 0; index < ids.length; index += 1) {
       assert.match(ids[index], /^git-panel-\d+$/)
       if (index > 0) {
-        assert.equal(Number(ids[index].slice('git-panel-'.length)), Number(ids[index - 1].slice('git-panel-'.length)) + 1)
+        assert.equal(
+          Number(ids[index].slice('git-panel-'.length)),
+          Number(ids[index - 1].slice('git-panel-'.length)) + 1,
+        )
       }
     }
   })
@@ -79,18 +96,40 @@ describe('nextPanelId', () => {
 
 describe('menuTarget', () => {
   test('wraps the captured row value with the registered target kind', () => {
-    assert.deepEqual(menuTarget('session-1', 'file', { section: 'changes', path: 'src/app.js', cwd: '/repo' }), {
-      kind: 'gitGraphItem',
-      value: { sessionId: 'session-1', kind: 'file', section: 'changes', path: 'src/app.js', cwd: '/repo' },
-    })
+    assert.deepEqual(
+      menuTarget('session-1', 'file', { section: 'changes', path: 'src/app.js', cwd: '/repo' }),
+      {
+        kind: 'gitGraphItem',
+        value: {
+          sessionId: 'session-1',
+          kind: 'file',
+          section: 'changes',
+          path: 'src/app.js',
+          cwd: '/repo',
+        },
+      },
+    )
     assert.equal(menuTarget('session-1', 'file', {}).kind, MENU_TARGET)
   })
 
   test('merges panel and action detail into the captured value', () => {
-    assert.deepEqual(menuTarget('session-1', 'section', { section: 'changes', busy: true, panelId: 'git-panel-1' }), {
-      kind: MENU_TARGET,
-      value: { sessionId: 'session-1', kind: 'section', section: 'changes', busy: true, panelId: 'git-panel-1' },
-    })
+    assert.deepEqual(
+      menuTarget('session-1', 'section', {
+        section: 'changes',
+        busy: true,
+        panelId: 'git-panel-1',
+      }),
+      {
+        kind: MENU_TARGET,
+        value: {
+          sessionId: 'session-1',
+          kind: 'section',
+          section: 'changes',
+          busy: true,
+          panelId: 'git-panel-1',
+        },
+      },
+    )
   })
 
   test('spreads detail last, so a detail field wins over the positional value', () => {
@@ -102,7 +141,10 @@ describe('menuTarget', () => {
     const target = menuTarget('session-1', 'file', { section: 'changes', path: 'src/app.js' })
     // The shared registry calls `resolve(target.value, signal)`; handing the
     // wrapper to the resolver has no session id and must resolve nothing.
-    assert.deepEqual(resolveMenuActions(target, t, () => {}), [])
+    assert.deepEqual(
+      resolveMenuActions(target, t, () => {}),
+      [],
+    )
     assert.ok(resolveMenuActions(target.value, t, () => {}).length > 0)
   })
 })
@@ -116,16 +158,27 @@ describe('bindMenuTrigger', () => {
 
   test('returns null when the hook does not expose getTriggerProps', () => {
     for (const bindings of [undefined, null, {}, { getTriggerProps: 'not a function' }]) {
-      assert.equal(bindMenuTrigger(() => bindings), null, `bindings ${JSON.stringify(bindings)}`)
+      assert.equal(
+        bindMenuTrigger(() => bindings),
+        null,
+        `bindings ${JSON.stringify(bindings)}`,
+      )
     }
   })
 
   test('returns null and warns when the hook throws', () => {
     const originalWarn = console.warn
-    const warnings = []
-    console.warn = (...args) => { warnings.push(args) }
+    const warnings: unknown[][] = []
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args)
+    }
     try {
-      assert.equal(bindMenuTrigger(() => { throw new Error('menus unavailable') }), null)
+      assert.equal(
+        bindMenuTrigger(() => {
+          throw new Error('menus unavailable')
+        }),
+        null,
+      )
     } finally {
       console.warn = originalWarn
     }
@@ -134,17 +187,24 @@ describe('bindMenuTrigger', () => {
   })
 
   test('calls the hook once and passes the target and handlers through', () => {
-    const calls = []
-    const props = { tabIndex: -1, 'aria-haspopup': 'menu' }
-    const factory = bindMenuTrigger(() => ({
-      getTriggerProps(target, handlers) {
-        calls.push({ target, handlers })
-        return { target, handlers, ...handlers }
-      },
-    }))
+    const calls: TriggerBindingCall[] = []
+    const props: MenuTriggerHandlers = { tabIndex: -1, 'aria-haspopup': 'menu' }
+    const factory = bindMenuTrigger(
+      (): ContextMenuBindings => ({
+        getTriggerProps(target, handlers = {}) {
+          assert.ok(
+            typeof target === 'object' && target !== null,
+            'the binding receives a captured target',
+          )
+          calls.push({ target, handlers })
+          return { target, handlers, ...handlers }
+        },
+      }),
+    )
     assert.equal(typeof factory, 'function')
-    const target = { kind: 'gitGraphItem', value: { sessionId: 'session-1', kind: 'file' } }
-    const handlers = { tabIndex: -1 }
+    assert.ok(factory)
+    const target = menuTarget('session-1', 'file', {})
+    const handlers: MenuTriggerHandlers = { tabIndex: -1 }
     const first = factory(target, handlers)
     const second = factory(target, props)
     assert.equal(calls.length, 2, 'the factory should call the host binding per invocation')
