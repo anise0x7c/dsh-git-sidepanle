@@ -6,6 +6,8 @@
  * follows light and dark themes and any user font setting exactly like DSH's
  * own sidebar surfaces. Sizes follow the host's sidebar conventions: 28px list
  * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.
+ * The commit graph is the one exception: it reproduces VS Code's Source
+ * Control Graph, including its `scmGraph.*` palette and 22px rows.
  */
 
 /* ------------------------------------------------------------------ base --- */
@@ -657,12 +659,34 @@
 
 /* ---------------------------------------------------------------- graph --- */
 
+/* The commit graph reproduces VS Code's Source Control Graph, so its palette
+ * is VS Code's `scmGraph.*` color set rather than host tokens: five rotation
+ * colors shared by light and dark themes, plus the checked-out (`charts.blue`),
+ * upstream (`charts.purple`) and base reference colors. Badge text uses the
+ * host's base background, standing in for VS Code's `panel.background`. */
+.dshgg-root {
+  --dshgg-scm-lane1: #ffb000;
+  --dshgg-scm-lane2: #dc267f;
+  --dshgg-scm-lane3: #994f00;
+  --dshgg-scm-lane4: #40b0a6;
+  --dshgg-scm-lane5: #b66dff;
+  --dshgg-scm-ref: #1a85ff;
+  --dshgg-scm-remote: #652d90;
+  --dshgg-scm-base: #ea5c00;
+  --dshgg-scm-label-foreground: var(--dsw-alias-bg-base);
+}
+
+body[data-ds-dark-theme] .dshgg-root {
+  --dshgg-scm-ref: #3794ff;
+  --dshgg-scm-remote: #b180d7;
+}
+
+/* VS Code `.history-item`: 22px rows, the graph cell, the label, the badges. */
 .dshgg-graphRow {
   display: flex;
   flex: none;
-  align-items: stretch;
-  gap: 0;
-  height: 28px;
+  align-items: center;
+  height: 22px;
   min-width: 0;
   padding: 0 6px 0 4px;
   border-radius: var(--dsw-radius-md);
@@ -684,185 +708,98 @@
 .dshgg-graphSvg {
   display: block;
   flex: none;
-  overflow: hidden;
-}
-
-/* One lane color per palette slot; the layout module paints the same slot for
- * every line and node so a branch keeps its color for as long as it is drawn. */
-.dshgg-graphEdge,
-.dshgg-graphNode {
-  --dshgg-lane-color: var(--dsw-alias-label-secondary);
-}
-
-.dshgg-graphEdge[data-lane="0"],
-.dshgg-graphNode[data-lane="0"] {
-  --dshgg-lane-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
-}
-
-.dshgg-graphEdge[data-lane="1"],
-.dshgg-graphNode[data-lane="1"] {
-  --dshgg-lane-color: var(--dsw-alias-state-done-primary);
-}
-
-.dshgg-graphEdge[data-lane="2"],
-.dshgg-graphNode[data-lane="2"] {
-  --dshgg-lane-color: var(--dsw-alias-state-success-primary);
-}
-
-.dshgg-graphEdge[data-lane="3"],
-.dshgg-graphNode[data-lane="3"] {
-  --dshgg-lane-color: var(--dsw-alias-state-warn-primary);
-}
-
-.dshgg-graphEdge[data-lane="4"],
-.dshgg-graphNode[data-lane="4"] {
-  --dshgg-lane-color: var(--dsw-alias-state-error-primary);
-}
-
-.dshgg-graphEdge[data-lane="5"],
-.dshgg-graphNode[data-lane="5"] {
-  --dshgg-lane-color: var(--dsw-alias-chart-system);
+  height: 22px;
 }
 
 .dshgg-graphEdge {
   fill: none;
-  stroke: var(--dshgg-lane-color);
-  stroke-width: 1.5;
+  stroke-width: 1px;
   stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
-.dshgg-graphNode {
-  fill: var(--dshgg-lane-color);
+/* VS Code clears its node strokes on hover: the outer gap closes and the node's
+ * outer edge grows by half a stroke. The geometry carries the hover radii. */
+@media (hover: hover) {
+  .dshgg-graphRow:hover .dshgg-graphGap {
+    r: var(--dshgg-gap-hover);
+  }
+
+  .dshgg-graphRow:hover .dshgg-graphNode {
+    r: var(--dshgg-node-hover-r);
+  }
+
+  .dshgg-graphRow:hover .dshgg-graphNode[data-paint="ring"] {
+    stroke-width: var(--dshgg-node-hover-stroke);
+  }
 }
 
-.dshgg-graphBody {
-  display: flex;
-  flex: 1;
+/* VS Code `.monaco-icon-label`: subject and description ellipsize together. */
+.dshgg-graphLabel {
+  flex: 1 1 auto;
   min-width: 0;
-  container-type: inline-size;
-}
-
-.dshgg-graphSubjectLine {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  height: 28px;
+  overflow: hidden;
+  font: var(--dsw-font-xs-13);
+  line-height: 22px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .dshgg-graphSubject {
-  flex: 0 1 auto;
-  min-width: min(8ch, 100%);
-  overflow: hidden;
-  font: var(--dsw-font-xs-13);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.dshgg-graphMeta {
-  display: inline-flex;
-  flex: 0 1 auto;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
-  font: var(--dsw-font-xxxs-11);
-  white-space: nowrap;
-}
-
-.dshgg-graphMeta span {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: pre;
 }
 
 .dshgg-graphAuthor {
-  flex: 0 1 auto;
-  min-width: 0;
+  margin-left: 0.5em;
+  font-size: 0.9em;
+  white-space: pre;
+  opacity: 0.7;
 }
 
-.dshgg-graphHash,
-.dshgg-graphTime,
-.dshgg-graphMeta .dshgg-dot {
-  flex: none;
+.dshgg-graphRow[data-current="true"] .dshgg-graphSubject,
+.dshgg-graphRow[data-current="true"] .dshgg-graphAuthor {
+  font-weight: 600;
 }
 
-.dshgg-graphHash {
-  font-family: var(--ds-font-family-code);
-}
-
-/* Protect the subject before removing secondary information. Each row's text
- * body is a width container, so these thresholds follow the Sidebar pane size
- * rather than the unrelated width of a floating Web window. */
-@container (max-width: 360px) {
-  .dshgg-graphTime,
-  .dshgg-graphTimeDot {
-    display: none;
-  }
-}
-
-@container (max-width: 280px) {
-  .dshgg-graphAuthor,
-  .dshgg-graphAuthorDot {
-    display: none;
-  }
-}
-
-@container (max-width: 200px) {
-  .dshgg-graphMeta,
-  .dshgg-refs {
-    display: none;
-  }
-}
-
-.dshgg-refs {
-  display: inline-flex;
-  flex: 0 1 auto;
+/* VS Code `.label-container` and `.label`. */
+.dshgg-graphBadges {
+  display: flex;
+  flex-shrink: 0;
   gap: 4px;
-  min-width: 0;
-  overflow: hidden;
+  margin-left: 4px;
 }
 
-.dshgg-ref {
-  display: inline-flex;
-  flex: none;
+.dshgg-graphBadge {
+  display: flex;
   align-items: center;
-  max-width: 112px;
-  height: 16px;
-  padding: 0 6px;
+  color: var(--dshgg-scm-label-foreground);
+  line-height: 18px;
+  border-radius: 10px;
+}
+
+.dshgg-graphBadgeCount {
+  padding-left: 4px;
+  font-size: 12px;
+}
+
+.dshgg-graphBadgeIcon {
+  display: flex;
+  padding: 1px;
+}
+
+/* The icon element is sized by its own attributes: 16px, or 12px for branches,
+ * matching VS Code's codicon font sizes inside an 18px badge. */
+
+.dshgg-graphBadge[data-icon="branch"] .dshgg-graphBadgeIcon {
+  padding: 3px;
+}
+
+.dshgg-graphBadgeName {
+  max-width: 100px;
+  padding-right: 4px;
   overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 16px;
+  font-size: 12px;
   white-space: nowrap;
   text-overflow: ellipsis;
-  border-radius: 999px;
-}
-
-.dshgg-ref[data-kind="head"] {
-  color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
-  background: color-mix(
-    in srgb,
-    var(--dsw-alias-brand-primary-new-colorprimary-new-color) 12%,
-    transparent
-  );
-}
-
-.dshgg-ref[data-kind="branch"] {
-  color: var(--dsw-alias-label-secondary);
-  background: var(--dsw-alias-bg-module-platform);
-}
-
-.dshgg-ref[data-kind="tag"] {
-  color: var(--dsw-alias-state-warn-label);
-  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent);
-}
-
-.dshgg-ref[data-kind="remote"] {
-  color: var(--dsw-alias-label-tertiary);
 }
 
 /* --------------------------------------------------------- commit detail --- */

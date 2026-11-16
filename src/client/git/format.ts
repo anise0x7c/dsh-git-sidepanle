@@ -7,12 +7,21 @@
 import type { ChangeEntry, Failure } from '../types/domain.ts'
 import type { LocaleBinder } from '../types/dsh.ts'
 
+/**
+ * Reference family, as VS Code's Git extension classifies a decoration:
+ * `head` is the checked-out branch, `branch` another local branch, `remote` a
+ * remote-tracking branch and `tag` a tag.
+ */
+export type RefKind = 'head' | 'branch' | 'remote' | 'tag'
+
 /** One parsed commit ref decoration. */
 export interface ParsedRef {
-  /** Ref name without its decoration prefix. */
-  readonly label: string
-  /** Decoration family. */
-  readonly kind: 'head' | 'tag' | 'remote' | 'branch'
+  /** Full ref name such as `refs/heads/main`. */
+  readonly id: string
+  /** Display name such as `main`, `origin/main` or `v1.0`. */
+  readonly name: string
+  /** Reference family. */
+  readonly kind: RefKind
 }
 
 /**
@@ -117,40 +126,67 @@ export function formatAgo(t: LocaleBinder, authoredAt: number): string {
   return t('time.years', { n: Math.round(seconds / 31536000) })
 }
 
+const HEADS = 'refs/heads/'
+const REMOTES = 'refs/remotes/'
+const TAGS = 'refs/tags/'
+
 /**
- * Parse a commit's `refs` decoration string.
+ * Classify one decoration entry. Full names (`git log --decorate=full`) are
+ * classified exactly; a short spelling falls back to a local branch, or to a
+ * remote-tracking branch when it contains a slash.
+ * @param label - one decoration entry without `HEAD -> ` / `tag: ` prefixes.
+ * @param head - whether the entry followed `HEAD -> `.
+ * @param tag - whether the entry followed `tag: `.
+ * @returns parsed ref, or null when the entry is not shown as a reference.
+ */
+function classifyRef(label: string, head: boolean, tag: boolean): ParsedRef | null {
+  if (label === '') return null
+  if (tag) {
+    const name = label.startsWith(TAGS) ? label.slice(TAGS.length) : label
+    return { id: `${TAGS}${name}`, name, kind: 'tag' }
+  }
+  if (label.startsWith(HEADS)) {
+    const name = label.slice(HEADS.length)
+    return { id: label, name, kind: head ? 'head' : 'branch' }
+  }
+  if (label.startsWith(REMOTES)) {
+    const name = label.slice(REMOTES.length)
+    // A remote's default-branch pointer only repeats another remote branch.
+    if (name.endsWith('/HEAD')) return null
+    return { id: label, name, kind: 'remote' }
+  }
+  if (label.startsWith(TAGS)) {
+    const name = label.slice(TAGS.length)
+    return { id: label, name, kind: 'tag' }
+  }
+  if (label.startsWith('refs/')) return null
+  if (head || !label.includes('/')) {
+    return { id: `${HEADS}${label}`, name: label, kind: head ? 'head' : 'branch' }
+  }
+  if (label.endsWith('/HEAD')) return null
+  return { id: `${REMOTES}${label}`, name: label, kind: 'remote' }
+}
+
+/**
+ * Parse a commit's `refs` decoration string into the references VS Code's Git
+ * extension shows: the checked-out branch, local branches, remote-tracking
+ * branches and tags. A detached `HEAD` marker and a remote's `HEAD` pointer are
+ * not references of their own and are skipped.
  * @param refs - decoration string; nullish and non-strings are ignored.
  * @returns refs in decoration order.
  */
 export function parseRefs(refs: unknown): ParsedRef[] {
   if (typeof refs !== 'string' || refs === '') return []
-  return refs
-    .split(', ')
-    .filter((label) => label !== '')
-    .map((label) => {
-      if (label.startsWith('HEAD -> '))
-        return { label: label.slice('HEAD -> '.length), kind: 'head' }
-      if (label === 'HEAD') return { label: 'HEAD', kind: 'head' }
-      if (label.startsWith('tag: ')) return { label: label.slice('tag: '.length), kind: 'tag' }
-      if (label.includes('/')) return { label, kind: 'remote' }
-      return { label, kind: 'branch' }
-    })
-}
-
-/**
- * Drop refs that only repeat a branch already named by another ref in the same
- * decoration. `main` + `origin/main` and `feature/x` + `origin/feature/x` each
- * name one branch, and the sidebar's commit rows are too narrow to print both;
- * the part after the first slash is what the two spellings share.
- * @param refs - parsed refs in decoration order.
- * @returns refs without a duplicate spelling of another ref.
- */
-export function distinctRefs(refs: readonly ParsedRef[]): ParsedRef[] {
-  const labels = new Set(refs.map((ref) => ref.label))
-  return refs.filter((ref) => {
-    const slash = ref.label.indexOf('/')
-    return slash < 0 || !labels.has(ref.label.slice(slash + 1))
-  })
+  const parsed: ParsedRef[] = []
+  for (const entry of refs.split(', ')) {
+    if (entry === '' || entry === 'HEAD') continue
+    let ref: ParsedRef | null
+    if (entry.startsWith('HEAD -> ')) ref = classifyRef(entry.slice('HEAD -> '.length), true, false)
+    else if (entry.startsWith('tag: ')) ref = classifyRef(entry.slice('tag: '.length), false, true)
+    else ref = classifyRef(entry, false, false)
+    if (ref !== null) parsed.push(ref)
+  }
+  return parsed
 }
 
 /**

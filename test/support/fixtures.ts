@@ -40,7 +40,10 @@ export const STATUS: StatusResult = {
   ],
 }
 
-/** Default `history` response with one local/upstream commit and one tagged commit. */
+/**
+ * Default `history` response: the checked-out commit carrying its branch and
+ * upstream, and one tagged root commit.
+ */
 export const HISTORY: HistoryResult = {
   commits: [
     {
@@ -48,7 +51,7 @@ export const HISTORY: HistoryResult = {
       shortOid: 'aaaaaaa',
       author: 'Ann',
       authoredAt: now - 120,
-      refs: 'HEAD -> main, origin/main',
+      refs: 'HEAD -> refs/heads/main, refs/remotes/origin/main',
       subject: 'Fix the sidebar',
       parents: ['b'.repeat(40)],
     },
@@ -57,7 +60,7 @@ export const HISTORY: HistoryResult = {
       shortOid: 'bbbbbbb',
       author: 'Bob',
       authoredAt: now - 7200,
-      refs: 'tag: v1.0',
+      refs: 'tag: refs/tags/v1.0',
       subject: 'Initial commit',
       parents: [],
     },
@@ -89,7 +92,7 @@ export const COMMIT_DETAILS: CommitDetails = {
     shortOid: 'aaaaaaa',
     author: 'Ann',
     authoredAt: now - 120,
-    refs: 'HEAD -> main, origin/main',
+    refs: 'HEAD -> refs/heads/main, refs/remotes/origin/main',
     parents: ['b'.repeat(40)],
     subject: 'Fix the sidebar',
     body: 'A longer explanation of the fix.',

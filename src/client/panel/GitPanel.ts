@@ -62,7 +62,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   })
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } =
     statusState
-  const { graph, graphLoading, graphFailure, loadGraph } = useHistory({ call, refs })
+  const { graph, references, graphLoading, graphFailure, loadGraph } = useHistory({ call, refs })
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     merge: true,
@@ -334,6 +334,8 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
       h(GraphSection, {
         t,
         commits: graph,
+        references,
+        graphId: panelId,
         loading: graphLoading,
         failure: graphFailure,
         open: openSections.graph === true,

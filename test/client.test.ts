@@ -97,22 +97,32 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   assert.ok(styleTag)
   assert.equal(styleTag.getAttribute('data-plugin'), '@local/dsh-git-graph')
   const graphStyles = styleTag.textContent
-  assert.match(graphStyles, /\.dshgg-graphBody\s*\{[^}]*container-type: inline-size;/)
-  assert.match(graphStyles, /\.dshgg-graphSubject\s*\{[^}]*min-width: min\(8ch, 100%\);/)
-  const narrowGroups: Array<[width: number, selectors: string[]]> = [
-    [360, ['.dshgg-graphTime', '.dshgg-graphTimeDot']],
-    [280, ['.dshgg-graphAuthor', '.dshgg-graphAuthorDot']],
-    [200, ['.dshgg-graphMeta', '.dshgg-refs']],
-  ]
-  for (const [width, selectors] of narrowGroups) {
-    const start = graphStyles.indexOf(`@container (max-width: ${width}px)`)
-    assert.notEqual(start, -1, `the ${width}px row fallback must be bundled`)
-    const next = graphStyles.indexOf('@container', start + 1)
-    const block = graphStyles.slice(start, next === -1 ? graphStyles.length : next)
-    for (const selector of selectors)
-      assert.ok(block.includes(selector), `${selector} has its own narrow-row fallback`)
-    assert.match(block, /display: none;/)
+  // VS Code's Source Control Graph palette, with its light and dark variants.
+  for (const [name, value] of [
+    ['lane1', '#ffb000'],
+    ['lane2', '#dc267f'],
+    ['lane3', '#994f00'],
+    ['lane4', '#40b0a6'],
+    ['lane5', '#b66dff'],
+    ['ref', '#1a85ff'],
+    ['remote', '#652d90'],
+    ['base', '#ea5c00'],
+  ]) {
+    assert.match(graphStyles, new RegExp(`--dshgg-scm-${name}: ${value};`))
   }
+  assert.match(
+    graphStyles,
+    /body\[data-ds-dark-theme\] \.dshgg-root\s*\{[^}]*--dshgg-scm-ref: #3794ff;[^}]*--dshgg-scm-remote: #b180d7;/,
+  )
+  // VS Code row metrics: 22px rows, one ellipsized label, badges that keep their size.
+  assert.match(graphStyles, /\.dshgg-graphRow\s*\{[^}]*height: 22px;/)
+  assert.match(graphStyles, /\.dshgg-graphLabel\s*\{[^}]*text-overflow: ellipsis;/)
+  assert.match(graphStyles, /\.dshgg-graphBadges\s*\{[^}]*flex-shrink: 0;/)
+  assert.match(graphStyles, /\.dshgg-graphBadgeName\s*\{[^}]*max-width: 100px;/)
+  assert.match(
+    graphStyles,
+    /\.dshgg-graphRow:hover \.dshgg-graphGap\s*\{[^}]*r: var\(--dshgg-gap-hover\);/,
+  )
   assert.equal(records.localeDictionaries.length, 1)
   const registrationRecord = records.localeDictionaries[0]
   assert.ok(registrationRecord)

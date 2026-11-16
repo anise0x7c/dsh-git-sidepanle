@@ -155,3 +155,42 @@ export function CheckCircleIcon(props: IconProps): React.ReactElement {
     h('path', { key: 'b', d: 'M5 8.2 7.2 10.4 11.2 6' }),
   ])
 }
+
+/** Checked-out branch reference, after VS Code's `target` codicon. */
+export function TargetIcon(props: IconProps): React.ReactElement {
+  const size = props?.size ?? 16
+  return svgIcon(
+    size,
+    [
+      h('circle', { key: 'a', cx: 8, cy: 8, r: 6 }),
+      h('circle', { key: 'b', cx: 8, cy: 8, r: 3.5 }),
+      h('circle', { key: 'c', cx: 8, cy: 8, r: 1, fill: 'currentColor' }),
+    ],
+    { strokeWidth: 1.1, className: props?.className },
+  )
+}
+
+/** Remote-tracking branch reference, after VS Code's `cloud` codicon. */
+export function CloudIcon(props: IconProps): React.ReactElement {
+  const size = props?.size ?? 16
+  return svgIcon(
+    size,
+    h('path', {
+      d: 'M4.6 12.5h7.1a2.8 2.8 0 0 0 .4-5.57A4.2 4.2 0 0 0 4 6.3a3.1 3.1 0 0 0 .6 6.2z',
+    }),
+    { strokeWidth: 1.1, className: props?.className },
+  )
+}
+
+/** Tag reference, after VS Code's `tag` codicon. */
+export function TagIcon(props: IconProps): React.ReactElement {
+  const size = props?.size ?? 16
+  return svgIcon(
+    size,
+    [
+      h('path', { key: 'a', d: 'M2.5 2.5h5l6 6-5 5-6-6z' }),
+      h('circle', { key: 'b', cx: 5.4, cy: 5.4, r: 1 }),
+    ],
+    { strokeWidth: 1.1, className: props?.className },
+  )
+}

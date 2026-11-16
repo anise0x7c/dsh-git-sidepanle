@@ -35,6 +35,8 @@ export type {
   GitGraphRequest,
   GitGraphRpcValue,
   GitGraphRpcValues,
+  GraphReference,
+  GraphReferences,
   HistoryResult,
   OkResult,
   ParsedDiff,

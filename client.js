@@ -163,23 +163,47 @@ function formatAgo(t, authoredAt) {
   if (seconds < 31536e3) return t("time.months", { n: Math.round(seconds / 2592e3) });
   return t("time.years", { n: Math.round(seconds / 31536e3) });
 }
+var HEADS = "refs/heads/";
+var REMOTES = "refs/remotes/";
+var TAGS = "refs/tags/";
+function classifyRef(label, head, tag) {
+  if (label === "") return null;
+  if (tag) {
+    const name = label.startsWith(TAGS) ? label.slice(TAGS.length) : label;
+    return { id: `${TAGS}${name}`, name, kind: "tag" };
+  }
+  if (label.startsWith(HEADS)) {
+    const name = label.slice(HEADS.length);
+    return { id: label, name, kind: head ? "head" : "branch" };
+  }
+  if (label.startsWith(REMOTES)) {
+    const name = label.slice(REMOTES.length);
+    if (name.endsWith("/HEAD")) return null;
+    return { id: label, name, kind: "remote" };
+  }
+  if (label.startsWith(TAGS)) {
+    const name = label.slice(TAGS.length);
+    return { id: label, name, kind: "tag" };
+  }
+  if (label.startsWith("refs/")) return null;
+  if (head || !label.includes("/")) {
+    return { id: `${HEADS}${label}`, name: label, kind: head ? "head" : "branch" };
+  }
+  if (label.endsWith("/HEAD")) return null;
+  return { id: `${REMOTES}${label}`, name: label, kind: "remote" };
+}
 function parseRefs(refs) {
   if (typeof refs !== "string" || refs === "") return [];
-  return refs.split(", ").filter((label) => label !== "").map((label) => {
-    if (label.startsWith("HEAD -> "))
-      return { label: label.slice("HEAD -> ".length), kind: "head" };
-    if (label === "HEAD") return { label: "HEAD", kind: "head" };
-    if (label.startsWith("tag: ")) return { label: label.slice("tag: ".length), kind: "tag" };
-    if (label.includes("/")) return { label, kind: "remote" };
-    return { label, kind: "branch" };
-  });
-}
-function distinctRefs(refs) {
-  const labels = new Set(refs.map((ref) => ref.label));
-  return refs.filter((ref) => {
-    const slash = ref.label.indexOf("/");
-    return slash < 0 || !labels.has(ref.label.slice(slash + 1));
-  });
+  const parsed = [];
+  for (const entry of refs.split(", ")) {
+    if (entry === "" || entry === "HEAD") continue;
+    let ref;
+    if (entry.startsWith("HEAD -> ")) ref = classifyRef(entry.slice("HEAD -> ".length), true, false);
+    else if (entry.startsWith("tag: ")) ref = classifyRef(entry.slice("tag: ".length), false, true);
+    else ref = classifyRef(entry, false, false);
+    if (ref !== null) parsed.push(ref);
+  }
+  return parsed;
 }
 function errorText(t, failure) {
   if (failure === null || failure === void 0) return t("error.unknown");
@@ -298,6 +322,39 @@ function CheckCircleIcon(props) {
     h("circle", { key: "a", cx: 8, cy: 8, r: 6.4 }),
     h("path", { key: "b", d: "M5 8.2 7.2 10.4 11.2 6" })
   ]);
+}
+function TargetIcon(props) {
+  const size = props?.size ?? 16;
+  return svgIcon(
+    size,
+    [
+      h("circle", { key: "a", cx: 8, cy: 8, r: 6 }),
+      h("circle", { key: "b", cx: 8, cy: 8, r: 3.5 }),
+      h("circle", { key: "c", cx: 8, cy: 8, r: 1, fill: "currentColor" })
+    ],
+    { strokeWidth: 1.1, className: props?.className }
+  );
+}
+function CloudIcon(props) {
+  const size = props?.size ?? 16;
+  return svgIcon(
+    size,
+    h("path", {
+      d: "M4.6 12.5h7.1a2.8 2.8 0 0 0 .4-5.57A4.2 4.2 0 0 0 4 6.3a3.1 3.1 0 0 0 .6 6.2z"
+    }),
+    { strokeWidth: 1.1, className: props?.className }
+  );
+}
+function TagIcon(props) {
+  const size = props?.size ?? 16;
+  return svgIcon(
+    size,
+    [
+      h("path", { key: "a", d: "M2.5 2.5h5l6 6-5 5-6-6z" }),
+      h("circle", { key: "b", cx: 5.4, cy: 5.4, r: 1 })
+    ],
+    { strokeWidth: 1.1, className: props?.className }
+  );
 }
 
 // src/client/menu/trigger.ts
@@ -1339,9 +1396,13 @@ function useCommitDetails(options) {
 
 // src/client/panel/hooks/useHistory.ts
 var import_react10 = require("react");
+function isReferences(value) {
+  return typeof value === "object" && value !== null && "current" in value;
+}
 function useHistory(options) {
   const { call, refs } = options;
   const [graph, setGraph] = (0, import_react10.useState)(null);
+  const [references, setReferences] = (0, import_react10.useState)(null);
   const [graphLoading, setGraphLoading] = (0, import_react10.useState)(false);
   const [graphFailure, setGraphFailure] = (0, import_react10.useState)(null);
   const loadGraph = (0, import_react10.useCallback)(async () => {
@@ -1350,12 +1411,15 @@ function useHistory(options) {
       const value = await call("history");
       if (!refs.mounted.current) return;
       setGraph(Array.isArray(value.commits) ? value.commits : []);
+      setReferences(isReferences(value.references) ? value.references : null);
       setGraphFailure(null);
     } catch (error) {
       if (!refs.mounted.current) return;
       const failure = toFailure(error);
-      if (failure.code === "not-a-repository") setGraph([]);
-      else setGraphFailure(failure);
+      if (failure.code === "not-a-repository") {
+        setGraph([]);
+        setReferences(null);
+      } else setGraphFailure(failure);
     } finally {
       if (refs.mounted.current) setGraphLoading(false);
     }
@@ -1363,7 +1427,7 @@ function useHistory(options) {
   (0, import_react10.useEffect)(() => {
     void loadGraph();
   }, [loadGraph]);
-  return { graph, graphLoading, graphFailure, loadGraph };
+  return { graph, references, graphLoading, graphFailure, loadGraph };
 }
 
 // src/client/panel/hooks/useMenuCommands.ts
@@ -2038,250 +2102,291 @@ function CommitDetails(props) {
 var import_react20 = require("react");
 
 // src/client/git/graph.ts
-var LANE_WIDTH = 12;
-var LANE_PADDING = 6;
-var MAX_GRAPH_WIDTH = 96;
-var MIN_LANE_WIDTH = 4;
-var ROW_HEIGHT = 28;
-var NODE_Y = 14;
-var NODE_RADIUS = 4;
-var CONNECTION_OFFSET = 6;
-var LANE_COLORS = 6;
-function firstFreeLane(lanes) {
-  for (let index = 0; index < lanes.length; index += 1) {
-    if (lanes[index] === null) return index;
+var SWIMLANE_HEIGHT = 22;
+var SWIMLANE_WIDTH = 11;
+var SWIMLANE_CURVE_RADIUS = 5;
+var LANE_COLORS = ["lane1", "lane2", "lane3", "lane4", "lane5"];
+function rot(index, modulo) {
+  return (modulo + index % modulo) % modulo;
+}
+function familyOrder(ref) {
+  if (ref.id.startsWith("refs/heads/")) return 1;
+  if (ref.id.startsWith("refs/remotes/")) return 2;
+  if (ref.id.startsWith("refs/tags/")) return 3;
+  return 99;
+}
+function sortRefs(refs) {
+  return refs.slice().sort((left, right) => {
+    const order = familyOrder(left) - familyOrder(right);
+    return order !== 0 ? order : left.name.localeCompare(right.name);
+  });
+}
+function referenceColors(references) {
+  const colors = /* @__PURE__ */ new Map();
+  const current = references?.current;
+  if (current === null || current === void 0) return colors;
+  colors.set(current.id, "ref");
+  if (references?.remote) colors.set(references.remote.id, "remote");
+  if (references?.base) colors.set(references.base.id, "base");
+  return colors;
+}
+function labelColor(refs, colors) {
+  for (const ref of refs) {
+    const color = colors.get(ref.id);
+    if (color !== void 0) return color;
+  }
+  return void 0;
+}
+function cleanParents(parents) {
+  if (!Array.isArray(parents)) return [];
+  return parents.filter((parent) => typeof parent === "string" && parent !== "");
+}
+function computeGraph(commits, references) {
+  const colors = referenceColors(references);
+  const sortedRefs = /* @__PURE__ */ new Map();
+  for (const commit of commits) {
+    if (!sortedRefs.has(commit.oid)) sortedRefs.set(commit.oid, sortRefs(commit.refs ?? []));
+  }
+  const currentRevision = references?.current?.revision;
+  const currentId = references?.current?.id;
+  const remoteId = references?.remote?.id;
+  const baseId = references?.base?.id;
+  const rows = [];
+  let colorIndex = -1;
+  for (const commit of commits) {
+    const parents = cleanParents(commit.parents);
+    const refs = sortedRefs.get(commit.oid) ?? [];
+    const commitLabelColor = labelColor(refs, colors);
+    const input = rows.at(-1)?.output.map((lane2) => ({ ...lane2 })) ?? [];
+    const output = [];
+    let firstParentAdded = false;
+    for (const lane2 of input) {
+      if (lane2.id === commit.oid) {
+        const first = parents[0];
+        if (!firstParentAdded && first !== void 0) {
+          output.push({ id: first, color: commitLabelColor ?? lane2.color });
+          firstParentAdded = true;
+        }
+        continue;
+      }
+      output.push({ ...lane2 });
+    }
+    for (let index = firstParentAdded ? 1 : 0; index < parents.length; index += 1) {
+      const parent = parents[index];
+      if (parent === void 0) continue;
+      let color2 = index === 0 ? commitLabelColor : labelColor(sortedRefs.get(parent) ?? [], colors);
+      if (color2 === void 0) {
+        colorIndex = rot(colorIndex + 1, LANE_COLORS.length);
+        color2 = LANE_COLORS[colorIndex] ?? "lane1";
+      }
+      output.push({ id: parent, color: color2 });
+    }
+    const inputIndex = input.findIndex((lane2) => lane2.id === commit.oid);
+    const lane = inputIndex !== -1 ? inputIndex : input.length;
+    const color = parents.length > 0 && lane < output.length ? output[lane]?.color ?? "ref" : lane < input.length ? input[lane]?.color ?? "ref" : "ref";
+    const coloredRefs = refs.map((ref) => ({
+      ...ref,
+      color: colors.get(ref.id) ?? color
+    }));
+    const badgeOrder = (ref) => {
+      if (ref.id === currentId) return 1;
+      if (ref.id === remoteId) return 2;
+      if (ref.id === baseId) return 3;
+      return 4;
+    };
+    coloredRefs.sort((left, right) => badgeOrder(left) - badgeOrder(right));
+    rows.push({
+      oid: commit.oid,
+      kind: currentRevision !== void 0 && commit.oid === currentRevision ? "HEAD" : "node",
+      parents,
+      input,
+      output,
+      lane,
+      color,
+      refs: coloredRefs
+    });
+  }
+  return rows;
+}
+function laneX(lane) {
+  return SWIMLANE_WIDTH * (lane + 1);
+}
+function verticalLine(x, y1, y2) {
+  return `M ${x} ${y1} V ${y2}`;
+}
+function findLastIndex(lanes, id) {
+  for (let index = lanes.length - 1; index >= 0; index -= 1) {
+    if (lanes[index]?.id === id) return index;
   }
   return -1;
 }
-function selectLane(lanes, oid) {
-  let selected = -1;
-  let selectedSequence = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < lanes.length; index += 1) {
-    const lane = lanes[index];
-    if (lane === null || lane === void 0 || lane.oid !== oid) continue;
-    if (lane.seq < selectedSequence) {
-      selected = index;
-      selectedSequence = lane.seq;
-    }
+var NODE_SHAPES = {
+  node: {
+    circles: [{ paint: "fill", r: 4, hoverR: 5, strokeWidth: 0, hoverStrokeWidth: 0 }],
+    gap: 6,
+    hoverGap: 5
+  },
+  merge: {
+    circles: [
+      { paint: "ring", r: 4.5, hoverR: 5, strokeWidth: 1, hoverStrokeWidth: 2 },
+      { paint: "fill", r: 2, hoverR: 2, strokeWidth: 0, hoverStrokeWidth: 0 }
+    ],
+    gap: 7,
+    hoverGap: 6
+  },
+  head: {
+    circles: [{ paint: "ring", r: 5, hoverR: 5.5, strokeWidth: 2, hoverStrokeWidth: 3 }],
+    gap: 8,
+    hoverGap: 7
   }
-  return selected;
-}
-function freeLaneRight(lanes, lane) {
-  for (let index = lane + 1; index < lanes.length; index += 1) {
-    if (lanes[index] === null) return index;
-  }
-  return lanes.length;
-}
-function addColorConflicts(conflicts, group) {
-  for (const left of group) {
-    for (const right of group) {
-      if (left >= right) continue;
-      conflicts.get(left)?.add(right);
-      conflicts.get(right)?.add(left);
+};
+function graphRowGeometry(row) {
+  const { input, output, parents } = row;
+  const circleIndex = row.lane;
+  const paths = [];
+  const W = SWIMLANE_WIDTH;
+  const H = SWIMLANE_HEIGHT;
+  let outputIndex = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    const lane = input[index];
+    if (lane === void 0) continue;
+    if (lane.id === row.oid) {
+      if (index !== circleIndex) {
+        paths.push({
+          d: [
+            `M ${laneX(index)} 0`,
+            `A ${W} ${W} 0 0 1 ${W * index} ${W}`,
+            `H ${laneX(circleIndex)}`
+          ].join(" "),
+          color: lane.color
+        });
+      } else if (parents.length > 0) {
+        outputIndex += 1;
+      }
+      continue;
     }
-  }
-}
-function branchColors(conflicts, meetingConflicts) {
-  const remaining = new Set(conflicts.keys());
-  const colors = Array.from({ length: conflicts.size }, () => -1);
-  while (remaining.size > 0) {
-    let selected = -1;
-    let selectedSaturation = -1;
-    let taken = /* @__PURE__ */ new Set();
-    for (const branch of remaining) {
-      const neighboringColors = /* @__PURE__ */ new Set();
-      for (const neighbor of conflicts.get(branch) ?? []) {
-        const neighborColor = colors[neighbor];
-        if (neighborColor !== void 0 && neighborColor !== -1)
-          neighboringColors.add(neighborColor);
-      }
-      if (neighboringColors.size > selectedSaturation) {
-        selected = branch;
-        selectedSaturation = neighboringColors.size;
-        taken = neighboringColors;
-      }
-    }
-    if (selected === -1) break;
-    const preferred = selected % LANE_COLORS;
-    let color = preferred;
-    if (taken.size < LANE_COLORS) {
-      for (let offset = 0; offset < LANE_COLORS; offset += 1) {
-        const candidate = (preferred + offset) % LANE_COLORS;
-        if (!taken.has(candidate)) {
-          color = candidate;
-          break;
-        }
-      }
+    const next = output[outputIndex];
+    if (next === void 0 || lane.id !== next.id) continue;
+    if (index === outputIndex) {
+      paths.push({ d: verticalLine(laneX(index), 0, H), color: lane.color });
     } else {
-      let bestCost = Number.POSITIVE_INFINITY;
-      for (let offset = 0; offset < LANE_COLORS; offset += 1) {
-        const candidate = (preferred + offset) % LANE_COLORS;
-        let cost = 0;
-        for (const neighbor of conflicts.get(selected) ?? []) {
-          if (colors[neighbor] !== candidate) continue;
-          cost += meetingConflicts.get(selected)?.has(neighbor) === true ? 1e6 : 1;
-        }
-        if (cost < bestCost) {
-          bestCost = cost;
-          color = candidate;
-        }
-      }
+      paths.push({
+        d: [
+          `M ${laneX(index)} 0`,
+          "V 6",
+          `A ${SWIMLANE_CURVE_RADIUS} ${SWIMLANE_CURVE_RADIUS} 0 0 1 ${laneX(index) - SWIMLANE_CURVE_RADIUS} ${H / 2}`,
+          `H ${laneX(outputIndex) + SWIMLANE_CURVE_RADIUS}`,
+          `A ${SWIMLANE_CURVE_RADIUS} ${SWIMLANE_CURVE_RADIUS} 0 0 0 ${laneX(outputIndex)} ${H / 2 + SWIMLANE_CURVE_RADIUS}`,
+          `V ${H}`
+        ].join(" "),
+        color: lane.color
+      });
     }
-    colors[selected] = color;
-    remaining.delete(selected);
+    outputIndex += 1;
   }
-  return colors;
-}
-function computeGraph(commits) {
-  const lanes = [];
-  const pendingRows = [];
-  const conflicts = /* @__PURE__ */ new Map();
-  const arrivals = /* @__PURE__ */ new Map();
-  const listed = new Set(commits.map((commit) => commit.oid));
-  let branchCount = 0;
-  let expectationCount = 0;
-  let laneCount = 0;
-  const createBranch = () => {
-    const branch = branchCount;
-    branchCount += 1;
-    conflicts.set(branch, /* @__PURE__ */ new Set());
-    return branch;
-  };
-  const nextExpectation = () => {
-    const seq = expectationCount;
-    expectationCount += 1;
-    return seq;
-  };
-  for (const commit of commits) {
-    const parents = Array.isArray(commit.parents) ? commit.parents.filter((parent) => typeof parent === "string" && parent !== "") : [];
-    let lane = selectLane(lanes, commit.oid);
-    const isNewLane = lane === -1;
-    if (isNewLane) {
-      lane = firstFreeLane(lanes);
-      if (lane === -1) {
-        lane = lanes.length;
-        lanes.push(null);
-      }
-      lanes[lane] = { oid: commit.oid, branch: createBranch(), seq: nextExpectation() };
-    }
-    const expectation = lanes[lane];
-    if (expectation === null || expectation === void 0) continue;
-    const branch = expectation.branch;
-    const edges = [];
-    for (let index = 0; index < lanes.length; index += 1) {
-      const activity = lanes[index];
-      if (activity === null || activity === void 0 || index === lane) continue;
-      if (activity.oid === commit.oid) {
-        edges.push({ kind: "in", branch: activity.branch, color: 0, from: index, to: lane });
-        lanes[index] = null;
-        continue;
-      }
-      edges.push({ kind: "through", branch: activity.branch, color: 0, from: index, to: index });
-    }
-    if (!isNewLane) edges.push({ kind: "in", branch, color: 0, from: lane, to: lane });
-    lanes[lane] = null;
-    for (let index = 0; index < parents.length; index += 1) {
-      const parent = parents[index];
-      if (parent === void 0) continue;
-      let target = lane;
-      let edgeBranch = branch;
-      let reuseExpectation = false;
-      if (index === 0) {
-      } else {
-        const expected = selectLane(lanes, parent);
-        if (expected !== -1 && !listed.has(parent)) {
-          target = expected;
-          reuseExpectation = true;
-        } else {
-          target = freeLaneRight(lanes, lane);
-          if (expected === -1) edgeBranch = createBranch();
-        }
-      }
-      if (!reuseExpectation) {
-        lanes[target] = { oid: parent, branch: edgeBranch, seq: nextExpectation() };
-      }
-      if (listed.has(parent)) {
-        const meeting = arrivals.get(parent) ?? /* @__PURE__ */ new Set();
-        meeting.add(edgeBranch);
-        arrivals.set(parent, meeting);
-      }
-      edges.push({ kind: "out", branch: edgeBranch, color: 0, from: lane, to: target });
-    }
-    const row = { oid: commit.oid, lane, branch, edges };
-    pendingRows.push(row);
-    addColorConflicts(conflicts, /* @__PURE__ */ new Set([branch, ...edges.map((edge) => edge.branch)]));
-    laneCount = Math.max(laneCount, lane + 1);
-    for (const edge of edges) laneCount = Math.max(laneCount, edge.from + 1, edge.to + 1);
+  for (let index = 1; index < parents.length; index += 1) {
+    const parent = parents[index];
+    if (parent === void 0) continue;
+    const parentIndex = findLastIndex(output, parent);
+    const lane = output[parentIndex];
+    if (parentIndex === -1 || lane === void 0) continue;
+    paths.push({
+      d: [
+        `M ${W * parentIndex} ${H / 2}`,
+        `A ${W} ${W} 0 0 1 ${W * (parentIndex + 1)} ${H}`,
+        `M ${W * parentIndex} ${H / 2}`,
+        `H ${laneX(circleIndex)}`
+      ].join(" "),
+      color: lane.color
+    });
   }
-  const meetingConflicts = /* @__PURE__ */ new Map();
-  for (const branch of conflicts.keys()) meetingConflicts.set(branch, /* @__PURE__ */ new Set());
-  for (const meeting of arrivals.values()) {
-    addColorConflicts(conflicts, meeting);
-    addColorConflicts(meetingConflicts, meeting);
+  const inputIndex = input.findIndex((lane) => lane.id === row.oid);
+  const incoming = input[inputIndex];
+  if (incoming !== void 0) {
+    paths.push({ d: verticalLine(laneX(circleIndex), 0, H / 2), color: incoming.color });
   }
-  const colors = branchColors(conflicts, meetingConflicts);
-  const rows = pendingRows.map((row) => ({
-    oid: row.oid,
-    lane: row.lane,
-    color: colors[row.branch] ?? 0,
-    edges: row.edges.map(({ branch: edgeBranch, ...edge }) => ({
-      ...edge,
-      color: colors[edgeBranch] ?? 0
-    }))
-  }));
-  return { rows, laneCount };
-}
-function laneStep(laneCount) {
-  if (laneCount <= 0) return LANE_WIDTH;
-  return Math.max(MIN_LANE_WIDTH, Math.min(LANE_WIDTH, MAX_GRAPH_WIDTH / laneCount));
-}
-function round(value) {
-  return Math.round(value * 100) / 100;
-}
-function edgePath(x1, y1, x2, y2) {
-  if (x1 === x2) return `M${round(x1)} ${round(y1)}V${round(y2)}`;
-  if (y2 <= y1) return `M${round(x1)} ${round(y1)}L${round(x2)} ${round(y2)}`;
-  const channelY = y1 + Math.min(CONNECTION_OFFSET, (y2 - y1) / 2);
-  const radius = Math.min(LANE_WIDTH / 2, Math.abs(x2 - x1) / 2, (y2 - channelY) / 2);
-  const direction = x2 > x1 ? 1 : -1;
-  const first = x1 + direction * radius;
-  const second = x2 - direction * radius;
-  const endY = channelY + radius;
-  return `M${round(x1)} ${round(y1)}Q${round(x1)} ${round(channelY)} ${round(first)} ${round(channelY)}H${round(second)}Q${round(x2)} ${round(channelY)} ${round(x2)} ${round(endY)}V${round(y2)}`;
-}
-function graphRowGeometry(row, laneCount) {
-  const step = laneStep(laneCount);
-  const width = laneCount <= 0 ? step : laneCount * step + LANE_PADDING;
-  const x = (lane) => lane * step + step / 2;
-  const edges = row.edges.map((edge) => {
-    const startY = edge.kind === "out" ? NODE_Y : 0;
-    const endY = edge.kind === "in" ? NODE_Y : ROW_HEIGHT;
-    return { d: edgePath(x(edge.from), startY, x(edge.to), endY), color: edge.color };
-  });
-  const radius = Math.max(2, Math.min(NODE_RADIUS, step * 0.4));
-  let textOffset = round(x(row.lane) + radius + LANE_PADDING);
-  for (const edge of row.edges) {
-    const furthest = Math.max(x(edge.from), x(edge.to));
-    if (furthest > x(row.lane)) {
-      textOffset = Math.max(textOffset, round(furthest + LANE_PADDING));
-    }
+  if (parents.length > 0) {
+    paths.push({ d: verticalLine(laneX(circleIndex), H / 2, H), color: row.color });
   }
+  const shape = row.kind === "HEAD" ? "head" : parents.length > 1 ? "merge" : "node";
+  const shapeSpec = NODE_SHAPES[shape];
   return {
-    width,
-    height: ROW_HEIGHT,
-    node: { cx: x(row.lane), cy: NODE_Y, r: radius },
-    textOffset,
-    edges
+    width: W * (Math.max(input.length, output.length, 1) + 1),
+    height: H,
+    paths,
+    node: {
+      shape,
+      cx: laneX(circleIndex),
+      cy: W,
+      color: row.color,
+      circles: shapeSpec.circles,
+      gap: shapeSpec.gap,
+      hoverGap: shapeSpec.hoverGap
+    }
   };
+}
+function badgeIcon(kind) {
+  if (kind === "head") return "target";
+  if (kind === "remote") return "cloud";
+  if (kind === "tag") return "tag";
+  return "branch";
+}
+function refBadges(refs) {
+  const badges = [];
+  const remaining = refs.slice();
+  const first = remaining[0];
+  if (first !== void 0) {
+    badges.push({
+      color: first.color,
+      icon: badgeIcon(first.kind),
+      name: first.name,
+      count: 1,
+      refs: [first]
+    });
+    remaining.shift();
+  }
+  const byColor = /* @__PURE__ */ new Map();
+  for (const ref of remaining) {
+    const group = byColor.get(ref.color);
+    if (group === void 0) byColor.set(ref.color, [ref]);
+    else group.push(ref);
+  }
+  for (const [color, group] of byColor) {
+    const byIcon = /* @__PURE__ */ new Map();
+    for (const ref of group) {
+      const icon = badgeIcon(ref.kind);
+      const members = byIcon.get(icon);
+      if (members === void 0) byIcon.set(icon, [ref]);
+      else members.push(ref);
+    }
+    for (const [icon, members] of byIcon) {
+      badges.push({ color, icon, name: null, count: members.length, refs: members });
+    }
+  }
+  return badges;
 }
 
 // src/client/panel/views/GraphSection.ts
 var h13 = import_react20.createElement;
-var VISIBLE_REFS = 2;
+function graphColorValue(color) {
+  return `var(--dshgg-scm-${color})`;
+}
 function GraphSection(props) {
   const t = props.t;
   const commits = Array.isArray(props.commits) ? props.commits : null;
-  const layout = (0, import_react20.useMemo)(() => computeGraph(commits ?? []), [commits]);
+  const references = props.references ?? null;
+  const rowsLayout = (0, import_react20.useMemo)(
+    () => computeGraph(
+      (commits ?? []).map((commit) => ({
+        oid: commit.oid,
+        parents: commit.parents,
+        refs: parseRefs(commit.refs)
+      })),
+      references
+    ),
+    [commits, references]
+  );
+  const graphId = props.graphId ?? "git-graph";
   const menu = props.menu;
   const trigger = menu === void 0 ? null : menu.trigger;
   const rows = [];
@@ -2302,13 +2407,15 @@ function GraphSection(props) {
   } else {
     for (let index = 0; index < commits.length; index += 1) {
       const commit = commits[index];
-      const row = layout.rows[index];
+      const row = rowsLayout[index];
+      if (commit === void 0 || row === void 0) continue;
       rows.push(
         h13(GraphRow, {
           key: commit.oid,
           commit,
           row,
-          geometry: graphRowGeometry(row, layout.laneCount),
+          geometry: graphRowGeometry(row),
+          maskId: `${graphId}-mask-${index}`,
           t,
           onSelect: props.onSelect,
           menuTrigger: trigger,
@@ -2332,13 +2439,111 @@ function GraphSection(props) {
     rows
   );
 }
+function GraphCell(props) {
+  const { geometry, maskId } = props;
+  const node = geometry.node;
+  return h13(
+    "svg",
+    {
+      className: "dshgg-graphSvg",
+      width: geometry.width,
+      height: geometry.height,
+      viewBox: `0 0 ${geometry.width} ${geometry.height}`,
+      "aria-hidden": "true",
+      focusable: false
+    },
+    h13(
+      "defs",
+      null,
+      h13(
+        "mask",
+        {
+          id: maskId,
+          maskUnits: "userSpaceOnUse",
+          x: 0,
+          y: 0,
+          width: geometry.width,
+          height: geometry.height
+        },
+        h13("rect", { x: 0, y: 0, width: geometry.width, height: geometry.height, fill: "white" }),
+        h13("circle", {
+          className: "dshgg-graphGap",
+          cx: node.cx,
+          cy: node.cy,
+          r: node.gap,
+          fill: "black",
+          style: { "--dshgg-gap-hover": `${node.hoverGap}px` }
+        })
+      )
+    ),
+    h13(
+      "g",
+      { className: "dshgg-graphLines", mask: `url(#${maskId})` },
+      geometry.paths.map(
+        (path, index) => h13("path", {
+          key: `path:${index}`,
+          className: "dshgg-graphEdge",
+          "data-color": path.color,
+          d: path.d,
+          style: { stroke: graphColorValue(path.color) }
+        })
+      )
+    ),
+    node.circles.map(
+      (circle, index) => h13("circle", {
+        key: `node:${index}`,
+        className: "dshgg-graphNode",
+        "data-shape": node.shape,
+        "data-paint": circle.paint,
+        "data-color": node.color,
+        cx: node.cx,
+        cy: node.cy,
+        r: circle.r,
+        ...circle.paint === "ring" ? {
+          fill: "none",
+          strokeWidth: circle.strokeWidth,
+          style: {
+            stroke: graphColorValue(node.color),
+            "--dshgg-node-hover-r": `${circle.hoverR}px`,
+            "--dshgg-node-hover-stroke": `${circle.hoverStrokeWidth}px`
+          }
+        } : {
+          style: {
+            fill: graphColorValue(node.color),
+            "--dshgg-node-hover-r": `${circle.hoverR}px`
+          }
+        }
+      })
+    )
+  );
+}
+function badgeIconElement(icon) {
+  if (icon === "target") return h13(TargetIcon, { size: 16 });
+  if (icon === "cloud") return h13(CloudIcon, { size: 16 });
+  if (icon === "tag") return h13(TagIcon, { size: 16 });
+  return h13(GitBranchIcon, { size: 12 });
+}
+function Badge(props) {
+  const badge = props.badge;
+  return h13(
+    "span",
+    {
+      className: "dshgg-graphBadge",
+      "data-icon": badge.icon,
+      "data-color": badge.color,
+      style: { backgroundColor: graphColorValue(badge.color) },
+      title: badge.refs.map((ref) => ref.name).join(", ")
+    },
+    badge.count > 1 ? h13("span", { className: "dshgg-graphBadgeCount" }, String(badge.count)) : null,
+    h13("span", { className: "dshgg-graphBadgeIcon" }, badgeIconElement(badge.icon)),
+    badge.name === null ? null : h13("span", { className: "dshgg-graphBadgeName" }, badge.name)
+  );
+}
 function GraphRow(props) {
   const commit = props.commit;
-  const geometry = props.geometry;
+  const row = props.row;
   const t = props.t;
-  const refs = distinctRefs(parseRefs(commit.refs));
-  const visibleRefs = refs.slice(0, VISIBLE_REFS);
-  const hidden = refs.length - visibleRefs.length;
+  const badges = refBadges(row.refs);
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
   const open = () => {
     if (typeof props.onSelect === "function") props.onSelect(commit);
@@ -2357,85 +2562,27 @@ function GraphRow(props) {
   const rowProps = menuTrigger === null || props.menuTarget === void 0 ? interactive : menuTrigger(props.menuTarget, { ...interactive, "aria-haspopup": "menu" });
   const subject = commit.subject === "" ? t("graph.noSubject") : commit.subject;
   const ago = formatAgo(t, commit.authoredAt);
-  const titlePrefix = refs.length === 0 ? "" : `${refs.map((ref) => ref.label).join(", ")} · `;
+  const titlePrefix = row.refs.length === 0 ? "" : `${row.refs.map((ref) => ref.name).join(", ")} · `;
   return h13(
     "div",
     {
       className: "dshgg-graphRow",
+      "data-current": row.kind === "HEAD" ? "true" : void 0,
       title: `${titlePrefix}${commit.shortOid} ${subject} · ${commit.author} · ${ago} · ${t("menu.hint")}`,
       ...rowProps
     },
+    h13(GraphCell, { geometry: props.geometry, maskId: props.maskId }),
     h13(
-      "svg",
-      {
-        className: "dshgg-graphSvg",
-        width: geometry.width,
-        height: geometry.height,
-        viewBox: `0 0 ${geometry.width} ${geometry.height}`,
-        "aria-hidden": "true",
-        focusable: false
-      },
-      geometry.edges.map(
-        (edge, index) => h13("path", {
-          key: `edge:${index}`,
-          className: "dshgg-graphEdge",
-          "data-lane": String(edge.color),
-          d: edge.d
-        })
-      ),
-      h13("circle", {
-        className: "dshgg-graphNode",
-        "data-lane": String(props.row.color),
-        cx: geometry.node.cx,
-        cy: geometry.node.cy,
-        r: geometry.node.r
-      })
+      "span",
+      { className: "dshgg-graphLabel" },
+      h13("span", { className: "dshgg-graphSubject" }, subject),
+      commit.author === "" ? null : h13("span", { className: "dshgg-graphAuthor" }, commit.author)
     ),
-    h13(
-      "div",
-      {
-        className: "dshgg-graphBody",
-        style: { marginLeft: `${geometry.textOffset - geometry.width}px` }
-      },
-      h13(
-        "div",
-        { className: "dshgg-graphSubjectLine" },
-        h13("span", { className: "dshgg-graphSubject" }, subject),
-        visibleRefs.length === 0 ? null : h13(
-          "span",
-          { className: "dshgg-refs" },
-          visibleRefs.map(
-            (ref, index) => h13(
-              "span",
-              {
-                key: `${ref.label}:${index}`,
-                className: "dshgg-ref",
-                "data-kind": ref.kind,
-                title: ref.label
-              },
-              ref.label
-            )
-          ),
-          hidden > 0 ? h13(
-            "span",
-            {
-              key: "more",
-              className: "dshgg-ref",
-              "data-kind": "more",
-              title: refs.slice(VISIBLE_REFS).map((ref) => ref.label).join(", ")
-            },
-            `+${hidden}`
-          ) : null
-        ),
-        h13(
-          "span",
-          { className: "dshgg-graphMeta" },
-          h13("span", { className: "dshgg-graphHash" }, commit.shortOid),
-          h13("span", { className: "dshgg-dot dshgg-graphAuthorDot" }, "·"),
-          h13("span", { className: "dshgg-graphAuthor" }, commit.author),
-          h13("span", { className: "dshgg-dot dshgg-graphTimeDot" }, "·"),
-          h13("span", { className: "dshgg-graphTime" }, ago)
-        )
+    badges.length === 0 ? null : h13(
+      "span",
+      { className: "dshgg-graphBadges" },
+      badges.map(
+        (badge, index) => h13(Badge, { key: `${badge.color}:${badge.icon}:${index}`, badge })
       )
     )
   );
@@ -2456,7 +2603,7 @@ function GitPanel(props) {
     refs
   });
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
-  const { graph, graphLoading, graphFailure, loadGraph } = useHistory({ call, refs });
+  const { graph, references, graphLoading, graphFailure, loadGraph } = useHistory({ call, refs });
   const [openSections, setOpenSections] = (0, import_react21.useState)({
     merge: true,
     staged: true,
@@ -2681,6 +2828,8 @@ function GitPanel(props) {
     h14(GraphSection, {
       t,
       commits: graph,
+      references,
+      graphId: panelId,
       loading: graphLoading,
       failure: graphFailure,
       open: openSections.graph === true,
@@ -2785,7 +2934,7 @@ function GitPanel(props) {
 }
 
 // src/client/styles.css
-var styles_default = '/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host\'s `--dsw-*`\n * theme tokens, and text uses the host\'s `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH\'s\n * own sidebar surfaces. Sizes follow the host\'s sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n\n/* --------------------------------------------------------------- buttons --- */\n\n.dshgg-iconBtn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n  padding: 6px;\n  color: var(--dsw-alias-label-secondary);\n  line-height: 1;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-iconBtn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-iconBtn[data-spinning="true"] svg {\n  animation: dshgg-spin 1s linear infinite;\n}\n\n@keyframes dshgg-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.dshgg-btn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  height: 28px;\n  padding: 0 12px;\n  border: 0.5px solid transparent;\n  border-radius: var(--dsw-radius-sm);\n  font: var(--dsw-font-xxs-strong-12);\n  white-space: nowrap;\n  cursor: pointer;\n}\n\n.dshgg-btn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-btnPrimary {\n  color: var(--dsw-alias-label-primary-foreground);\n  background: var(--dsw-alias-button-primary-fill);\n}\n\n.dshgg-btnPrimary:hover:not(:disabled) {\n  background: var(--dsw-alias-button-primary-hover);\n}\n\n.dshgg-btnGhost {\n  color: var(--dsw-alias-label-primary);\n  background: transparent;\n  border-color: var(--dsw-alias-border-l3);\n  font-weight: 400;\n}\n\n.dshgg-btnGhost:hover:not(:disabled) {\n  background: var(--dsw-alias-interactive-bg-hover-solid);\n}\n\n.dshgg-linkBtn {\n  flex: none;\n  padding: 0;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-strong-12);\n  background: none;\n  border: none;\n  cursor: pointer;\n}\n\n.dshgg-linkBtn:hover {\n  text-decoration: underline;\n}\n\n/* --------------------------------------------------------------- toolbar --- */\n\n.dshgg-toolbar {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  height: 38px;\n  padding: 0 6px;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l1);\n}\n\n.dshgg-branchWrap {\n  position: relative;\n  display: flex;\n  flex: 0 1 auto;\n  min-width: 0;\n}\n\n.dshgg-branchChip {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  height: 28px;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-branchChip:disabled {\n  color: var(--dsw-alias-label-tertiary);\n  cursor: default;\n}\n\n.dshgg-branchChip svg:first-child {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-branchName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font-weight: 500;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-upstream {\n  display: inline-flex;\n  flex: 0 1000 auto;\n  align-items: center;\n  min-width: 0;\n  max-width: 140px;\n  padding: 0 2px;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sync {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n@media (hover: hover) {\n  .dshgg-branchChip:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-chevron {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  color: var(--dsw-alias-label-caption);\n  transition: transform 150ms var(--ds-ease-in-out);\n}\n\n/* biome-ignore lint/style/noDescendingSpecificity: Component SVG sizing does not override the spinner animation. */\n.dshgg-chevron svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-chevron[data-open="true"] {\n  transform: rotate(90deg);\n}\n\n/* ------------------------------------------------------------ commit box --- */\n\n.dshgg-commitBox {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  gap: 8px;\n  padding: 10px 8px 8px;\n}\n\n.dshgg-commitMessage {\n  box-sizing: border-box;\n  width: 100%;\n  min-height: 60px;\n  max-height: 30vh;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  resize: vertical;\n  outline: none;\n}\n\n.dshgg-commitMessage::placeholder {\n  color: var(--dsw-alias-label-dimmed);\n}\n\n.dshgg-commitMessage:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-commitMessage:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-commitRow {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.dshgg-commitHint {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* -------------------------------------------------------------- feedback --- */\n\n.dshgg-banner {\n  display: flex;\n  align-items: flex-start;\n  gap: 8px;\n  margin: 0 8px 8px;\n  padding: 8px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-bannerText {\n  flex: 1;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerText > span {\n  font-weight: 500;\n}\n\n.dshgg-bannerDetail {\n  max-height: 96px;\n  margin-top: 4px;\n  overflow: auto;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  margin: -4px -4px -4px 0;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn svg {\n  width: 12px;\n  height: 12px;\n}\n\n.dshgg-notice {\n  margin: 0 8px 8px;\n  padding: 7px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: var(--dsw-alias-state-success-tertiary);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 24%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-state {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 6px;\n  padding: 28px 16px;\n  text-align: center;\n}\n\n.dshgg-stateIcon {\n  display: flex;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-stateTitle {\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-stateDesc {\n  max-width: 280px;\n  margin: 0;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-stateAction {\n  margin-top: 8px;\n}\n\n.dshgg-note {\n  padding: 4px 6px 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-menuNote {\n  padding: 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-clean {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n  padding: 20px 12px;\n  text-align: center;\n}\n\n.dshgg-cleanIcon {\n  display: flex;\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-cleanTitle {\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-cleanDesc {\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* --------------------------------------------------------------- scroll --- */\n\n.dshgg-scroll {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 2px;\n  min-height: 0;\n  padding: 2px 6px 10px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n}\n\n/* -------------------------------------------------------------- section --- */\n\n.dshgg-section {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n}\n\n.dshgg-section[data-section="graph"] {\n  margin-top: 2px;\n  padding-top: 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l1);\n}\n\n.dshgg-sectionHeader {\n  position: relative;\n  display: flex;\n  align-items: center;\n  gap: 2px;\n  height: 30px;\n  padding: 0 4px 0 2px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-sectionToggle {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 26px;\n  padding: 0 4px 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-sectionTitle {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sectionCount {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-sectionActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn svg {\n  width: 13px;\n  height: 13px;\n}\n\n.dshgg-sectionBody {\n  display: flex;\n  flex-direction: column;\n}\n\n@media (hover: hover) {\n  .dshgg-sectionHeader:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n/* ----------------------------------------------------------------- rows --- */\n\n.dshgg-row {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n  padding: 0 6px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-fileRow {\n  cursor: pointer;\n  user-select: none;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-fileRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-status {\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n  text-align: center;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-status[data-status="M"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="A"],\n.dshgg-status[data-status="U"] {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-status[data-status="D"] {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-status[data-status="R"],\n.dshgg-status[data-status="C"] {\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-status[data-status="T"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="!"] {\n  color: var(--dsw-alias-state-error-secondary);\n}\n\n.dshgg-fileName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* The dimmed parent directory trails the file name: it disambiguates equally\n   named files without turning the flat list back into a hierarchy. */\n.dshgg-fileDir {\n  flex: 1 1 0;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileName[data-obsolete="true"] {\n  color: var(--dsw-alias-label-secondary);\n  text-decoration: line-through;\n}\n\n.dshgg-fileArrow {\n  flex: none;\n  max-width: 38%;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 0;\n  margin-left: auto;\n  opacity: 0;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover .dshgg-fileActions {\n    opacity: 1;\n  }\n}\n\n.dshgg-fileRow:focus-within .dshgg-fileActions {\n  opacity: 1;\n}\n\n.dshgg-fileActions .dshgg-iconBtn {\n  width: 22px;\n  height: 22px;\n  padding: 4px;\n}\n\n.dshgg-fileActions .dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n/* ---------------------------------------------------------------- graph --- */\n\n.dshgg-graphRow {\n  display: flex;\n  flex: none;\n  align-items: stretch;\n  gap: 0;\n  height: 28px;\n  min-width: 0;\n  padding: 0 6px 0 4px;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n@media (hover: hover) {\n  .dshgg-graphRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-graphRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-graphSvg {\n  display: block;\n  flex: none;\n  overflow: hidden;\n}\n\n/* One lane color per palette slot; the layout module paints the same slot for\n * every line and node so a branch keeps its color for as long as it is drawn. */\n.dshgg-graphEdge,\n.dshgg-graphNode {\n  --dshgg-lane-color: var(--dsw-alias-label-secondary);\n}\n\n.dshgg-graphEdge[data-lane="0"],\n.dshgg-graphNode[data-lane="0"] {\n  --dshgg-lane-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);\n}\n\n.dshgg-graphEdge[data-lane="1"],\n.dshgg-graphNode[data-lane="1"] {\n  --dshgg-lane-color: var(--dsw-alias-state-done-primary);\n}\n\n.dshgg-graphEdge[data-lane="2"],\n.dshgg-graphNode[data-lane="2"] {\n  --dshgg-lane-color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-graphEdge[data-lane="3"],\n.dshgg-graphNode[data-lane="3"] {\n  --dshgg-lane-color: var(--dsw-alias-state-warn-primary);\n}\n\n.dshgg-graphEdge[data-lane="4"],\n.dshgg-graphNode[data-lane="4"] {\n  --dshgg-lane-color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-graphEdge[data-lane="5"],\n.dshgg-graphNode[data-lane="5"] {\n  --dshgg-lane-color: var(--dsw-alias-chart-system);\n}\n\n.dshgg-graphEdge {\n  fill: none;\n  stroke: var(--dshgg-lane-color);\n  stroke-width: 1.5;\n  stroke-linecap: round;\n  stroke-linejoin: round;\n}\n\n.dshgg-graphNode {\n  fill: var(--dshgg-lane-color);\n}\n\n.dshgg-graphBody {\n  display: flex;\n  flex: 1;\n  min-width: 0;\n  container-type: inline-size;\n}\n\n.dshgg-graphSubjectLine {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n}\n\n.dshgg-graphSubject {\n  flex: 0 1 auto;\n  min-width: min(8ch, 100%);\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphMeta {\n  display: inline-flex;\n  flex: 0 1 auto;\n  align-items: center;\n  gap: 4px;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n}\n\n.dshgg-graphMeta span {\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphAuthor {\n  flex: 0 1 auto;\n  min-width: 0;\n}\n\n.dshgg-graphHash,\n.dshgg-graphTime,\n.dshgg-graphMeta .dshgg-dot {\n  flex: none;\n}\n\n.dshgg-graphHash {\n  font-family: var(--ds-font-family-code);\n}\n\n/* Protect the subject before removing secondary information. Each row\'s text\n * body is a width container, so these thresholds follow the Sidebar pane size\n * rather than the unrelated width of a floating Web window. */\n@container (max-width: 360px) {\n  .dshgg-graphTime,\n  .dshgg-graphTimeDot {\n    display: none;\n  }\n}\n\n@container (max-width: 280px) {\n  .dshgg-graphAuthor,\n  .dshgg-graphAuthorDot {\n    display: none;\n  }\n}\n\n@container (max-width: 200px) {\n  .dshgg-graphMeta,\n  .dshgg-refs {\n    display: none;\n  }\n}\n\n.dshgg-refs {\n  display: inline-flex;\n  flex: 0 1 auto;\n  gap: 4px;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.dshgg-ref {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  max-width: 112px;\n  height: 16px;\n  padding: 0 6px;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 10px;\n  font-weight: 500;\n  line-height: 16px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  border-radius: 999px;\n}\n\n.dshgg-ref[data-kind="head"] {\n  color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);\n  background: color-mix(\n    in srgb,\n    var(--dsw-alias-brand-primary-new-colorprimary-new-color) 12%,\n    transparent\n  );\n}\n\n.dshgg-ref[data-kind="branch"] {\n  color: var(--dsw-alias-label-secondary);\n  background: var(--dsw-alias-bg-module-platform);\n}\n\n.dshgg-ref[data-kind="tag"] {\n  color: var(--dsw-alias-state-warn-label);\n  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent);\n}\n\n.dshgg-ref[data-kind="remote"] {\n  color: var(--dsw-alias-label-tertiary);\n}\n\n/* --------------------------------------------------------- commit detail --- */\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l1);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* ------------------------------------------------------------- confirm --- */\n\n.dshgg-confirm {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 10px;\n  padding: 10px 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-confirmText {\n  flex: 1;\n  min-width: 0;\n}\n\n.dshgg-confirmTitle {\n  font: var(--dsw-font-xs-strong-13);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmDesc {\n  margin-top: 3px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n}\n\n/* ---------------------------------------------------------- branch menu --- */\n\n.dshgg-menu {\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 0;\n  z-index: 20;\n  min-width: 220px;\n  max-width: min(320px, 70vw);\n  max-height: 320px;\n  padding: 4px;\n  overflow-y: auto;\n  background: var(--dsw-specific-menu);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  backdrop-filter: var(--dsw-menu-backdrop-filter);\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-menuItem {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  min-height: 32px;\n  padding: 5px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n.dshgg-menuItem:disabled {\n  color: var(--dsw-alias-label-primary);\n  cursor: default;\n}\n\n@media (hover: hover) {\n  .dshgg-menuItem:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-menuItem:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.dshgg-menuCheck {\n  display: inline-flex;\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-state-business-primary);\n}\n\n/* biome-ignore lint/style/noDescendingSpecificity: Menu SVG sizing is independent of the icon-button spinner animation. */\n.dshgg-menuCheck svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-menuLabel {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* --------------------------------------------------------------- titles --- */\n\n.dshgg-title {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n}\n\n.dshgg-titleText {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* ----------------------------------------------------------------- diff --- */\n\n.dshgg-diffRoot {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n}\n\n.dshgg-diffHeader {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-width: 0;\n  height: 38px;\n  padding: 0 6px 0 10px;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-diffPath {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 1px;\n  min-width: 0;\n}\n\n.dshgg-diffName {\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffFrom {\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffBadge {\n  flex: none;\n  height: 20px;\n  padding: 0 7px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxxs-strong-11);\n  line-height: 20px;\n  white-space: nowrap;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-diffBadge[data-kind="staged"],\n.dshgg-diffBadge[data-kind="untracked"] {\n  color: var(--dsw-alias-state-success-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);\n}\n\n.dshgg-diffBadge[data-kind="commit"] {\n  color: var(--dsw-alias-state-business-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);\n}\n\n.dshgg-diffStats {\n  display: inline-flex;\n  flex: none;\n  gap: 6px;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-diffAdd {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-diffDel {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-diffBody {\n  flex: 1;\n  min-height: 0;\n  padding: 4px 0 16px;\n  overflow: auto;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 20px;\n}\n\n.dshgg-hunkHeader {\n  padding: 4px 10px 2px;\n  margin-top: 4px;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre;\n}\n\n.dshgg-diffLine {\n  display: grid;\n  grid-template-columns: 40px 40px 14px minmax(0, 1fr);\n  min-width: max-content;\n  min-height: 20px;\n}\n\n.dshgg-gutter {\n  padding-right: 6px;\n  color: var(--dsw-alias-label-tertiary);\n  font-variant-numeric: tabular-nums;\n  text-align: right;\n  user-select: none;\n}\n\n.dshgg-marker {\n  color: var(--dsw-alias-label-tertiary);\n  font-weight: 500;\n  text-align: center;\n  user-select: none;\n}\n\n.dshgg-code {\n  min-width: 0;\n  padding: 0 10px;\n  white-space: pre;\n}\n\n.dshgg-diffLine[data-type="+"] {\n  background: var(--dsw-alias-file-diff-added-bg);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-added-gutter);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="-"] {\n  background: var(--dsw-alias-file-diff-deleted-bg);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-deleted-gutter);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffNote {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 8px;\n  padding: 16px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xs-13);\n}\n\n/* --------------------------------------------------------------- motion --- */\n\n@media (prefers-reduced-motion: reduce) {\n  .dshgg-iconBtn[data-spinning="true"] svg {\n    animation: none;\n  }\n\n  .dshgg-chevron {\n    transition: none;\n  }\n}\n';
+var styles_default = '/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host\'s `--dsw-*`\n * theme tokens, and text uses the host\'s `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH\'s\n * own sidebar surfaces. Sizes follow the host\'s sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n * The commit graph is the one exception: it reproduces VS Code\'s Source\n * Control Graph, including its `scmGraph.*` palette and 22px rows.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n\n/* --------------------------------------------------------------- buttons --- */\n\n.dshgg-iconBtn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n  padding: 6px;\n  color: var(--dsw-alias-label-secondary);\n  line-height: 1;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-iconBtn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-iconBtn[data-spinning="true"] svg {\n  animation: dshgg-spin 1s linear infinite;\n}\n\n@keyframes dshgg-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.dshgg-btn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  height: 28px;\n  padding: 0 12px;\n  border: 0.5px solid transparent;\n  border-radius: var(--dsw-radius-sm);\n  font: var(--dsw-font-xxs-strong-12);\n  white-space: nowrap;\n  cursor: pointer;\n}\n\n.dshgg-btn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-btnPrimary {\n  color: var(--dsw-alias-label-primary-foreground);\n  background: var(--dsw-alias-button-primary-fill);\n}\n\n.dshgg-btnPrimary:hover:not(:disabled) {\n  background: var(--dsw-alias-button-primary-hover);\n}\n\n.dshgg-btnGhost {\n  color: var(--dsw-alias-label-primary);\n  background: transparent;\n  border-color: var(--dsw-alias-border-l3);\n  font-weight: 400;\n}\n\n.dshgg-btnGhost:hover:not(:disabled) {\n  background: var(--dsw-alias-interactive-bg-hover-solid);\n}\n\n.dshgg-linkBtn {\n  flex: none;\n  padding: 0;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-strong-12);\n  background: none;\n  border: none;\n  cursor: pointer;\n}\n\n.dshgg-linkBtn:hover {\n  text-decoration: underline;\n}\n\n/* --------------------------------------------------------------- toolbar --- */\n\n.dshgg-toolbar {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  height: 38px;\n  padding: 0 6px;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l1);\n}\n\n.dshgg-branchWrap {\n  position: relative;\n  display: flex;\n  flex: 0 1 auto;\n  min-width: 0;\n}\n\n.dshgg-branchChip {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  height: 28px;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-branchChip:disabled {\n  color: var(--dsw-alias-label-tertiary);\n  cursor: default;\n}\n\n.dshgg-branchChip svg:first-child {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-branchName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font-weight: 500;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-upstream {\n  display: inline-flex;\n  flex: 0 1000 auto;\n  align-items: center;\n  min-width: 0;\n  max-width: 140px;\n  padding: 0 2px;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sync {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n@media (hover: hover) {\n  .dshgg-branchChip:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-chevron {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  color: var(--dsw-alias-label-caption);\n  transition: transform 150ms var(--ds-ease-in-out);\n}\n\n/* biome-ignore lint/style/noDescendingSpecificity: Component SVG sizing does not override the spinner animation. */\n.dshgg-chevron svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-chevron[data-open="true"] {\n  transform: rotate(90deg);\n}\n\n/* ------------------------------------------------------------ commit box --- */\n\n.dshgg-commitBox {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  gap: 8px;\n  padding: 10px 8px 8px;\n}\n\n.dshgg-commitMessage {\n  box-sizing: border-box;\n  width: 100%;\n  min-height: 60px;\n  max-height: 30vh;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  resize: vertical;\n  outline: none;\n}\n\n.dshgg-commitMessage::placeholder {\n  color: var(--dsw-alias-label-dimmed);\n}\n\n.dshgg-commitMessage:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-commitMessage:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-commitRow {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.dshgg-commitHint {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* -------------------------------------------------------------- feedback --- */\n\n.dshgg-banner {\n  display: flex;\n  align-items: flex-start;\n  gap: 8px;\n  margin: 0 8px 8px;\n  padding: 8px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-bannerText {\n  flex: 1;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerText > span {\n  font-weight: 500;\n}\n\n.dshgg-bannerDetail {\n  max-height: 96px;\n  margin-top: 4px;\n  overflow: auto;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  margin: -4px -4px -4px 0;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn svg {\n  width: 12px;\n  height: 12px;\n}\n\n.dshgg-notice {\n  margin: 0 8px 8px;\n  padding: 7px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: var(--dsw-alias-state-success-tertiary);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 24%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-state {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 6px;\n  padding: 28px 16px;\n  text-align: center;\n}\n\n.dshgg-stateIcon {\n  display: flex;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-stateTitle {\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-stateDesc {\n  max-width: 280px;\n  margin: 0;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-stateAction {\n  margin-top: 8px;\n}\n\n.dshgg-note {\n  padding: 4px 6px 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-menuNote {\n  padding: 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-clean {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n  padding: 20px 12px;\n  text-align: center;\n}\n\n.dshgg-cleanIcon {\n  display: flex;\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-cleanTitle {\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-cleanDesc {\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* --------------------------------------------------------------- scroll --- */\n\n.dshgg-scroll {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 2px;\n  min-height: 0;\n  padding: 2px 6px 10px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n}\n\n/* -------------------------------------------------------------- section --- */\n\n.dshgg-section {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n}\n\n.dshgg-section[data-section="graph"] {\n  margin-top: 2px;\n  padding-top: 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l1);\n}\n\n.dshgg-sectionHeader {\n  position: relative;\n  display: flex;\n  align-items: center;\n  gap: 2px;\n  height: 30px;\n  padding: 0 4px 0 2px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-sectionToggle {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 26px;\n  padding: 0 4px 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-sectionTitle {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sectionCount {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-sectionActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn svg {\n  width: 13px;\n  height: 13px;\n}\n\n.dshgg-sectionBody {\n  display: flex;\n  flex-direction: column;\n}\n\n@media (hover: hover) {\n  .dshgg-sectionHeader:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n/* ----------------------------------------------------------------- rows --- */\n\n.dshgg-row {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n  padding: 0 6px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-fileRow {\n  cursor: pointer;\n  user-select: none;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-fileRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-status {\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n  text-align: center;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-status[data-status="M"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="A"],\n.dshgg-status[data-status="U"] {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-status[data-status="D"] {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-status[data-status="R"],\n.dshgg-status[data-status="C"] {\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-status[data-status="T"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="!"] {\n  color: var(--dsw-alias-state-error-secondary);\n}\n\n.dshgg-fileName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* The dimmed parent directory trails the file name: it disambiguates equally\n   named files without turning the flat list back into a hierarchy. */\n.dshgg-fileDir {\n  flex: 1 1 0;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileName[data-obsolete="true"] {\n  color: var(--dsw-alias-label-secondary);\n  text-decoration: line-through;\n}\n\n.dshgg-fileArrow {\n  flex: none;\n  max-width: 38%;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 0;\n  margin-left: auto;\n  opacity: 0;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover .dshgg-fileActions {\n    opacity: 1;\n  }\n}\n\n.dshgg-fileRow:focus-within .dshgg-fileActions {\n  opacity: 1;\n}\n\n.dshgg-fileActions .dshgg-iconBtn {\n  width: 22px;\n  height: 22px;\n  padding: 4px;\n}\n\n.dshgg-fileActions .dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n/* ---------------------------------------------------------------- graph --- */\n\n/* The commit graph reproduces VS Code\'s Source Control Graph, so its palette\n * is VS Code\'s `scmGraph.*` color set rather than host tokens: five rotation\n * colors shared by light and dark themes, plus the checked-out (`charts.blue`),\n * upstream (`charts.purple`) and base reference colors. Badge text uses the\n * host\'s base background, standing in for VS Code\'s `panel.background`. */\n.dshgg-root {\n  --dshgg-scm-lane1: #ffb000;\n  --dshgg-scm-lane2: #dc267f;\n  --dshgg-scm-lane3: #994f00;\n  --dshgg-scm-lane4: #40b0a6;\n  --dshgg-scm-lane5: #b66dff;\n  --dshgg-scm-ref: #1a85ff;\n  --dshgg-scm-remote: #652d90;\n  --dshgg-scm-base: #ea5c00;\n  --dshgg-scm-label-foreground: var(--dsw-alias-bg-base);\n}\n\nbody[data-ds-dark-theme] .dshgg-root {\n  --dshgg-scm-ref: #3794ff;\n  --dshgg-scm-remote: #b180d7;\n}\n\n/* VS Code `.history-item`: 22px rows, the graph cell, the label, the badges. */\n.dshgg-graphRow {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 22px;\n  min-width: 0;\n  padding: 0 6px 0 4px;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n@media (hover: hover) {\n  .dshgg-graphRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-graphRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-graphSvg {\n  display: block;\n  flex: none;\n  height: 22px;\n}\n\n.dshgg-graphEdge {\n  fill: none;\n  stroke-width: 1px;\n  stroke-linecap: round;\n}\n\n/* VS Code clears its node strokes on hover: the outer gap closes and the node\'s\n * outer edge grows by half a stroke. The geometry carries the hover radii. */\n@media (hover: hover) {\n  .dshgg-graphRow:hover .dshgg-graphGap {\n    r: var(--dshgg-gap-hover);\n  }\n\n  .dshgg-graphRow:hover .dshgg-graphNode {\n    r: var(--dshgg-node-hover-r);\n  }\n\n  .dshgg-graphRow:hover .dshgg-graphNode[data-paint="ring"] {\n    stroke-width: var(--dshgg-node-hover-stroke);\n  }\n}\n\n/* VS Code `.monaco-icon-label`: subject and description ellipsize together. */\n.dshgg-graphLabel {\n  flex: 1 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  line-height: 22px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphSubject {\n  white-space: pre;\n}\n\n.dshgg-graphAuthor {\n  margin-left: 0.5em;\n  font-size: 0.9em;\n  white-space: pre;\n  opacity: 0.7;\n}\n\n.dshgg-graphRow[data-current="true"] .dshgg-graphSubject,\n.dshgg-graphRow[data-current="true"] .dshgg-graphAuthor {\n  font-weight: 600;\n}\n\n/* VS Code `.label-container` and `.label`. */\n.dshgg-graphBadges {\n  display: flex;\n  flex-shrink: 0;\n  gap: 4px;\n  margin-left: 4px;\n}\n\n.dshgg-graphBadge {\n  display: flex;\n  align-items: center;\n  color: var(--dshgg-scm-label-foreground);\n  line-height: 18px;\n  border-radius: 10px;\n}\n\n.dshgg-graphBadgeCount {\n  padding-left: 4px;\n  font-size: 12px;\n}\n\n.dshgg-graphBadgeIcon {\n  display: flex;\n  padding: 1px;\n}\n\n/* The icon element is sized by its own attributes: 16px, or 12px for branches,\n * matching VS Code\'s codicon font sizes inside an 18px badge. */\n\n.dshgg-graphBadge[data-icon="branch"] .dshgg-graphBadgeIcon {\n  padding: 3px;\n}\n\n.dshgg-graphBadgeName {\n  max-width: 100px;\n  padding-right: 4px;\n  overflow: hidden;\n  font-size: 12px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* --------------------------------------------------------- commit detail --- */\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l1);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* ------------------------------------------------------------- confirm --- */\n\n.dshgg-confirm {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 10px;\n  padding: 10px 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-confirmText {\n  flex: 1;\n  min-width: 0;\n}\n\n.dshgg-confirmTitle {\n  font: var(--dsw-font-xs-strong-13);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmDesc {\n  margin-top: 3px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n}\n\n/* ---------------------------------------------------------- branch menu --- */\n\n.dshgg-menu {\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 0;\n  z-index: 20;\n  min-width: 220px;\n  max-width: min(320px, 70vw);\n  max-height: 320px;\n  padding: 4px;\n  overflow-y: auto;\n  background: var(--dsw-specific-menu);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  backdrop-filter: var(--dsw-menu-backdrop-filter);\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-menuItem {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  min-height: 32px;\n  padding: 5px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n.dshgg-menuItem:disabled {\n  color: var(--dsw-alias-label-primary);\n  cursor: default;\n}\n\n@media (hover: hover) {\n  .dshgg-menuItem:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-menuItem:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.dshgg-menuCheck {\n  display: inline-flex;\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-state-business-primary);\n}\n\n/* biome-ignore lint/style/noDescendingSpecificity: Menu SVG sizing is independent of the icon-button spinner animation. */\n.dshgg-menuCheck svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-menuLabel {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* --------------------------------------------------------------- titles --- */\n\n.dshgg-title {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n}\n\n.dshgg-titleText {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* ----------------------------------------------------------------- diff --- */\n\n.dshgg-diffRoot {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n}\n\n.dshgg-diffHeader {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-width: 0;\n  height: 38px;\n  padding: 0 6px 0 10px;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-diffPath {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 1px;\n  min-width: 0;\n}\n\n.dshgg-diffName {\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffFrom {\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffBadge {\n  flex: none;\n  height: 20px;\n  padding: 0 7px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxxs-strong-11);\n  line-height: 20px;\n  white-space: nowrap;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-diffBadge[data-kind="staged"],\n.dshgg-diffBadge[data-kind="untracked"] {\n  color: var(--dsw-alias-state-success-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);\n}\n\n.dshgg-diffBadge[data-kind="commit"] {\n  color: var(--dsw-alias-state-business-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);\n}\n\n.dshgg-diffStats {\n  display: inline-flex;\n  flex: none;\n  gap: 6px;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-diffAdd {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-diffDel {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-diffBody {\n  flex: 1;\n  min-height: 0;\n  padding: 4px 0 16px;\n  overflow: auto;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 20px;\n}\n\n.dshgg-hunkHeader {\n  padding: 4px 10px 2px;\n  margin-top: 4px;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre;\n}\n\n.dshgg-diffLine {\n  display: grid;\n  grid-template-columns: 40px 40px 14px minmax(0, 1fr);\n  min-width: max-content;\n  min-height: 20px;\n}\n\n.dshgg-gutter {\n  padding-right: 6px;\n  color: var(--dsw-alias-label-tertiary);\n  font-variant-numeric: tabular-nums;\n  text-align: right;\n  user-select: none;\n}\n\n.dshgg-marker {\n  color: var(--dsw-alias-label-tertiary);\n  font-weight: 500;\n  text-align: center;\n  user-select: none;\n}\n\n.dshgg-code {\n  min-width: 0;\n  padding: 0 10px;\n  white-space: pre;\n}\n\n.dshgg-diffLine[data-type="+"] {\n  background: var(--dsw-alias-file-diff-added-bg);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-added-gutter);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="-"] {\n  background: var(--dsw-alias-file-diff-deleted-bg);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-deleted-gutter);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffNote {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 8px;\n  padding: 16px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xs-13);\n}\n\n/* --------------------------------------------------------------- motion --- */\n\n@media (prefers-reduced-motion: reduce) {\n  .dshgg-iconBtn[data-spinning="true"] svg {\n    animation: none;\n  }\n\n  .dshgg-chevron {\n    transition: none;\n  }\n}\n';
 
 // src/client/styles.ts
 var STYLE_REGISTRY = /* @__PURE__ */ Symbol.for("@local/dsh-git-graph/styles");

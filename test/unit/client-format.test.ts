@@ -10,7 +10,6 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import {
   baseName,
-  distinctRefs,
   errorText,
   formatAgo,
   isStaged,
@@ -242,68 +241,44 @@ describe('parseRefs', () => {
     }
   })
 
-  test('parses a HEAD arrow as a head ref', () => {
-    assert.deepEqual(parseRefs('HEAD -> main'), [{ label: 'main', kind: 'head' }])
+  test('classifies full decorations the way VS Code does', () => {
+    assert.deepEqual(
+      parseRefs(
+        'HEAD -> refs/heads/feature/x, tag: refs/tags/v2, refs/remotes/origin/feature/x, refs/heads/main',
+      ),
+      [
+        { id: 'refs/heads/feature/x', name: 'feature/x', kind: 'head' },
+        { id: 'refs/tags/v2', name: 'v2', kind: 'tag' },
+        { id: 'refs/remotes/origin/feature/x', name: 'origin/feature/x', kind: 'remote' },
+        { id: 'refs/heads/main', name: 'main', kind: 'branch' },
+      ],
+    )
   })
 
-  test('parses a detached HEAD decoration', () => {
-    assert.deepEqual(parseRefs('HEAD'), [{ label: 'HEAD', kind: 'head' }])
-  })
-
-  test('parses tag decorations', () => {
-    assert.deepEqual(parseRefs('tag: v1.0'), [{ label: 'v1.0', kind: 'tag' }])
-  })
-
-  test('classifies a slash-bearing ref as remote and a plain name as branch', () => {
-    assert.deepEqual(parseRefs('main'), [{ label: 'main', kind: 'branch' }])
-    assert.deepEqual(parseRefs('origin/main'), [{ label: 'origin/main', kind: 'remote' }])
-  })
-
-  test('treats any slash-bearing branch name as remote, even a local one', () => {
-    assert.deepEqual(parseRefs('feature/sidebar'), [{ label: 'feature/sidebar', kind: 'remote' }])
-  })
-
-  test('keeps decoration order and skips empty comma-separated segments', () => {
-    assert.deepEqual(parseRefs('HEAD -> feature/x, tag: v2, origin/feature/x'), [
-      { label: 'feature/x', kind: 'head' },
-      { label: 'v2', kind: 'tag' },
-      { label: 'origin/feature/x', kind: 'remote' },
-    ])
-    assert.deepEqual(parseRefs('main, '), [{ label: 'main', kind: 'branch' }])
-  })
-})
-
-describe('distinctRefs', () => {
-  test('drops a remote-tracking spelling of a shown local branch', () => {
-    assert.deepEqual(distinctRefs(parseRefs('HEAD -> main, origin/main')), [
-      { label: 'main', kind: 'head' },
-    ])
-    assert.deepEqual(distinctRefs(parseRefs('main, origin/main, tag: v1.0')), [
-      { label: 'main', kind: 'branch' },
-      { label: 'v1.0', kind: 'tag' },
+  test('keeps a local branch with a slash local', () => {
+    assert.deepEqual(parseRefs('refs/heads/fix/wps365'), [
+      { id: 'refs/heads/fix/wps365', name: 'fix/wps365', kind: 'branch' },
     ])
   })
 
-  test('drops the remote spelling of a slash-named branch', () => {
-    assert.deepEqual(distinctRefs(parseRefs('feature/graph-lanes, origin/feature/graph-lanes')), [
-      { label: 'feature/graph-lanes', kind: 'remote' },
+  test('skips a detached HEAD marker and remote HEAD pointers', () => {
+    assert.deepEqual(parseRefs('HEAD, refs/remotes/origin/HEAD, refs/remotes/origin/main'), [
+      { id: 'refs/remotes/origin/main', name: 'origin/main', kind: 'remote' },
     ])
   })
 
-  test('keeps a remote-tracking label when no other ref names that branch', () => {
-    assert.deepEqual(distinctRefs(parseRefs('origin/main')), [
-      { label: 'origin/main', kind: 'remote' },
-    ])
-    assert.deepEqual(distinctRefs(parseRefs('HEAD -> feature/x')), [
-      { label: 'feature/x', kind: 'head' },
+  test('falls back to short spellings', () => {
+    assert.deepEqual(parseRefs('HEAD -> main, tag: v1.0, origin/main, origin/HEAD, dev'), [
+      { id: 'refs/heads/main', name: 'main', kind: 'head' },
+      { id: 'refs/tags/v1.0', name: 'v1.0', kind: 'tag' },
+      { id: 'refs/remotes/origin/main', name: 'origin/main', kind: 'remote' },
+      { id: 'refs/heads/dev', name: 'dev', kind: 'branch' },
     ])
   })
 
-  test('keeps distinct refs and their order', () => {
-    assert.deepEqual(distinctRefs(parseRefs('HEAD -> main, tag: v1.0, origin/release')), [
-      { label: 'main', kind: 'head' },
-      { label: 'v1.0', kind: 'tag' },
-      { label: 'origin/release', kind: 'remote' },
+  test('skips empty comma-separated segments and unknown ref namespaces', () => {
+    assert.deepEqual(parseRefs('refs/heads/main, , refs/stash'), [
+      { id: 'refs/heads/main', name: 'main', kind: 'branch' },
     ])
   })
 })
