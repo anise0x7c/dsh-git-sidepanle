@@ -6,26 +6,53 @@ changes as flat, path-sorted lists, a commit box, unified diff tabs, a commit gr
 whose commits open a details view of the files they changed, branch switching,
 and right-click menus for every row.
 
-- Host half (`index.js` + `src/host/**`): a guarded local JSON-RPC route that
-  runs Git in the Session's working directory.
-- Browser half (`src/client/**`): the right-Sidebar tab types, guide entry,
-  shortcut, and the React panel — bundled into the single client artifact
-  `client.js` by `scripts/build-client.mjs`.
-- `test/`: Host route tests over a real loopback server, pure-function unit
-  tests, registration tests for the browser half, and rendered-panel behavior
-  tests over a tiny React runtime.
+- Host source: `src/host-entry.ts` + `src/host/**`, a guarded local Git RPC route.
+- Browser source: `src/client-entry.ts` + `src/client/**`, the React panel and
+  right-Sidebar registrations. React is supplied by DSH, never bundled.
+- Shared wire types: `src/shared/git.ts`, erased from runtime output.
+- Tests: checked TypeScript on Node's built-in test runner, with real Git and
+  loopback fixtures, pure unit tests, loader tests and a tiny React renderer.
+- Zero runtime dependencies. TypeScript, tsx, esbuild and Biome are development-only.
+
+## Development
+
+For development, use Node ≥ 22.13 and the pnpm version pinned in
+`packageManager` (11.28.5). The generated plugin's runtime requirement remains
+Node ≥ 22; the newer development minimum comes from pnpm itself.
 
 ```bash
-npm install      # once: esbuild, the only dev dependency
-npm test         # builds client.js, then runs the test suite
+pnpm install --frozen-lockfile  # install exactly the committed dependency graph
+pnpm build                     # generate both Host and browser artifacts
+pnpm test                      # build, then run every regression test
+pnpm check                     # read-only quality gate: types, Biome, tests, freshness
+pnpm lint:fix                  # apply safe Biome lint/import/format fixes
+pnpm format                    # formatting only
+pnpm dev                       # watch both halves; Host changes still need restart
+pnpm verify:contract           # extra integration gate against a real DSH installation
 ```
 
-`client.js` and `client.js.map` are generated and committed; edit `src/` and run
-`npm run build` (or `npm run dev` to watch) rather than touching the artifact.
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module layout and build
-contract, and [docs/DETAIL.md](docs/DETAIL.md) for usage and limitations
-([中文说明](docs/DETAIL.zh.md) included).
+`pnpm check` deliberately does **not** build first: stale committed artifacts
+must fail rather than silently repair themselves. CI runs the same gate on Node
+22 and 24 after a frozen installation. `pnpm verify:contract` is separate because
+CI does not ship DSH; override its installation with `--dsh-root <directory>` or
+`DSH_ROOT`.
 
-Open it from the right Sidebar's guide, or with `Ctrl+Shift+G` (`Cmd+Shift+G`
-on macOS). Install the package directory through **Plugins → Add plugin** in
-DSH, or `install_bundle` with this directory.
+`index.js`, `index.js.map`, `client.js` and `client.js.map` are generated and
+committed. Never hand-edit them. Installing a prepared directory needs no build,
+TypeScript loader or development dependencies. Development dependencies do not
+run install scripts; platform binary packages provide esbuild and Biome directly.
+
+See [Architecture](<docs/ARCHITECTURE.md>) for module boundaries and loader
+contracts, [Refactor record](<docs/REFACTOR-PLAN.md>) for migration decisions, and
+[Usage](<docs/DETAIL.md>) / [中文说明](<docs/DETAIL.zh.md>) for features and limitations.
+
+## Install and open
+
+Install the directory through **Plugins → Add plugin** in DSH, or
+`install_bundle` with this directory. Open it from the right Sidebar's guide, or
+with `Ctrl+Shift+G` (`Cmd+Shift+G` on macOS).
+
+After changing sources, rebuild the artifacts. Host changes take effect only
+after a Host restart; browser update behavior depends on the running DSH Web
+development/reload setup. If the open page does not update, refresh it and verify
+the served artifact rather than starting another server.

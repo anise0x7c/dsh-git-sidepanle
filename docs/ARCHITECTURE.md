@@ -1,202 +1,150 @@
 # Architecture
 
-This bundle is one DSH plugin with two halves that never share code:
+One DSH bundle, two runtime halves, and shared **type-only** wire contracts:
 
-- a **Host half** (`index.js` + `src/host/**`, plain Node ESM) that owns the
-  loopback Git RPC route and runs Git, and
-- a **browser half** (`src/client/**`, bundled by esbuild into `client.js`)
-  that owns the right-Sidebar tabs, the React panel, the diff viewer and the
-  context-menu contribution.
+- **Host**: `src/host-entry.ts` + `src/host/**`, bundled to Node ESM `index.js`.
+- **Browser**: `src/client-entry.ts` + `src/client/**`, bundled to the wrapped
+  DSH artifact `client.js`. React stays external and comes from the platform.
+- **Wire types**: `src/shared/git.ts`. Type-only imports disappear from both
+  builds: the browser never imports Host execution code.
 
-`docs/REFACTOR-PLAN.md` records the split that produced this layout; behaviour
-is described in `docs/DETAIL.md` and pinned by `.litespec/specs/git-sidebar/`.
+Both distribution entries and their source maps are committed. Installation
+needs neither a compiler nor development dependencies. The Git Sidebar behavior
+specification remains the source of truth; migration decisions are recorded in
+`docs/REFACTOR-PLAN.md` and the development-workflow LiteSpec change.
 
 ## Directory map
 
 ```text
-index.js                     Host entry: inject = ['webServer'] + apply
-client.js                    GENERATED browser artifact (do not hand-edit)
-client.js.map                GENERATED source map (committed)
-cordis.patch.yml             loader patch: one row named @local/dsh-git-graph
-locale/en.json, zh.json      plugin metadata (title, description), not UI copy
+index.js, index.js.map         GENERATED Host ESM + source map
+client.js, client.js.map       GENERATED browser loader artifact + source map
+cordis.patch.yml               one loader row: @local/dsh-git-graph
+locale/{en,zh}.json            plugin metadata only, not UI copy
 src/
+  host-entry.ts               inject + apply; routes and failure envelopes
+  shared/git.ts               wire DTOs and operation/result relationships
   host/
-    http/respond.js          sendJson, readJsonBody
-    http/trust.js            loopback / same-origin trust fence
-    git/exec.js              runGit, gitOrThrow, repository root, path checks
-    git/status.js            parseStatus, readStatus
-    git/history.js           readHistory, parseHistory, readCommitDetails,
-                             parseCommitMeta, parseNameStatus
-    git/branches.js          readBranches, branchExists
-    git/diff.js              readDiff, readCommitDiff, parseUnifiedDiff
-    session.js               resolveSessionDirectory
-    errors.js                GitGraphError, normalizeFailure
-    rpc.js                   dispatch table + RPC/health paths
+    context.ts                minimal structural DSH service contracts
+    http/respond.ts           JSON response + bounded request-body reader
+    http/trust.ts             loopback / same-origin fence
+    git/exec.ts               execution, repository root and path validation
+    git/status.ts             porcelain parser and repository status
+    git/history.ts            history, commit metadata and changed-file parsing
+    git/branches.ts           branch list + branch existence
+    git/diff.ts               working-tree/commit diffs and unified parser
+    session.ts                resolve Session working directory
+    errors.ts                 typed failure normalization
+    rpc.ts                    operation dispatch and route constants
+  client-entry.ts             browser exports only
   client/
-    constants.js             package id, route path, tab ids, limits
-    locale/{en,zh}.js        UI dictionaries
-    styles.css               stylesheet, inlined by the build
-    styles.js                injects the stylesheet once
-    icons.js                 inline SVG icons
-    data/caller.js           createCaller, makeFailure (the only fetch layer)
-    git/format.js            status letters, staging state, names, refs, time
-    git/list.js              sortChangeEntries (flat, path-sorted change lists)
-    git/graph.js             deferred parent joins, grid topology and geometry,
-                             branch color assignment
-    menu/bus.js              command bus + the shared panel subscription point
-    menu/trigger.js          row -> host trigger props adapter
-    menu/clipboard.js        absolute paths, clipboard copy
-    menu/actions.js          which commands apply to a menu target
-    panel/controls.js        IconButton
-    panel/Section.js         collapsible section header
-    panel/rows.js            file row + flat-list renderer
-    panel/feedback.js        Banner, EmptyState
-    panel/BranchMenu.js      branch picker
-    panel/confirm.js         discard confirmation copy
-    panel/menu.js            the panel's menu wiring
-    panel/hooks/*.js         useRepoStatus, useHistory, useCommitDetails,
-                             useBranches, useChangeActions, useMenuCommands
-    panel/views/*.js         BranchHeader, CommitBox, CommitDetails,
-                             ChangeGroups, GraphSection (SVG commit tree)
-    panel/GitPanel.js        assembles hooks + views
-    diff/DiffPanel.js        diff tab body
-    diff/render.js           unified diff renderer
-    titles.js                tab titles
-    plugin.js                inject + apply (slots, shortcut, dictionary, menu)
-  client-entry.js            build entry: exports { inject, apply }
-scripts/build-client.mjs     esbuild build (build / --watch / --check)
-scripts/verify-contract.mjs  menu contract check against the real DSH registry
+    types/                    local structural DSH and UI/domain contracts
+    constants.ts              identifiers, paths, rendering limits
+    locale/{en,zh}.ts          UI dictionaries
+    styles.css, styles.ts     inline stylesheet and effect-owned, refcounted style lease
+    icons.ts                  SVG renderers
+    data/caller.ts            the only fetch layer
+    git/{format,list,graph}.ts pure formatting, list ordering, graph geometry
+    menu/                     targets, triggers, clipboard, actions, command bus
+    panel/
+      controls.ts, rows.ts    controls and flat change-file rows
+      Section.ts              collapsible section header
+      feedback.ts             banners and empty states
+      BranchMenu.ts           branch picker
+      confirm.ts              confirmation wording
+      menu.ts                 panel-scoped command wiring
+      hooks/                  repository/history/branches/details/action hooks
+      views/                  presentational branch/commit/change/graph sections
+      GitPanel.ts             hook and view assembly
+    diff/                     diff panel and pure diff rendering
+    titles.ts, plugin.ts      tab titles and plugin registration assembly
+scripts/
+  build.ts                    both build targets, watch, read-only freshness gate
+  verify-contract.ts          integration with the real installed DSH registry
 test/
-  host.test.mjs              real loopback server + real Git fixtures
-  client.test.mjs            factory/registration assertions without a DOM
-  ui.test.mjs                rendered panel behaviour over mini-react
-  unit/                      pure-function tests (no Git process, no DOM)
-  support/                   fake ctx, menu stand-in, fixtures, mini-react
+  *.test.ts                   Host, loader, rendered UI and workflow regressions
+  unit/*.test.ts              pure modules, no Git process or DOM
+  support/*.ts                fixtures, minimal React, fake context/menu
 ```
 
-## Dependency rule
+## Dependency direction
 
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
 panel/views/* -> { panel/controls, icons, git/format, git/graph }
-pure layer (git/*, menu/actions, constants, locale/*, icons) -> no React, no ctx
-host: http/* -> nothing; git/* -> git/exec; rpc -> all; index -> rpc + http/*
+pure git/menu/locale logic -> no React, no ctx
+host: http/* -> nothing; git/* -> git/exec; rpc -> readers; host-entry -> rpc + http/*
+either half -- import type --> shared/git
 ```
 
-The pure layer must stay importable in Node without a DOM — that is what makes
-`test/unit/` possible. Views never call `fetch` or the command caller; only
-hooks do. Do not introduce project-to-project cycles.
-
-## Presentation
-
-All styling lives in `src/client/styles.css` and uses host theme tokens only:
-`--dsw-*` for colors, borders, surfaces, elevation, radii and focus, the
-`--dsw-font-*` scale for type, `--ds-font-family-code` for code, and the shared
-`--dsh-scrollbar-*` rebinds on elevated surfaces. The commit graph's six lane
-colors are alias tokens (business blue, violet, success, warn, error, chart
-neutral), so light and dark need no second palette. Sizes reuse the host's
-measured sidebar conventions — 28px list rows, 30px section headers, 38px pane
-toolbar and diff header, 0.5px hairlines, `--dsw-radius-*` — rather than a
-parallel design scale. No decorative motion: only the refresh spinner and the
-chevron rotation, both disabled under `prefers-reduced-motion`.
+Pure logic stays directly importable in Node. Views never call `fetch`; hooks
+own requests and state. DSH interfaces are local structural subsets of the
+installed API, not runtime imports. Unknown network/request inputs are validated
+at boundaries instead of assuming TypeScript makes untrusted input safe.
 
 ## Data flow
 
-1. A tab mounts from the `sidebar.right.pane.tab` slot. The slot passes standard
-   props (`t`, `sessionId`, `useTabInfo`, `useContextMenu`).
-2. `useRepoStatus` builds the command caller (one `fetch` per command to
-   `/api/dsh-git-graph/rpc`), loads `status` and polls every 5 s while the tab
-   is visible and no modal or command is in flight.
-3. `useHistory` and `useBranches` load on mount and on demand;
-   `useCommitDetails` loads a commit's metadata and file list when a graph row
-   is activated, and the details view replaces the change list until the user
-   goes back.
-4. `useChangeActions` wraps stage/unstage/discard/commit/checkout in one busy
-   lock: it sets the failure banner, refreshes status silently and refreshes the
-   graph when a commit moved it.
-5. Rows and group headers hand their target to the host overlay through
-   `menu/trigger.js`. The overlay renders what `menu/actions.js` describes; the
-   chosen command travels back over `menu/bus.js` to `useMenuCommands`, which
-   checks the panel id, the stale/busy guards, and then runs the same action the
-   inline control runs. The two entry points stay identical by construction.
+1. The keyed `sidebar.right.pane.tab` slot supplies Session identity, translation,
+   tab-info and context-menu hooks.
+2. `useRepoStatus` creates a caller for `/api/dsh-git-graph/rpc`, loads status and
+   polls every 5 seconds while visible and no modal/operation is in flight.
+3. History and branches load on mount/on demand. Commit details replace the
+   change list while selected and load metadata plus files lazily.
+4. Change actions share a busy lock, failure handling, confirmation and refresh
+   path. Commit/checkout also refresh history.
+5. Triggers capture targets. The shared overlay calls a contribution with the
+   target's **value**, never the wrapper. Menu actions travel through the bus to
+   the owning panel, guarded by Session id, panel id, busy and stale checks.
 
-## Host route
+## Runtime contracts
 
-One route family: `POST /api/dsh-git-graph/rpc` with `{op, ...}` and
-`GET /api/dsh-git-graph/health`. A request must arrive on a loopback socket with
-a loopback `Host`, carry `x-dsh-git-graph: 1`, present no proxy headers
-(`x-forwarded-for`, `cf-connecting-ip`), and carry same-origin markers
-(`sec-fetch-site: same-origin`, matching `Origin` when present). Git never runs
-through a shell; the browser only sends session ids and repository-relative
-paths and full commit identifiers. `rpc.js` dispatches to the `git/*` readers —
-`status`, `history`, `commit-details`, `branches`, `stage`, `unstage`,
-`discard`, `commit`, `checkout`, and `diff` (either a working-tree comparison or
-a commit-scoped comparison) — and maps failures to
-`{ok:false, error:{code, message}}`.
+- Routes stay `POST /api/dsh-git-graph/rpc` and
+  `GET /api/dsh-git-graph/health`. Accept only loopback sockets/Host, bundle
+  header `x-dsh-git-graph: 1`, no forwarding headers, and same-origin markers.
+  Git never runs through a shell. Browser requests contain Session ids and
+  repository-relative paths, never a repository root supplied by the browser.
+- The browser factory calls `window.__ModuleLoader__.load({id, factory})`,
+  returns `{inject, apply}`, and has no side effects. Registrations belong to
+  `apply` with `ctx.effect`; style leases are shared across module replacements and released on disposal. Only `react` is external.
+- `props.useContextMenu` is bound once inside `useMemo`. No DSH UI package is
+  imported into the client artifact.
+- Absolute copy paths use `repo.root`, never the possibly nested Session cwd.
+- All visible copy comes from the bound English/Chinese dictionaries. Styling
+  retains the Host theme tokens and keyboard/menu focus semantics.
 
-## Build contract (browser half)
+## Build and quality gates
 
-The loader requires exactly one artifact per package, so `client.js` is
-generated:
-
-```js
-window.__ModuleLoader__.load({
-  id: '@local/dsh-git-graph',
-  factory: (require) => { /* bundled src/client-entry.js */ return module.exports },
-})
-```
-
-`scripts/build-client.mjs` runs esbuild with `bundle`, `format: cjs`,
-`platform: neutral`, `target: es2022`, `external: ['react']`,
-`loader: {'.css': 'text'}`, `sourcemap: true` and the wrapper as
-`banner`/`footer` (so map offsets stay correct). The committed artifact carries
-a generated banner; edit `src/`, then:
+TypeScript is strict and no-emit, including scripts and test support. Explicit
+`.ts` imports are executed only by the development-only `tsx` loader. esbuild
+emits self-contained JavaScript with embedded-source maps, targeting ES2022.
+The Host target is Node ESM; the browser is CJS inside its DSH loader wrapper,
+with CSS imported as text and React external. Both are dependency-free at install.
 
 ```bash
-npm run build         # write client.js + client.js.map
-npm run dev           # watch; the page hot-reloads on each rebuild
-npm run check:build   # fail when the committed artifact is stale
+pnpm install --frozen-lockfile
+pnpm build
+pnpm test
+pnpm check
+pnpm verify:contract --dsh-root /path/to/installed/dsh
 ```
 
-A `link:`-installed profile serves the file directly, so a browser-half change
-needs no Host restart: DSH polls the artifact and swaps the plugin in the open
-page. Host-half changes need a Host restart.
+`pnpm check` runs strict types, Biome, tests and an in-memory comparison with all
+four committed artifact/map files. It never rebuilds first. `pnpm test` builds
+first for the normal edit/test loop. `pnpm dev` watches both source trees; Host
+changes still require a Host restart. Browser reload behavior must be verified
+against the current DSH Web build/watch setup; do not assume rebuilding this
+bundle alone guarantees HMR in every deployment.
 
-The artifact is a pretty-printed bundle (about 2,300 lines, 104 KiB) rather than
-a thin wrapper: esbuild bundles the whole browser half into it so the loader
-still sees exactly one artifact per package. Review and blame the sources, never
-the generated diff; the source map points back at `src/client/**` for DevTools
-breakpoints.
-
-## Contracts you must not break
-
-1. **Artifact contract** — one artifact, `__ModuleLoader__.load`, factory
-   returns `{ inject, apply }`, only `react` external. `apply` owns every
-   registration and side effect (`ctx.effect`).
-2. **Context-menu registry contract** — the shared registry calls a
-   contribution's `resolve` with the captured target **value**, not the
-   `{kind, value}` wrapper; `scripts/verify-contract.mjs` pins this against the
-   real installed registry. Test doubles must mirror the wrapper.
-3. **Slot standard props** — use `props.useContextMenu` once inside `useMemo`;
-   never import DSH client packages.
-4. **Trust fence and route shape** — see above; never add a repository path
-   parameter from the browser.
-5. **Copy-path base** — absolute paths come from `repo.root`, not `repo.cwd`
-   (the Session directory may be a subdirectory).
-6. **Locale** — every visible string goes through `ctx.locale.bind('gitGraph')`
-   and exists in both dictionaries.
-7. **Theme and keyboard** — `--dsw-*` tokens only; rows keep `tabIndex` and
-   `aria-haspopup="menu"` semantics and the host dismissal behaviour.
+Biome manages authored TypeScript, CSS and JSON, not generated output or historical
+specifications. pnpm pins development resolution; no runtime dependencies or
+install scripts are added. CI runs the portable gate on Node 22 and 24. The real
+installed-DSH contract check remains an explicit local integration gate.
 
 ## Adding code
 
-- A new pure rule (formatting, path math, list ordering, graph layout, menu
-  description) goes into the matching `src/client/git/*` or `menu/*` module and
-  gets a `test/unit/` test.
-- A new panel state or request goes into the matching hook; a new visual
-  section goes into `panel/views/` and is wired from `GitPanel.js`.
-- A new Host operation is a `case` in `src/host/rpc.js` delegating to a
-  `src/host/git/*` reader plus a lane in `test/host.test.mjs`.
-- After any browser-half edit: `npm run build && npm test`, and
-  `npm run check:build` before committing.
+- Put new pure rules beside the matching formatter/parser/menu module and add a
+  unit test; keep graph topology changes separate from maintenance refactors.
+- Put new state/request logic in a hook and new presentation in a view.
+- Extend shared DTOs and validate Host inputs before adding an RPC operation.
+- Update source, tests and docs, run `pnpm build && pnpm check`, then run the
+  real DSH contract check when touching registration or menu boundaries.

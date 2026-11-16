@@ -8,11 +8,14 @@ changes as flat, path-sorted lists, a commit box, unified diff tabs, a commit gr
 whose commits open a details view of the files they changed, branch switching,
 and right-click menus.
 
-- One bundle, two halves: Host (`index.js` + `src/host/**`, plain Node ESM) and
-  browser (`src/client/**`, bundled into the DSH client artifact `client.js`).
-- Zero runtime dependencies. One devDependency: `esbuild`, used only to build
-  the browser half. Tests run on the Node built-in test runner (`npm test`,
-  Node ≥ 22).
+- One bundle, two TypeScript halves: Host (`src/host-entry.ts` + `src/host/**`)
+  and browser (`src/client-entry.ts` + `src/client/**`). Shared wire types live
+  in `src/shared/git.ts` and are imported type-only.
+- Zero runtime dependencies. Development tools: TypeScript, tsx, esbuild,
+  Biome and Node/React declarations. Tests use Node's built-in runner.
+  Development needs Node ≥ 22.13 (pnpm); generated runtime artifacts stay Node ≥ 22.
+- Both halves compile to committed JavaScript: `index.js`, `client.js` and
+  their maps. A prepared plugin directory needs no compiler at install time.
 - Behavior truth lives in `.litespec/specs/git-sidebar/spec.md`
   (14 requirements). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
   `docs/DETAIL.zh.md` (Chinese). Architecture: `docs/ARCHITECTURE.md`.
@@ -23,21 +26,21 @@ and right-click menus.
 
 | Path | Purpose |
 |---|---|
-| `index.js` | Host entry: `inject = ['webServer']`, `apply` registers the RPC and health routes and maps failures |
-| `src/host/http/` | `respond.js` (sendJson, readJsonBody), `trust.js` (loopback/same-origin fence) |
-| `src/host/git/` | `exec.js` (process execution, repository root, path checks), `status.js`, `history.js`, `branches.js`, `diff.js` |
-| `src/host/` | `rpc.js` (dispatch + paths), `session.js`, `errors.js` |
-| `src/client/**` | Browser half, layered: `constants`, `locale/`, `styles.css`, `icons`, `data/caller`, `git/` (pure), `menu/` (pure + clipboard), `panel/` component files, `panel/hooks`, `panel/views`, `panel/GitPanel.js`, `diff/`, `titles.js`, `plugin.js` |
-| `src/client-entry.js` | Build entry: exports `{ inject, apply }` from `src/client/plugin.js` |
-| `client.js`, `client.js.map` | **Generated** by `scripts/build-client.mjs` — never hand-edit; committed |
-| `scripts/build-client.mjs` | esbuild build: `npm run build`, `npm run dev` (watch), `npm run check:build` |
-| `scripts/verify-contract.mjs` | Menu registry contract check against the real installed DSH package |
+| `src/host-entry.ts` | Host source entry: `inject = ['webServer']`, `apply` registers the RPC and health routes and maps failures |
+| `src/host/http/` | `respond.ts` (sendJson, readJsonBody), `trust.ts` (loopback/same-origin fence) |
+| `src/host/git/` | `exec.ts` (process execution, repository root, path checks), `status.ts`, `history.ts`, `branches.ts`, `diff.ts` |
+| `src/host/` | `rpc.ts` (dispatch + paths), `session.ts`, `errors.ts` |
+| `src/client/**` | Browser half, layered: `constants`, `locale/`, `styles.css`, `icons`, `data/caller`, `git/` (pure), `menu/` (pure + clipboard), `panel/` component files, `panel/hooks`, `panel/views`, `panel/GitPanel.ts`, `diff/`, `titles.ts`, `plugin.ts` |
+| `src/client-entry.ts` | Build entry: exports `{ inject, apply }` from `src/client/plugin.ts` |
+| `index.js`, `index.js.map`, `client.js`, `client.js.map` | **Generated** by `scripts/build.ts` — never hand-edit; committed |
+| `scripts/build.ts` | esbuild build: `pnpm build`, `pnpm dev` (watch), `pnpm check:build` |
+| `scripts/verify-contract.ts` | Menu registry contract check against the real installed DSH package |
 | `cordis.patch.yml` | Loader patch: inserts one row `git-graph` named `@local/dsh-git-graph` |
 | `package.json` | `dsh.client` manifest (`platform: web`, `immediately`, `inject`), exports, version, scripts |
 | `locale/*.json` | Plugin **metadata** locale (title, description, detail doc). Not UI copy |
-| `test/host.test.mjs` | Real loopback server + real Git fixture repositories |
-| `test/client.test.mjs` | Bundle factory/registration assertions without a DOM |
-| `test/ui.test.mjs` | Rendered panel behavior over `test/support/mini-react.mjs` |
+| `test/host.test.ts` | Real loopback server + real Git fixture repositories |
+| `test/client.test.ts` | Bundle factory/registration assertions without a DOM |
+| `test/ui.test.ts` | Rendered panel behavior over `test/support/mini-react.ts` |
 | `test/unit/` | Pure-function tests: Host parsers, browser formatting/list/graph/locale/menu actions |
 | `test/support/` | Fake ctx + menu stand-in, fixtures, mini React |
 | `icon.svg`, `docs/`, `CHANGELOG.md` | Artwork and documentation |
@@ -45,16 +48,21 @@ and right-click menus.
 ## Commands
 
 ```bash
-npm install        # once: fetches the esbuild build dependency
-npm test           # pretest builds client.js, then the suite must stay green
-npm run build      # write client.js + client.js.map from src/client/**
-npm run dev        # watch mode: rebuild on save; the open page hot-reloads
-npm run check:build# fail when the committed artifact does not match the sources
-npm run verify:contract  # menu contract against the real DSH installation
+pnpm install --frozen-lockfile # pinned pnpm and committed dependency graph
+pnpm build                    # generate Host/browser JavaScript + maps
+pnpm test                     # build first, then run regression tests
+pnpm check                    # read-only: types, Biome, tests, artifact freshness
+pnpm lint:fix                 # safe lint/import/format fixes
+pnpm format                   # formatting only
+pnpm dev                      # watch both halves; Host still needs restart
+pnpm check:build               # in-memory freshness check of all four artifacts
+pnpm verify:contract           # integration with the real installed DSH registry
 ```
 
-The build is part of the contract, not a convenience: `client.js` and
-`client.js.map` are committed, and `check:build` must be clean at every commit.
+Do not put an automatic build before `pnpm check`: it must reject stale
+artifacts, not repair them. CI runs the portable gate on Node 22 and 24.
+`verify:contract` stays separate because CI does not include DSH. Dependency
+build scripts are disabled; optional platform binaries supply the tooling.
 
 ## Contracts you must not break
 
@@ -64,14 +72,14 @@ The build is part of the contract, not a convenience: `client.js` and
    timers, listeners and registrations belong inside `apply` via `ctx.effect`.
    `require` resolves only the platform table plus declared package externals —
    in this bundle only `react`. Never bundle or re-export React. The bundler
-   wrapper lives in `scripts/build-client.mjs`; do not hand-edit its output.
+   wrapper lives in `scripts/build.ts`; do not hand-edit its output.
 2. **Shared context-menu registry contract.** Registering a contribution
    (`ctx.contextMenus.register({ id, target, order, resolve })`) means the
    registry calls `resolve` with the **captured target's value**, not with the
    `{ kind, value }` wrapper the trigger received. Unwrapping `.value` again
    silently opens an empty menu — exactly the defect fixed in `7cac4e6`.
    Test doubles must mirror this wrapper, never the implementation's assumption;
-   `scripts/verify-contract.mjs` checks it against the real registry.
+   `scripts/verify-contract.ts` checks it against the real registry.
 3. **Slot standard props.** The panel receives `props.useContextMenu` from the
    root standard props; call it once inside `useMemo`. Do not import DSH client
    packages or UI primitives directly.
@@ -100,8 +108,9 @@ The build is part of the contract, not a convenience: `client.js` and
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
 panel/views/* -> { panel/controls, icons, git/format, git/graph }
-pure layer (git/*, menu/actions, constants, locale/*, icons) -> no React, no ctx
-host: http/* -> nothing; git/* -> git/exec; rpc -> all; index -> rpc + http/*
+pure logic (git/*, menu/actions, constants, locale/*) -> no React, no ctx
+icons -> React only (presentational SVG, no ctx)
+host: http/* -> nothing; git/* -> git/exec; rpc -> all; host-entry -> rpc + http/*
 ```
 
 Pure modules must stay importable in Node without a DOM — that is what makes
@@ -114,9 +123,9 @@ hooks do. Do not introduce project-to-project cycles.
   with the directory path. The profile links the directory (`link:`), so the
   Host reads the committed `client.js` artifact directly and no build is needed
   at install time.
-- **Browser half changes**: edit `src/client/**` → `npm run build` (or keep
-  `npm run dev` running) → DSH polls the artifact (~500 ms) and swaps the
-  plugin in the open page. To check what the running Host serves, read the
+- **Browser half changes**: edit `src/client/**` → `pnpm build` (or keep
+  `pnpm dev` running) → verify the running Web build/watch setup before promising HMR;
+  otherwise refresh the existing page. To check what the running Host serves, read the
   public events stream, take the row URL/rev for `@local/dsh-git-graph`, and
   fetch it:
 
@@ -125,27 +134,27 @@ hooks do. Do not introduce project-to-project cycles.
   # graph.entries[] → {id, url, rev}; then curl http://127.0.0.1:<gui-port>/<url>
   ```
 
-- **Host half changes** (`index.js`, `src/host/**`) take effect only after a
-  Host restart (Host halves do not hot-reload by default).
+- **Host source changes** (`src/host-entry.ts`, `src/host/**`) require
+  `pnpm build` followed by a Host restart. Do not edit generated `index.js`.
 - Verify user-visible behavior in the real page when possible: right-click a
   row (menus), stage/unstage, discard confirmation, commit, diff tab, branch
   switch. There is no browser control in this environment; use the served
-  artifact, the events stream, `npm run verify:contract` and client Slots
+  artifact, the events stream, `pnpm verify:contract` and client Slots
   inspection, then ask the user for the final click-through.
 
 ## Testing conventions
 
 - Built-in `node:test` only; no third-party test frameworks or DOM libraries.
 - Layered suite: `test/unit/` imports pure modules directly (no build, no DOM,
-  no Git process); `test/host.test.mjs` spawns real `git` in fixture repos;
-  `test/client.test.mjs` and `test/ui.test.mjs` load the built artifact.
+  no Git process); `test/host.test.ts` spawns real `git` in fixture repos;
+  `test/client.test.ts` and `test/ui.test.ts` load the built artifact.
 - **Test doubles mirror host contracts, not implementation assumptions.** When
   a real host service is mocked, mock the wrapper/ordering the host applies
-  (see contract 2 and `test/support/fake-ctx.js`).
+  (see contract 2 and `test/support/fake-ctx.ts`).
 - Prefer a failing regression test first; do not weaken assertions to make a
   refactor pass — the spec is the behavior.
 - Host tests clean up through the file's module-level `after()` hook.
-- UI tests render over `test/support/mini-react.mjs`; add harness capabilities
+- UI tests render over `test/support/mini-react.ts`; add harness capabilities
   there rather than reaching into component internals.
 
 ## Specs, docs and history
@@ -171,19 +180,19 @@ hooks do. Do not introduce project-to-project cycles.
 - 2-space indent, single quotes, no semicolons, no tabs; comments in English.
 - Keep pure logic (parsing, flat-list ordering, path/menu action resolution) free
   of React and context services so it stays directly testable; the pure layer
-  carries JSDoc and `// @ts-check`.
+  carries explicit TypeScript contracts and concise API comments.
 - Keep functions small; give exported helpers JSDoc, and keep view modules
   presentational (props in, elements out).
 
 ## Do not
 
-- Do not hand-edit `client.js` or `client.js.map`; edit `src/client/**` and
-  rebuild. `npm run check:build` catches a stale artifact.
+- Do not hand-edit `index.js`, `client.js` or either source map; edit `src/**` and
+  rebuild. `pnpm check:build` catches a stale artifact.
 - Do not edit `.litespec/specs/` directly or delete archived changes.
 - Do not add runtime dependencies; check the DSH version contract in
   `package.json` (`engines.dsh`) and the module-table limits before adding a
   client external.
-- Do not touch `node_modules/` or `.tmp-test*/`; they are ignored.
+- Do not hand-edit `node_modules/`, `.cache/` or `.tmp-test*/`; package managers and tests own them.
 - Do not log or transmit repository contents beyond the local loopback route.
 - Do not rename the artifact or its exports (`./client`, `{ inject, apply }`);
   the Host module system depends on them.

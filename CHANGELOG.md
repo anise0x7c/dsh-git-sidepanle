@@ -3,6 +3,30 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## Unreleased
+
+Maintenance workflow and behavior-preserving TypeScript migration:
+
+- Host, browser, development scripts, regression tests and test support are
+  checked TypeScript. Shared erased DTOs connect RPC operation/result types;
+  local structural interfaces document the DSH services actually consumed.
+- Both `index.js` and `client.js`, plus their embedded-source maps, are generated
+  and committed. A prepared directory remains compiler-free and has zero runtime
+  dependencies. Host source changes now require both rebuilding and restarting
+  the Host; this work does not restart it automatically.
+- pnpm 11.28.5 and its lockfile replace npm. Biome owns source formatting,
+  import organization and lint checks. `pnpm check` is a read-only quality gate
+  for strict types, conventions, regressions and artifact freshness; CI runs it
+  on Node 22 and 24 after a frozen installation.
+- Cleaned duplicated Slot/optional-service registration and panel/diff caller
+  wiring. Styles now follow the existing side-effect-free factory contract:
+  install through a scoped effect, share across overlapping lifetimes, refresh
+  on replacement and release only owned resources.
+- Tests: 251 passing (208 retained plus 43 new boundary, distribution and
+  registration/lifetime regressions), with additional compile-only RPC assertions.
+- Git panel behavior, guarded route contracts, keyboard actions, locale copy,
+  graph geometry and DSH compatibility range remain unchanged.
+
 ## 0.6.0
 
 Flat change lists. The staging area and a commit's changed files are now one
