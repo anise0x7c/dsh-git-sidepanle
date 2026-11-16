@@ -3,7 +3,10 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
-## Unreleased
+## 0.7.0
+
+The commit graph now pages backwards through history, and the changes and graph
+scroll in independent resizable panes.
 
 Paged commit graph:
 
