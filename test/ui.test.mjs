@@ -187,7 +187,7 @@ test('the commit graph draws a node per commit and lane lines from the parents',
   assert.equal(svgs.length, 2, 'one graph cell per commit row')
   for (const svg of svgs) {
     assert.equal(svg.props['aria-hidden'], 'true')
-    assert.equal(svg.props.width, 12, 'a linear history needs only one lane')
+    assert.equal(svg.props.width, 18, 'one lane plus trailing stroke clearance')
     assert.equal(svg.props.height, 40)
   }
   const circles = mounted.harness.findAll((element) => element.type === 'circle' && element.props.className === 'dshgg-graphNode')
@@ -219,7 +219,7 @@ test('a merge fans out into colored lanes and joins at the shared parent', async
   assert.equal(rows.length, 4)
   const svgs = mounted.harness.findAll((element) => element.type === 'svg' && element.props.className === 'dshgg-graphSvg')
   assert.equal(svgs.length, 4)
-  for (const svg of svgs) assert.equal(svg.props.width, 24, 'two lanes share one width across rows')
+  for (const svg of svgs) assert.equal(svg.props.width, 30, 'two lanes and trailing clearance share one width across rows')
   const circles = mounted.harness.findAll((element) => element.type === 'circle' && element.props.className === 'dshgg-graphNode')
   assert.deepEqual(circles.map((circle) => circle.props['data-lane']), ['0', '0', '1', '0'])
   const mergeCell = rows[0].children[0]
@@ -228,6 +228,13 @@ test('a merge fans out into colored lanes and joins at the shared parent', async
   assert.deepEqual(mergeEdges.map((edge) => edge.props['data-lane']), ['0', '1'])
   const sideLanePaths = mounted.harness.findAll((element) => element.type === 'path' && element.props['data-lane'] === '1')
   assert.ok(sideLanePaths.length >= 2, 'the side lane keeps its own color as it runs and joins')
+  const sideLaneCell = rows[2].children[0]
+  const joiningEdges = collectElements(sideLaneCell, (element) => element.type === 'path')
+  const joiningEdge = joiningEdges[joiningEdges.length - 1]
+  assert.equal(joiningEdge.props['data-lane'], '1', 'the joining connector does not adopt the target color early')
+  assert.equal(joiningEdge.props.d, 'M18 14C18 27 6 27 6 40', 'the leftward join mirrors a rightward fork')
+  const targetNode = circles[3]
+  assert.equal(targetNode.props['data-lane'], '0', 'the shared parent stays on its original colored lane')
   await mounted.harness.dispose()
 })
 

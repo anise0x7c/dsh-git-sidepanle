@@ -11,6 +11,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   LANE_COLORS,
+  LANE_PADDING,
   LANE_WIDTH,
   MAX_GRAPH_WIDTH,
   MIN_LANE_WIDTH,
@@ -102,7 +103,7 @@ describe('computeGraph', () => {
     assert.deepEqual(edges(row.b), [
       { kind: 'through', from: 0, to: 0, color: 0 },
       { kind: 'in', from: 1, to: 1, color: 1 },
-      { kind: 'out', from: 1, to: 0, color: 0 },
+      { kind: 'out', from: 1, to: 0, color: 1 },
     ])
     assert.deepEqual(edges(row.a), [{ kind: 'in', from: 0, to: 0, color: 0 }])
   })
@@ -118,9 +119,30 @@ describe('computeGraph', () => {
     assert.deepEqual(edges(row.x), [{ kind: 'out', from: 0, to: 0, color: 0 }])
     assert.deepEqual(edges(row.y), [
       { kind: 'through', from: 0, to: 0, color: 0 },
-      { kind: 'out', from: 1, to: 0, color: 0 },
+      { kind: 'out', from: 1, to: 0, color: 1 },
     ])
     assert.deepEqual(edges(row.r), [{ kind: 'in', from: 0, to: 0, color: 0 }])
+  })
+
+  test('opens a new secondary-parent lane to the right without wrapping into a left-side vacancy', () => {
+    const { rows, laneCount } = computeGraph([
+      commit('tip', ['left', 'merge', 'occupied']),
+      commit('left'),
+      commit('merge', ['first', 'secondary']),
+      commit('occupied'),
+      commit('first'),
+      commit('secondary'),
+    ])
+    const row = byOid(rows)
+    assert.equal(laneCount, 4)
+    assert.equal(row.merge.lane, 1)
+    assert.equal(row.secondary.lane, 3, 'lane 0 is free and lane 2 is occupied, so append lane 3')
+    assert.deepEqual(edges(row.merge), [
+      { kind: 'through', from: 2, to: 2, color: 2 },
+      { kind: 'in', from: 1, to: 1, color: 1 },
+      { kind: 'out', from: 1, to: 1, color: 1 },
+      { kind: 'out', from: 1, to: 3, color: 3 },
+    ])
   })
 
   test('leaves a lane pointing below the visible history when a parent is not listed', () => {
@@ -192,13 +214,11 @@ describe('graphRowGeometry', () => {
   test('draws vertical lines as straight paths and lane changes as curves', () => {
     const geometry = graphRowGeometry(row, 2)
     assert.equal(geometry.height, ROW_HEIGHT)
-    assert.equal(geometry.width, 2 * LANE_WIDTH)
+    assert.equal(geometry.width, 2 * LANE_WIDTH + LANE_PADDING)
     assert.equal(geometry.edges.length, 3)
     assert.deepEqual(geometry.edges[0], { d: `M6 0V${NODE_Y}`, color: 0 })
     assert.deepEqual(geometry.edges[1], { d: 'M18 0V40', color: 1 })
-    const curve = geometry.edges[2]
-    assert.match(curve.d, new RegExp(`^M6 ${NODE_Y}C6 .* 18 40$`))
-    assert.equal(curve.color, 1)
+    assert.deepEqual(geometry.edges[2], { d: `M6 ${NODE_Y}C6 27 18 27 18 40`, color: 1 })
   })
 
   test('places the node on the subject line of the row', () => {
@@ -206,12 +226,22 @@ describe('graphRowGeometry', () => {
     assert.deepEqual(geometry.node, { cx: 6, cy: NODE_Y, r: 3.4 })
   })
 
-  test('keeps the graph column within its budget for a wide graph', () => {
+  test('squeezes wide lanes and reserves clearance beyond their rightmost node', () => {
     const wide = graphRowGeometry({ ...row, lanes: 0, edges: [] }, 24)
-    assert.equal(wide.width, 24 * Math.max(MIN_LANE_WIDTH, MAX_GRAPH_WIDTH / 24))
+    assert.equal(wide.width, 24 * Math.max(MIN_LANE_WIDTH, MAX_GRAPH_WIDTH / 24) + LANE_PADDING)
     assert.ok(wide.node.r >= 2)
     assert.ok(wide.node.cx - wide.node.r >= 0)
-    assert.ok(wide.node.cx + wide.node.r <= wide.width)
+    assert.ok(wide.node.cx + wide.node.r <= wide.width - LANE_PADDING)
+  })
+
+  test('keeps leftward joining curves symmetric and inside the graph column', () => {
+    const geometry = graphRowGeometry({
+      ...row,
+      lane: 1,
+      edges: [{ kind: 'out', color: 1, from: 1, to: 0 }],
+    }, 2)
+    assert.deepEqual(geometry.edges, [{ d: `M18 ${NODE_Y}C18 27 6 27 6 40`, color: 1 }])
+    assert.ok(geometry.node.cx < geometry.width)
   })
 })
 
@@ -220,8 +250,9 @@ describe('edgePath', () => {
     assert.equal(edgePath(12, 0, 12, 40), 'M12 0V40')
   })
 
-  test('bends a lane-change edge with vertical tangents at both ends', () => {
-    assert.equal(edgePath(0, 0, 12, 12), 'M0 0C0 5.4 12 6.6 12 12')
+  test('uses mirrored vertical tangents for a lane-change edge', () => {
+    assert.equal(edgePath(0, 0, 12, 12), 'M0 0C0 6 12 6 12 12')
+    assert.equal(edgePath(12, 0, 0, 12), 'M12 0C12 6 0 6 0 12')
   })
 })
 

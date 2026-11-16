@@ -675,7 +675,7 @@
 .dshgg-graphSvg {
   display: block;
   flex: none;
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* One lane color per palette slot; the layout module paints the same slot for

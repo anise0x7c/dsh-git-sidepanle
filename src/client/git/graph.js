@@ -16,7 +16,9 @@
 
 /** Width one lane takes at full size, in pixels. */
 export const LANE_WIDTH = 12
-/** Width budget the graph column may use before lanes are squeezed, in pixels. */
+/** Clearance after the last lane, keeping strokes away from the commit text. */
+export const LANE_PADDING = 6
+/** Lane-span budget before lanes are squeezed; trailing clearance is added separately. */
 export const MAX_GRAPH_WIDTH = 96
 /** Narrowest lane pitch kept even when a wide graph has to be squeezed. */
 export const MIN_LANE_WIDTH = 4
@@ -83,20 +85,18 @@ function firstFreeLane(lanes) {
 }
 
 /**
- * Find a free lane scanning strictly after `after` and wrapping around. Lanes
- * are never re-inserted, so a fan-out stays right of its commit whenever room
- * exists there.
+ * Find a free lane strictly to the right of a commit. Secondary-parent lines
+ * only fan out in this direction; an empty lane on the left belongs to the
+ * topology that already passed there and must not pull a new fork backwards.
  * @param {(string | null)[]} lanes - lane expectations.
- * @param {number} after - lane index to start scanning after.
- * @returns {number} slot index, or -1 when every other slot is taken.
+ * @param {number} lane - source commit's lane.
+ * @returns {number} a free slot, or the next slot to append on the right.
  */
-function freeLaneAfter(lanes, after) {
-  const count = lanes.length
-  for (let offset = 1; offset < count; offset += 1) {
-    const index = (after + offset) % count
+function freeLaneRight(lanes, lane) {
+  for (let index = lane + 1; index < lanes.length; index += 1) {
     if (lanes[index] === null) return index
   }
-  return -1
+  return lanes.length
 }
 
 /**
@@ -134,26 +134,23 @@ export function computeGraph(commits) {
       edges.push({ kind: 'through', color: index % LANE_COLORS, from: index, to: index })
     }
     if (!isNewLane) edges.push({ kind: 'in', color: lane % LANE_COLORS, from: lane, to: lane })
-    // The lane that was heading for this commit terminates at its node; when a
-    // parent is already expected by another lane, the parent edge below merges
-    // into that lane instead of opening a second line for it.
+    // Retire this expectation before routing its parents. The first parent
+    // inherits the node lane, so an ordinary history line stays vertical. A
+    // secondary parent opens strictly to the right instead of wrapping around
+    // inactive slots and cutting across the left-hand topology.
     lanes[lane] = null
     for (let index = 0; index < parents.length; index += 1) {
       const parent = parents[index]
       let target = lanes.indexOf(parent)
+      // Preserve a joining branch's color up to the existing target. A new
+      // lane takes its own color, including a first parent continuing straight.
+      let color = lane % LANE_COLORS
       if (target === -1) {
-        if (index === 0 && lanes[lane] === null) {
-          target = lane
-        } else {
-          target = freeLaneAfter(lanes, lane)
-          if (target === -1) {
-            target = lanes.length
-            lanes.push(null)
-          }
-        }
+        target = index === 0 ? lane : freeLaneRight(lanes, lane)
         lanes[target] = parent
+        color = target % LANE_COLORS
       }
-      edges.push({ kind: 'out', color: target % LANE_COLORS, from: lane, to: target })
+      edges.push({ kind: 'out', color, from: lane, to: target })
     }
     laneCount = Math.max(laneCount, lane + 1)
     for (const edge of edges) laneCount = Math.max(laneCount, edge.from + 1, edge.to + 1)
@@ -194,7 +191,10 @@ function round(value) {
  */
 export function edgePath(x1, y1, x2, y2) {
   if (x1 === x2) return `M${round(x1)} ${round(y1)}V${round(y2)}`
-  const bend = (y2 - y1) * 0.45
+  // Mirrored control points form the same balanced S-curve for a fork and a
+  // join. Both vertically tangent ends stay between their lane centres, so
+  // squeezing the column cannot make a connector loop back horizontally.
+  const bend = (y2 - y1) / 2
   return `M${round(x1)} ${round(y1)}C${round(x1)} ${round(y1 + bend)} ${round(x2)} ${round(y2 - bend)} ${round(x2)} ${round(y2)}`
 }
 
@@ -207,7 +207,7 @@ export function edgePath(x1, y1, x2, y2) {
  */
 export function graphRowGeometry(row, laneCount) {
   const step = laneStep(laneCount)
-  const width = laneCount <= 0 ? step : laneCount * step
+  const width = laneCount <= 0 ? step : laneCount * step + LANE_PADDING
   /**
    * Lane centre x.
    * @param {number} lane - lane index.
