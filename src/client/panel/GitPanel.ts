@@ -6,7 +6,7 @@
  */
 
 import type React from 'react'
-import { createElement, useCallback, useMemo, useState } from 'react'
+import { createElement, useCallback, useMemo, useRef, useState } from 'react'
 import { DIFF_KIND } from '../constants.ts'
 import { errorText, isStaged, isUnstaged, statusLetter } from '../git/format.ts'
 import { sortChangeEntries } from '../git/list.ts'
@@ -22,6 +22,7 @@ import { useHistory } from './hooks/useHistory.ts'
 import { useMenuCommands } from './hooks/useMenuCommands.ts'
 import { useRepoStatus } from './hooks/useRepoStatus.ts'
 import { createMenuTargets, usePanelRefs } from './menu.ts'
+import { isNearEnd } from './scroll.ts'
 import { DEFAULT_SPLIT_RATIO } from './split.ts'
 import { BranchHeader } from './views/BranchHeader.ts'
 import { ChangeGroups } from './views/ChangeGroups.ts'
@@ -64,7 +65,16 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   })
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } =
     statusState
-  const { graph, references, graphLoading, graphFailure, loadGraph } = useHistory({ call, refs })
+  const history = useHistory({ call, refs })
+  const { graph, references, graphLoading, graphFailure, loadGraph } = history
+  const graphPane = useRef<HTMLDivElement | null>(null)
+
+  // A history refresh starts a new first page and returns the pane to the top,
+  // so the shorter list cannot page further by clamping its scroll position.
+  const reloadHistory = useCallback(async (): Promise<void> => {
+    await loadGraph()
+    if (graphPane.current !== null) graphPane.current.scrollTop = 0
+  }, [loadGraph])
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     merge: true,
@@ -110,7 +120,15 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     stagedFiles.length === 0 &&
     changedFiles.length === 0
 
-  const actions = useChangeActions({ call, t, refs, files, stagedFiles, loadStatus, loadGraph })
+  const actions = useChangeActions({
+    call,
+    t,
+    refs,
+    files,
+    stagedFiles,
+    loadStatus,
+    loadGraph: reloadHistory,
+  })
   const {
     busy,
     message,
@@ -188,10 +206,17 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   const toggleSection = (id: string): void =>
     setOpenSections((current) => ({ ...current, [id]: current[id] !== true }))
 
+  // Reaching the end of the graph pane appends the next page of earlier
+  // commits. The loader ignores a request while a page is already on its way.
+  const handleGraphScroll = (event: React.UIEvent<HTMLDivElement>): void => {
+    if (!isNearEnd(event.currentTarget)) return
+    void history.loadMore()
+  }
+
   const refreshAll = (): void => {
     setActionFailure(null)
     void loadStatus({ silent: true })
-    void loadGraph()
+    void reloadHistory()
     if (selectedCommit !== null) commitState.retryCommit()
   }
 
@@ -319,6 +344,8 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           onRatioChange: setSplitRatio,
           label: t('split.label'),
           hint: t('split.hint'),
+          onGraphScroll: handleGraphScroll,
+          graphRef: graphPane,
           changes: h(ChangeGroups, {
             t,
             clean,
@@ -345,11 +372,17 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
             graphId: panelId,
             loading: graphLoading,
             failure: graphFailure,
+            hasMore: history.hasMore,
+            moreLoading: history.moreLoading,
+            moreFailure: history.moreFailure,
+            onLoadMore: () => {
+              void history.loadMore()
+            },
             open: openSections.graph === true,
             onSelect: commitState.selectCommit,
             onToggle: () => toggleSection('graph'),
             onRetry: () => {
-              void loadGraph()
+              void reloadHistory()
             },
             menu: graphMenu,
           }),

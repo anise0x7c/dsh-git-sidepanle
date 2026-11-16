@@ -49,6 +49,14 @@ export interface GraphSectionProps {
   readonly loading: boolean
   /** History failure. */
   readonly failure: Failure | null
+  /** Whether commits older than the shown rows remain. */
+  readonly hasMore?: boolean
+  /** Whether an earlier page is loading. */
+  readonly moreLoading?: boolean
+  /** Failed earlier page; the shown rows stay visible. */
+  readonly moreFailure?: Failure | null
+  /** Load the next page of earlier commits. */
+  readonly onLoadMore?: () => void
   /** Whether the section is expanded. */
   readonly open: boolean
   /** Toggle the section. */
@@ -127,6 +135,46 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
           menuTarget:
             menu === undefined || trigger === null ? undefined : menu.commitTarget(commit),
         }),
+      )
+    }
+    const loadMore = typeof props.onLoadMore === 'function' ? props.onLoadMore : null
+    const moreFailure = props.moreFailure ?? null
+    if (loadMore !== null && moreFailure !== null) {
+      rows.push(
+        h(
+          'div',
+          { key: 'moreError', className: 'dshgg-graphMore' },
+          h('span', { className: 'dshgg-graphMoreText' }, errorText(t, moreFailure)),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshgg-btn dshgg-btnGhost',
+              onClick: loadMore,
+            },
+            t('retry'),
+          ),
+        ),
+      )
+    } else if (loadMore !== null && props.hasMore === true) {
+      // The control keeps its DOM node and stays enabled while a page loads, so
+      // keyboard focus that scrolled it into view survives the automatic load
+      // and starts no second request; only the label and the busy state change.
+      const loading = props.moreLoading === true
+      rows.push(
+        h(
+          'button',
+          {
+            key: 'more',
+            type: 'button',
+            className: 'dshgg-btn dshgg-btnGhost dshgg-graphMoreBtn',
+            'data-loading': loading ? 'true' : undefined,
+            'aria-busy': loading ? 'true' : undefined,
+            'aria-disabled': loading ? 'true' : undefined,
+            onClick: loadMore,
+          },
+          t(loading ? 'graph.loadingMore' : 'graph.loadMore'),
+        ),
       )
     }
   }

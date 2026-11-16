@@ -17,6 +17,7 @@ import type {
   TestNode,
   TestPointerPhase,
   TestProps,
+  TestScrollMetrics,
 } from './types.ts'
 
 const FRAGMENT = Symbol('Fragment')
@@ -370,6 +371,17 @@ export function createHarness(options: HarnessOptions): TestHarness {
     })
   }
 
+  function scroll(element: TestElement | undefined, metrics: TestScrollMetrics): unknown {
+    const handler = element?.props?.onScroll
+    if (typeof handler !== 'function') throw new Error('element has no onScroll handler')
+    return handler({
+      stopPropagation() {},
+      preventDefault() {},
+      target: {},
+      currentTarget: { ...eventTargetStub(), ...metrics },
+    })
+  }
+
   async function dispose(): Promise<void> {
     for (const entry of effectStore.values()) {
       if (typeof entry.cleanup === 'function') entry.cleanup()
@@ -395,6 +407,7 @@ export function createHarness(options: HarnessOptions): TestHarness {
     keydown,
     change,
     pointer,
+    scroll,
     dispose,
     setComponent(component, props) {
       options.component = component

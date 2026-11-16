@@ -90,6 +90,8 @@ export const zh: Record<GitGraphLocaleKey, string> = {
   'graph.loading': '正在加载提交…',
   'graph.empty': '尚无提交',
   'graph.noSubject': '（无提交信息）',
+  'graph.loadMore': '加载更早的提交',
+  'graph.loadingMore': '正在加载更早的提交…',
   'commitDetails.back': '返回更改列表',
   'commitDetails.loading': '正在加载该提交的文件…',
   'commitDetails.files': '更改的文件',

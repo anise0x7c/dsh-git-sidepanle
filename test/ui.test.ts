@@ -66,6 +66,10 @@ type UiTabInfo = () => TestProps
 interface MountOptions {
   status?: StatusResult
   history?: HistoryResult
+  /** `history` answers in call order; the last page repeats once exhausted. */
+  historyPages?: HistoryResult[]
+  /** Zero-based `history` request indexes that answer with a failure. */
+  failHistoryPages?: number[]
   branches?: BranchesResult
   commitDetails?: CommitDetails
   failOp?: string
@@ -114,10 +118,35 @@ async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
     branches: options.branches ?? BRANCHES,
     'commit-details': options.commitDetails ?? COMMIT_DETAILS,
   }
+  const historyPages = options.historyPages ?? [options.history ?? HISTORY]
+  const failedHistoryPages = new Set(options.failHistoryPages ?? [])
+  let historyPage = 0
   const harness = createHarness({
     fetch: async (_url: string, init: { body: string }): Promise<FetchResponseLike> => {
       const request = JSON.parse(init.body) as RpcRequestRecord
       calls.push(request)
+      if (request.op === 'history') {
+        const index = historyPage
+        historyPage += 1
+        if (failedHistoryPages.has(index)) {
+          return {
+            ok: false,
+            status: 409,
+            json: async () => ({
+              ok: false,
+              error: { code: 'git-command-failed', message: 'git said no' },
+            }),
+          }
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            value: historyPages[Math.min(index, historyPages.length - 1)],
+          }),
+        }
+      }
       if (options.failOp !== undefined && request.op === options.failOp) {
         return {
           ok: false,
@@ -298,6 +327,50 @@ function buttonByText(harness: TestHarness, text: string): TestElement {
   return button
 }
 
+/**
+ * Build a two-page history: two recent commits on the first page and the root
+ * commit on the second.
+ * @returns the first and last `history` responses.
+ */
+function pagedHistory(): { first: HistoryResult; second: HistoryResult } {
+  const now = Math.floor(Date.now() / 1000)
+  const oid = (character: string): string => character.repeat(40)
+  const commit = (
+    character: string,
+    parents: string[],
+    subject: string,
+    authoredAt: number,
+  ): HistoryResult['commits'][number] => ({
+    oid: oid(character),
+    shortOid: character.repeat(7),
+    author: 'Ann',
+    authoredAt,
+    refs: character === 'c' ? 'HEAD -> refs/heads/main' : '',
+    parents,
+    subject,
+  })
+  const references: HistoryResult['references'] = {
+    current: { id: 'refs/heads/main', name: 'main', revision: oid('c') },
+    remote: null,
+    base: null,
+  }
+  return {
+    first: {
+      commits: [
+        commit('c', [oid('b')], 'Recent work', now - 60),
+        commit('b', [oid('a')], 'Older work', now - 3600),
+      ],
+      hasMore: true,
+      references,
+    },
+    second: {
+      commits: [commit('a', [], 'Root commit', now - 7200)],
+      hasMore: false,
+      references,
+    },
+  }
+}
+
 test('the panel renders branch, change groups, status letters, and the graph', async () => {
   const mounted = await mountGit()
   const text = mounted.harness.text()
@@ -416,6 +489,130 @@ test('change groups and graph are independent scroll panes with a resizable divi
   })
   await mounted.harness.flush()
   assert.equal(divider().props['data-dragging'], undefined)
+  await mounted.harness.dispose()
+})
+
+test('scrolling the graph pane to its end appends the next page of commits', async () => {
+  const pages = pagedHistory()
+  const mounted = await mountGit({ historyPages: [pages.first, pages.second] })
+  const rows = (): TestElement[] =>
+    mounted.harness.findAll(
+      (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
+    )
+  const graphPane = (): TestElement => {
+    const [element] = mounted.harness.findAll((candidate) =>
+      String(candidate.props?.className ?? '').includes('dshgg-paneBottom'),
+    )
+    assert.ok(element, 'no graph pane rendered')
+    return element
+  }
+  assert.equal(rows().length, 2)
+  // A scroll far from the end keeps the loaded page.
+  mounted.harness.scroll(graphPane(), { scrollTop: 0, clientHeight: 400, scrollHeight: 1000 })
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((request) => request.op === 'history').length, 1)
+  // Reaching the end loads the next page with the offset of the loaded rows.
+  mounted.harness.scroll(graphPane(), { scrollTop: 580, clientHeight: 400, scrollHeight: 1000 })
+  await mounted.harness.flush()
+  const historyCalls = mounted.calls.filter((request) => request.op === 'history')
+  assert.equal(historyCalls.length, 2)
+  assert.equal(historyCalls[1]?.offset, 2)
+  assert.equal(rows().length, 3)
+  assert.match(mounted.harness.text(), /Root commit/)
+  assert.equal(
+    mounted.harness.findAll(
+      (element) => element.type === 'button' && elementText(element) === 'graph.loadMore',
+    ).length,
+    0,
+    'the last page offers no further loading',
+  )
+  await mounted.harness.dispose()
+})
+
+test('the end of the graph offers the next page as a control', async () => {
+  const pages = pagedHistory()
+  const mounted = await mountGit({ historyPages: [pages.first, pages.second] })
+  const loadMore = (): TestElement[] =>
+    mounted.harness.findAll(
+      (element) => element.type === 'button' && elementText(element) === 'graph.loadMore',
+    )
+  assert.equal(loadMore().length, 1)
+  const [button] = loadMore()
+  assert.ok(button)
+  mounted.harness.click(button)
+  await mounted.harness.flush()
+  const historyCalls = mounted.calls.filter((request) => request.op === 'history')
+  assert.equal(historyCalls[1]?.offset, 2)
+  assert.match(mounted.harness.text(), /Root commit/)
+  assert.equal(loadMore().length, 0)
+  await mounted.harness.dispose()
+})
+
+test('a failed earlier page keeps the loaded rows and can be retried', async () => {
+  const pages = pagedHistory()
+  const mounted = await mountGit({
+    historyPages: [pages.first, pages.second],
+    failHistoryPages: [1],
+  })
+  const rows = (): TestElement[] =>
+    mounted.harness.findAll(
+      (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
+    )
+  const graphPane = (): TestElement => {
+    const [element] = mounted.harness.findAll((candidate) =>
+      String(candidate.props?.className ?? '').includes('dshgg-paneBottom'),
+    )
+    assert.ok(element, 'no graph pane rendered')
+    return element
+  }
+  mounted.harness.scroll(graphPane(), { scrollTop: 580, clientHeight: 400, scrollHeight: 1000 })
+  await mounted.harness.flush()
+  assert.equal(rows().length, 2, 'the loaded rows stay visible')
+  assert.match(mounted.harness.text(), /git said no/)
+  const retry = mounted.harness.findAll(
+    (element) => element.type === 'button' && elementText(element) === 'retry',
+  )
+  assert.equal(retry.length, 1)
+  const [button] = retry
+  assert.ok(button)
+  mounted.harness.click(button)
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((request) => request.op === 'history').length, 3)
+  assert.equal(rows().length, 3)
+  assert.match(mounted.harness.text(), /Root commit/)
+  await mounted.harness.dispose()
+})
+
+test('refresh returns the graph to the first page', async () => {
+  const pages = pagedHistory()
+  const mounted = await mountGit({ historyPages: [pages.first, pages.second, pages.first] })
+  const rows = (): TestElement[] =>
+    mounted.harness.findAll(
+      (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
+    )
+  const graphPane = (): TestElement => {
+    const [element] = mounted.harness.findAll((candidate) =>
+      String(candidate.props?.className ?? '').includes('dshgg-paneBottom'),
+    )
+    assert.ok(element, 'no graph pane rendered')
+    return element
+  }
+  mounted.harness.scroll(graphPane(), { scrollTop: 580, clientHeight: 400, scrollHeight: 1000 })
+  await mounted.harness.flush()
+  assert.equal(rows().length, 3)
+  mounted.harness.click(buttonByLabel(mounted.harness, 'refresh'))
+  await mounted.harness.flush()
+  const historyCalls = mounted.calls.filter((request) => request.op === 'history')
+  assert.equal(historyCalls.length, 3)
+  assert.equal(historyCalls[2]?.offset, undefined, 'a refresh asks for the first page')
+  assert.equal(rows().length, 2)
+  assert.equal(
+    mounted.harness.findAll(
+      (element) => element.type === 'button' && elementText(element) === 'graph.loadMore',
+    ).length,
+    1,
+    'the refreshed first page can load earlier commits again',
+  )
   await mounted.harness.dispose()
 })
 

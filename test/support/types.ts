@@ -122,6 +122,22 @@ export interface TestEventTarget {
   releasePointerCapture?(pointerId: number): void
   hasPointerCapture?(pointerId: number): boolean
   parentElement?: TestEventTarget | null
+  /** Scroll offset of a scroll container, in pixels. */
+  scrollTop?: number
+  /** Visible height of a scroll container, in pixels. */
+  clientHeight?: number
+  /** Content height of a scroll container, in pixels. */
+  scrollHeight?: number
+}
+
+/** Scroll metrics a test hands to a pane's `onScroll` handler. */
+export interface TestScrollMetrics {
+  /** Pixels the content is scrolled down. */
+  scrollTop: number
+  /** Visible height of the pane in pixels. */
+  clientHeight: number
+  /** Total height of the pane's content in pixels. */
+  scrollHeight: number
 }
 
 /** Event object the harness hands to a component handler. */
@@ -174,6 +190,7 @@ export interface RpcRequestRecord {
   oid?: string
   branch?: string
   untracked?: boolean
+  offset?: number
   [key: string]: unknown
 }
 
@@ -213,6 +230,7 @@ export interface TestHarness {
     phase: TestPointerPhase,
     event?: Partial<TestEvent>,
   ): unknown
+  scroll(element: TestElement | undefined, metrics: TestScrollMetrics): unknown
   dispose(): Promise<void>
   setComponent(component: TestComponent, props: TestProps): void
   hookStoreSize(): number

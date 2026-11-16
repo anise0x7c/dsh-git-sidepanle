@@ -30,6 +30,10 @@ export interface SplitViewProps {
   readonly changes: React.ReactNode
   /** Lower pane: the commit graph. */
   readonly graph: React.ReactNode
+  /** Scroll handler of the graph pane; the panel pages history from it. */
+  readonly onGraphScroll?: (event: React.UIEvent<HTMLDivElement>) => void
+  /** Ref of the graph pane, used to return it to the newest commits. */
+  readonly graphRef?: React.RefObject<HTMLDivElement | null>
 }
 
 /** Pointer position and ratio captured when a drag begins. */
@@ -112,6 +116,14 @@ export function SplitView(props: SplitViewProps): React.ReactElement {
       },
       h('span', { className: 'dshgg-splitterLine' }),
     ),
-    h('div', { className: 'dshgg-scroll dshgg-paneBottom' }, props.graph),
+    h(
+      'div',
+      {
+        className: 'dshgg-scroll dshgg-paneBottom',
+        ref: props.graphRef,
+        onScroll: props.onGraphScroll,
+      },
+      props.graph,
+    ),
   )
 }

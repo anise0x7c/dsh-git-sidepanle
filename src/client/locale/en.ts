@@ -90,6 +90,8 @@ export const en = {
   'graph.loading': 'Loading commits…',
   'graph.empty': 'No commits yet',
   'graph.noSubject': '(no message)',
+  'graph.loadMore': 'Load earlier commits',
+  'graph.loadingMore': 'Loading earlier commits…',
   'commitDetails.back': 'Back to changes',
   'commitDetails.loading': 'Loading the commit files…',
   'commitDetails.files': 'Changed files',
