@@ -17,7 +17,7 @@ and right-click menus.
 - Both halves compile to committed JavaScript: `index.js`, `client.js` and
   their maps. A prepared plugin directory needs no compiler at install time.
 - Behavior truth lives in `.litespec/specs/git-sidebar/spec.md`
-  (14 requirements). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
+  (19 requirements). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
   `docs/DETAIL.zh.md` (Chinese). Architecture: `docs/ARCHITECTURE.md`.
   `docs/REFACTOR-PLAN.md` records the 0.3.0 split that produced the current
   layout — read it for rationale, not as a to-do list.
@@ -28,7 +28,7 @@ and right-click menus.
 |---|---|
 | `src/host-entry.ts` | Host source entry: `inject = ['webServer']`, `apply` registers the RPC and health routes and maps failures |
 | `src/host/http/` | `respond.ts` (sendJson, readJsonBody), `trust.ts` (loopback/same-origin fence) |
-| `src/host/git/` | `exec.ts` (process execution, repository root, path checks), `status.ts`, `history.ts`, `branches.ts`, `diff.ts` |
+| `src/host/git/` | `exec.ts` (process execution, repository root, path checks), `status.ts`, `history.ts`, `references.ts` (graph's checked-out/upstream/base refs), `branches.ts`, `diff.ts` |
 | `src/host/` | `rpc.ts` (dispatch + paths), `session.ts`, `errors.ts` |
 | `src/client/**` | Browser half, layered: `constants`, `locale/`, `styles.css`, `icons`, `data/caller`, `git/` (pure), `menu/` (pure + clipboard), `panel/` component files, `panel/hooks`, `panel/views`, `panel/GitPanel.ts`, `diff/`, `titles.ts`, `plugin.ts` |
 | `src/client-entry.ts` | Build entry: exports `{ inject, apply }` from `src/client/plugin.ts` |
@@ -42,7 +42,7 @@ and right-click menus.
 | `test/client.test.ts` | Bundle factory/registration assertions without a DOM |
 | `test/ui.test.ts` | Rendered panel behavior over `test/support/mini-react.ts` |
 | `test/unit/` | Pure-function tests: Host parsers, browser formatting/list/graph/locale/menu actions |
-| `test/support/` | Fake ctx + menu stand-in, fixtures, mini React |
+| `test/support/` | Fake ctx + menu stand-in, fixtures, mini React, `vscode-scm-history.ts` (literal VS Code graph oracle for the equivalence test) |
 | `icon.svg`, `docs/`, `CHANGELOG.md` | Artwork and documentation |
 
 ## Commands
@@ -98,7 +98,10 @@ build scripts are disabled; optional platform binaries supply the tooling.
    and exists in both dictionaries inside `src/client/locale/`. `locale/*.json`
    is only plugin metadata. The locale unit test asserts key and placeholder
    parity for both languages.
-7. **Theme and keyboard.** Style with `--dsw-*` theme tokens only. Rows and
+7. **Theme and keyboard.** Style with `--dsw-*` theme tokens only — except the
+   commit graph, which reproduces VS Code's Source Control Graph: its
+   `--dshgg-scm-*` palette (VS Code `scmGraph.*` values, dark variants under
+   `body[data-ds-dark-theme]`) and 22px rows are deliberate. Rows and
    triggers keep `tabIndex` / `aria-haspopup="menu"` semantics and the host's
    dismissal behavior.
 

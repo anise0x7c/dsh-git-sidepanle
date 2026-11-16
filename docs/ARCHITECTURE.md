@@ -30,6 +30,7 @@ src/
     git/exec.ts               execution, repository root and path validation
     git/status.ts             porcelain parser and repository status
     git/history.ts            history, commit metadata and changed-file parsing
+    git/references.ts         graph references: checked-out, upstream, base
     git/branches.ts           branch list + branch existence
     git/diff.ts               working-tree/commit diffs and unified parser
     session.ts                resolve Session working directory
@@ -43,7 +44,7 @@ src/
     styles.css, styles.ts     inline stylesheet and effect-owned, refcounted style lease
     icons.ts                  SVG renderers
     data/caller.ts            the only fetch layer
-    git/{format,list,graph}.ts pure formatting, list ordering, graph geometry
+    git/{format,list,graph}.ts pure formatting, list ordering, VS Code graph port
     menu/                     targets, triggers, clipboard, actions, command bus
     panel/
       controls.ts, rows.ts    controls and flat change-file rows
@@ -63,7 +64,7 @@ scripts/
 test/
   *.test.ts                   Host, loader, rendered UI and workflow regressions
   unit/*.test.ts              pure modules, no Git process or DOM
-  support/*.ts                fixtures, minimal React, fake context/menu
+  support/*.ts                fixtures, minimal React, fake context/menu, VS Code graph oracle
 ```
 
 ## Dependency direction
@@ -88,8 +89,13 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
    tab-info and context-menu hooks.
 2. `useRepoStatus` creates a caller for `/api/dsh-git-graph/rpc`, loads status and
    polls every 5 seconds while visible and no modal/operation is in flight.
-3. History and branches load on mount/on demand. Commit details replace the
-   change list while selected and load metadata plus files lazily.
+3. History and branches load on mount/on demand. `history` returns commits in
+   `--topo-order` with full decorations plus the checked-out, upstream and base
+   references; `git/graph.ts` turns them into VS Code swimlane view models, SVG
+   paths, node shapes and reference badges (a port of VS Code's
+   `scmHistory.ts`, checked against a literal transcription in
+   `test/support/vscode-scm-history.ts`). Commit details replace the change list
+   while selected and load metadata plus files lazily.
 4. Change actions share a busy lock, failure handling, confirmation and refresh
    path. Commit/checkout also refresh history.
 5. Triggers capture targets. The shared overlay calls a contribution with the
@@ -110,7 +116,10 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
   imported into the client artifact.
 - Absolute copy paths use `repo.root`, never the possibly nested Session cwd.
 - All visible copy comes from the bound English/Chinese dictionaries. Styling
-  retains the Host theme tokens and keyboard/menu focus semantics.
+  retains the Host theme tokens and keyboard/menu focus semantics. The one
+  exception is the commit graph, which uses VS Code's `scmGraph.*` palette as
+  `--dshgg-scm-*` variables (dark variants under `body[data-ds-dark-theme]`)
+  and VS Code's 22px graph rows.
 
 ## Build and quality gates
 
@@ -144,6 +153,8 @@ installed-DSH contract check remains an explicit local integration gate.
 
 - Put new pure rules beside the matching formatter/parser/menu module and add a
   unit test; keep graph topology changes separate from maintenance refactors.
+  Graph changes must keep the VS Code equivalence test green or document the
+  deviation in the oracle's header and the change's design notes.
 - Put new state/request logic in a hook and new presentation in a view.
 - Extend shared DTOs and validate Host inputs before adding an RPC operation.
 - Update source, tests and docs, run `pnpm build && pnpm check`, then run the

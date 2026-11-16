@@ -5,6 +5,35 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+VS Code commit graph (breaking change to the graph's look and the `history`
+wire value). The commit graph is now a port of VS Code's Source Control Graph:
+
+- History is listed in `--topo-order` with full decorations
+  (`refs/heads/…`, `refs/remotes/…`, `tag: refs/tags/…`), and `history`
+  additionally returns `references` — the checked-out branch (or detached
+  commit), its upstream, and its base branch (configured
+  `branch.<name>.vscode-merge-base`, otherwise the default remote's `HEAD`).
+  Nothing is written to the repository configuration.
+- Layout follows VS Code's swimlanes: a node takes the leftmost line heading for
+  it, further lines join it on its row, every extra merge parent opens a line at
+  the right end, and lines right of an ended line shift left. The previous
+  vacancy-preserving lane allocator and conflict-avoiding coloring are gone.
+  One deliberate fix: a root commit no longer cuts the other lines.
+- Drawing uses VS Code's geometry and path commands (22px rows, 11px lanes,
+  1px round-capped strokes, 11px quarter turns, 5px S-shifts), VS Code's node
+  shapes (dot, merge ring, checked-out ring) with masked gaps that close on
+  hover, and VS Code's palette: `#FFB000`, `#DC267F`, `#994F00`, `#40B0A6`,
+  `#B66DFF` in rotation, blue/purple/orange for checked-out/upstream/base.
+- Rows show the subject (bold on the checked-out commit) and dimmed author,
+  then VS Code's colored reference badges with target/branch/cloud/tag icons
+  grouped by color and kind. Short ID, relative time and every reference moved
+  into the tooltip; the narrow-row container queries are gone.
+- Tests: an equivalence test compares the port with a literal transcription of
+  VS Code's algorithm on 200 random histories; new Host parser and end-to-end
+  tests cover topological order and the reference resolution.
+- The Host must be restarted to serve the new `history` value; until then the
+  browser falls back to rotation colors and short decorations.
+
 Maintenance workflow and behavior-preserving TypeScript migration:
 
 - Host, browser, development scripts, regression tests and test support are
