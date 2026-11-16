@@ -146,19 +146,25 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     /\.dshgg-sectionToggle\s*\{[^}]*font: var\(--dsw-font-s-strong-14\);[^}]*font-weight: 600;/,
   )
   // Section headers pin to their pane's top edge on the host surface, so the
-  // rows pass hidden beneath them. A floating tab paints layer-2, not the
-  // docked tab host's base surface.
+  // rows pass hidden beneath them. The header owns that surface (a floating tab
+  // paints layer-2 instead of the docked tab host's base fill) and shows the
+  // host hover highlight as a rounded layer above it, so hovering keeps working
+  // while the rows stay masked.
   assert.match(
     graphStyles,
-    /\.dshgg-sectionHeader\s*\{[^}]*position: sticky;[^}]*top: 0;[^}]*z-index: 1;/,
+    /\.dshgg-sectionHeader\s*\{[^}]*position: sticky;[^}]*top: 0;[^}]*z-index: 1;[^}]*background: var\(--dsw-alias-bg-base\);/,
   )
   assert.match(
     graphStyles,
-    /\.dshgg-sectionHeader::before\s*\{[^}]*position: absolute;[^}]*inset: 0;[^}]*background: var\(--dsw-alias-bg-base\);/,
+    /\[data-dockkit-float\] \.dshgg-sectionHeader\s*\{[^}]*background: var\(--dsw-alias-bg-layer-2\);/,
   )
   assert.match(
     graphStyles,
-    /\[data-dockkit-float\] \.dshgg-sectionHeader::before\s*\{[^}]*background: var\(--dsw-alias-bg-layer-2\);/,
+    /\.dshgg-sectionHeader::before\s*\{[^}]*border-radius: var\(--dsw-radius-md\);[^}]*background: var\(--dsw-alias-interactive-bg-hover\);[^}]*opacity: 0;/,
+  )
+  assert.match(
+    graphStyles,
+    /@media \(hover: hover\) \{\s*\.dshgg-sectionHeader:hover::before \{\s*opacity: 1;\s*\}\s*\}/,
   )
   assert.match(graphStyles, /\.dshgg-paneTop\s*\{[^}]*flex: 0 0 auto;/)
   assert.match(graphStyles, /\.dshgg-paneBottom\s*\{[^}]*flex: 1 1 0;/)

@@ -495,7 +495,10 @@
 /* The header pins to its own pane's top edge while its section still reaches
  * into the pane. Its containing block is that one section, so a header can
  * never outlive it: the next section's header takes the top edge as the
- * previous one leaves, and only one header is ever pinned. */
+ * previous one leaves, and only one header is ever pinned. The header owns the
+ * opaque pane surface itself, because a stacking context paints its own
+ * background below its negative-z-index children. Square corners keep that
+ * surface covering the rows up to the edges. */
 .dshgg-sectionHeader {
   position: sticky;
   top: 0;
@@ -505,24 +508,30 @@
   gap: 2px;
   height: 30px;
   padding: 0 4px 0 2px;
-  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-base);
 }
 
-/* Opaque surface behind the header: it hides the rows scrolling beneath a
- * pinned header, and its square shape covers the header's rounded corners,
- * where the translucent row pixels would otherwise show. The host paints a
- * docked tab body with the base surface and a floating tab with the layer-2
- * surface, so the mask follows the pane it sits in. */
+/* A floating tab paints layer-2 behind its content, so the mask follows it. */
+[data-dockkit-float] .dshgg-sectionHeader {
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+/* The host hover highlight: above the header's own surface, below the title,
+ * count and actions, and inside the rounded header shape. */
 .dshgg-sectionHeader::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: var(--dsw-alias-bg-base);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-interactive-bg-hover);
+  opacity: 0;
 }
 
-[data-dockkit-float] .dshgg-sectionHeader::before {
-  background: var(--dsw-alias-bg-layer-2);
+@media (hover: hover) {
+  .dshgg-sectionHeader:hover::before {
+    opacity: 1;
+  }
 }
 
 .dshgg-sectionToggle {
@@ -577,12 +586,6 @@
 .dshgg-sectionBody {
   display: flex;
   flex-direction: column;
-}
-
-@media (hover: hover) {
-  .dshgg-sectionHeader:hover {
-    background: var(--dsw-alias-interactive-bg-hover);
-  }
 }
 
 /* ----------------------------------------------------------------- rows --- */
