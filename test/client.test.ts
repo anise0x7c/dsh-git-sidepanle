@@ -166,6 +166,14 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /@media \(hover: hover\) \{\s*\.dshgg-sectionHeader:hover::before \{\s*opacity: 1;\s*\}\s*\}/,
   )
+  // A scroll frame's top padding sits above the sticky view rectangle, so the
+  // resting inset belongs to the first section: a pinned header reaches the
+  // pane's top edge and no row can slide into a strip above it.
+  assert.match(graphStyles, /\.dshgg-scroll\s*\{[^}]*padding: 0 6px 10px;/)
+  assert.match(
+    graphStyles,
+    /\.dshgg-scroll > \.dshgg-section:first-child\s*\{[^}]*padding-top: 2px;/,
+  )
   assert.match(graphStyles, /\.dshgg-paneTop\s*\{[^}]*flex: 0 0 auto;/)
   assert.match(graphStyles, /\.dshgg-paneBottom\s*\{[^}]*flex: 1 1 0;/)
   assert.doesNotMatch(graphStyles, /\.dshgg-cleanIcon/)

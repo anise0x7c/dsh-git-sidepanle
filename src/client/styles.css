@@ -434,10 +434,17 @@
   flex-direction: column;
   gap: 2px;
   min-height: 0;
-  padding: 2px 6px 10px;
+  padding: 0 6px 10px;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* A scroll frame's top padding lies above the sticky view rectangle, so a
+ * pinned header can never cover content that slides into that strip. Keep the
+ * resting inset on the first section instead. */
+.dshgg-scroll > .dshgg-section:first-child {
+  padding-top: 2px;
 }
 
 /* ---------------------------------------------------------------- split --- */
