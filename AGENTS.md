@@ -13,11 +13,11 @@ and right-click menus.
   in `src/shared/git.ts` and are imported type-only.
 - Zero runtime dependencies. Development tools: TypeScript, tsx, esbuild,
   Biome and Node/React declarations. Tests use Node's built-in runner.
-  Development needs Node ≥ 22.13 (pnpm); generated runtime artifacts stay Node ≥ 22.
+  Development needs Node ≥ 22.13 (pnpm 12); generated runtime artifacts stay Node ≥ 22.
 - Both halves compile to committed JavaScript: `index.js`, `client.js` and
   their maps. A prepared plugin directory needs no compiler at install time.
 - Behavior truth lives in `.litespec/specs/git-sidebar/spec.md`
-  (19 requirements). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
+  (21 requirements). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
   `docs/DETAIL.zh.md` (Chinese). Architecture: `docs/ARCHITECTURE.md`.
   `docs/REFACTOR-PLAN.md` records the 0.3.0 split that produced the current
   layout — read it for rationale, not as a to-do list.
@@ -41,7 +41,7 @@ and right-click menus.
 | `test/host.test.ts` | Real loopback server + real Git fixture repositories |
 | `test/client.test.ts` | Bundle factory/registration assertions without a DOM |
 | `test/ui.test.ts` | Rendered panel behavior over `test/support/mini-react.ts` |
-| `test/unit/` | Pure-function tests: Host parsers, browser formatting/list/graph/locale/menu actions |
+| `test/unit/` | Pure-function tests: Host parsers, browser formatting/list/graph/split/locale/menu actions |
 | `test/support/` | Fake ctx + menu stand-in, fixtures, mini React, `vscode-scm-history.ts` (literal VS Code graph oracle for the equivalence test) |
 | `icon.svg`, `docs/`, `CHANGELOG.md` | Artwork and documentation |
 
@@ -63,6 +63,9 @@ Do not put an automatic build before `pnpm check`: it must reject stale
 artifacts, not repair them. CI runs the portable gate on Node 22 and 24.
 `verify:contract` stays separate because CI does not include DSH. Dependency
 build scripts are disabled; optional platform binaries supply the tooling.
+Dependency upgrades respect pnpm 12's 24-hour `minimumReleaseAge` window: wait
+for a release to age out instead of adding `minimumReleaseAgeExclude` entries
+to force a fresh version, and never chase patch releases the day they ship.
 
 ## Contracts you must not break
 
@@ -110,7 +113,7 @@ build scripts are disabled; optional platform binaries supply the tooling.
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
-panel/views/* -> { panel/controls, icons, git/format, git/graph }
+panel/views/* -> { panel/controls, panel/split, icons, git/format, git/graph }
 pure logic (git/*, menu/actions, constants, locale/*) -> no React, no ctx
 icons -> React only (presentational SVG, no ctx)
 host: http/* -> nothing; git/* -> git/exec; rpc -> all; host-entry -> rpc + http/*
@@ -126,6 +129,23 @@ hooks do. Do not introduce project-to-project cycles.
   with the directory path. The profile links the directory (`link:`), so the
   Host reads the committed `client.js` artifact directly and no build is needed
   at install time.
+- **Sandboxed installs (Linux, DSH `workspace-write`)**: pnpm 12 keeps its
+  store operation lock in `$XDG_RUNTIME_DIR/pnpm-store-operation-locks-<uid>`,
+  which the file sandbox blocks with `ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK`
+  (`EROFS`), even when `--store-dir` points inside the workspace. Point the
+  runtime directory into the workspace instead:
+
+  ```bash
+  mkdir -p .cache/runtime
+  XDG_RUNTIME_DIR="$PWD/.cache/runtime" pnpm install --frozen-lockfile
+  ```
+
+  pnpm then uses a store under `node_modules/` and completes without touching
+  the sandbox boundary or asking for approval. This is a Linux-sandbox
+  workaround only: in a normal terminal, or on macOS/Windows, plain
+  `pnpm install --frozen-lockfile` works and must stay the documented command.
+  On a machine without pnpm, install the pinned version once with
+  `npm i -g pnpm@12.21.0`.
 - **Browser half changes**: edit `src/client/**` → `pnpm build` (or keep
   `pnpm dev` running) → verify the running Web build/watch setup before promising HMR;
   otherwise refresh the existing page. To check what the running Host serves, read the

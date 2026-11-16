@@ -17,8 +17,10 @@ and right-click menus for every row.
 ## Development
 
 For development, use Node ≥ 22.13 and the pnpm version pinned in
-`packageManager` (11.28.5). The generated plugin's runtime requirement remains
-Node ≥ 22; the newer development minimum comes from pnpm itself.
+`packageManager` (12.21.0). The generated plugin's runtime requirement remains
+Node ≥ 22; the newer development minimum comes from pnpm itself. If the machine
+has no pnpm yet, install the pinned version once with `npm i -g pnpm@12.21.0`;
+the `packageManager` pin keeps every later command on 12.21.0.
 
 ```bash
 pnpm install --frozen-lockfile  # install exactly the committed dependency graph
@@ -30,6 +32,18 @@ pnpm format                    # formatting only
 pnpm dev                       # watch both halves; Host changes still need restart
 pnpm verify:contract           # extra integration gate against a real DSH installation
 ```
+
+On Linux under DSH's `workspace-write` sandbox the install is rejected with
+`ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK`: pnpm 12 keeps its store lock in
+`$XDG_RUNTIME_DIR`, outside the workspace. Run it as
+
+```bash
+mkdir -p .cache/runtime
+XDG_RUNTIME_DIR="$PWD/.cache/runtime" pnpm install --frozen-lockfile
+```
+
+instead; pnpm then keeps its store under `node_modules/`. This workaround is
+Linux-only — a normal terminal, or macOS/Windows, needs the plain command.
 
 `pnpm check` deliberately does **not** build first: stale committed artifacts
 must fail rather than silently repair themselves. CI runs the same gate on Node

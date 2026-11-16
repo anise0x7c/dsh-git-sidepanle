@@ -53,8 +53,9 @@ src/
       BranchMenu.ts           branch picker
       confirm.ts              confirmation wording
       menu.ts                 panel-scoped command wiring
+      split.ts                pure split-ratio range, pointer mapping and key steps
       hooks/                  repository/history/branches/details/action hooks
-      views/                  presentational branch/commit/change/graph sections
+      views/                  branch/commit/change/graph sections and the split view
       GitPanel.ts             hook and view assembly
     diff/                     diff panel and pure diff rendering
     titles.ts, plugin.ts      tab titles and plugin registration assembly
@@ -72,7 +73,7 @@ test/
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
-panel/views/* -> { panel/controls, icons, git/format, git/graph }
+panel/views/* -> { panel/controls, panel/split, icons, git/format, git/graph }
 pure git/menu/locale logic -> no React, no ctx
 host: http/* -> nothing; git/* -> git/exec; rpc -> readers; host-entry -> rpc + http/*
 either half -- import type --> shared/git
@@ -94,11 +95,14 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
    references; `git/graph.ts` turns them into VS Code swimlane view models, SVG
    paths, node shapes and reference badges (a port of VS Code's
    `scmHistory.ts`, checked against a literal transcription in
-   `test/support/vscode-scm-history.ts`). Commit details replace the change list
-   while selected and load metadata plus files lazily.
-4. Change actions share a busy lock, failure handling, confirmation and refresh
+   `test/support/vscode-scm-history.ts`).
+4. The body is a resizable split: change groups scroll above the graph in their
+   own pane, and `panel/split.ts` owns the 20%–80% ratio mapped from pointer and
+   keyboard gestures. `GitPanel` keeps the ratio so commit details can replace
+   the split and return to it, while commit metadata and files load lazily.
+5. Change actions share a busy lock, failure handling, confirmation and refresh
    path. Commit/checkout also refresh history.
-5. Triggers capture targets. The shared overlay calls a contribution with the
+6. Triggers capture targets. The shared overlay calls a contribution with the
    target's **value**, never the wrapper. Menu actions travel through the bus to
    the owning panel, guarded by Session id, panel id, busy and stale checks.
 

@@ -5,6 +5,38 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+Resizable change and graph panes, plus panel detail polish:
+
+- The change groups and the commit graph now scroll in two independent panes,
+  split by a divider that can be dragged. Both panes keep a 20% minimum height,
+  the divider is a keyboard focus stop (Arrow keys 5%, Page keys 10%, Home/End
+  for the limits), and opening a commit's details and returning restores the
+  chosen ratio.
+- Divider hairlines use the host's standard divider color, and section header
+  titles take the host's 14px strong step with a heavier weight.
+- The toolbar and diff header's 38px heights now include their hairlines, so
+  their rules meet the conversation header's rule at the same 76px instead of
+  sitting one pixel low.
+- The clean-workspace state is text only; the green check icon is gone.
+- Tests: 264 (was 253), adding pure split-ratio units, rendered-panel checks for
+  independent panes, pointer/keyboard resizing, the commit-detail round trip,
+  the text-only clean state, and the theme/type assertions.
+- This is a browser-only change: no Host restart is needed.
+
+Development toolchain:
+
+- pnpm is pinned to 12.21.0 (was 11.28.5). The lockfile now records the pinned
+  package manager under `packageManagerDependencies`, and
+  `pnpm install --frozen-lockfile` passes with pnpm 12.
+- `@biomejs/biome` stays on 2.6.7. pnpm 12 holds back releases younger than its
+  24-hour `minimumReleaseAge` window; rather than excluding a fresh patch from
+  that gate, the toolchain waits the window out and upgrades later.
+  `@types/node` 22.20.5, `@types/react` 18.3.31, esbuild 0.28.2, tsx 4.23.15
+  and TypeScript 5.9.3 are already the newest versions within their pinned
+  major ranges. Major upgrades for `@types/node` (26), `@types/react` (19) and
+  TypeScript (7) were checked but left out of this change.
+- No runtime dependencies; no Host restart is needed.
+
 VS Code commit graph (breaking change to the graph's look and the `history`
 wire value). The commit graph is now a port of VS Code's Source Control Graph:
 
