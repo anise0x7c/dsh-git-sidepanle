@@ -188,7 +188,7 @@ test('the commit graph draws a node per commit and lane lines from the parents',
   for (const svg of svgs) {
     assert.equal(svg.props['aria-hidden'], 'true')
     assert.equal(svg.props.width, 18, 'one lane plus trailing stroke clearance')
-    assert.equal(svg.props.height, 40)
+    assert.equal(svg.props.height, 28)
   }
   const circles = mounted.harness.findAll((element) => element.type === 'circle' && element.props.className === 'dshgg-graphNode')
   assert.equal(circles.length, 2)
@@ -196,10 +196,11 @@ test('the commit graph draws a node per commit and lane lines from the parents',
     assert.equal(circle.props.className, 'dshgg-graphNode')
     assert.equal(circle.props.cx, 6)
     assert.equal(circle.props.cy, 14)
+    assert.equal(circle.props.r, 4)
   }
   const paths = mounted.harness.findAll((element) => element.type === 'path' && element.props.className === 'dshgg-graphEdge')
   assert.equal(paths.length, 2)
-  assert.equal(paths[0].props.d, 'M6 14V40', 'the newer commit draws toward its parent')
+  assert.equal(paths[0].props.d, 'M6 14V28', 'the newer commit draws toward its parent')
   assert.equal(paths[0].props['data-lane'], '0')
   await mounted.harness.dispose()
 })
@@ -228,13 +229,69 @@ test('a merge fans out into colored lanes and joins at the shared parent', async
   assert.deepEqual(mergeEdges.map((edge) => edge.props['data-lane']), ['0', '1'])
   const sideLanePaths = mounted.harness.findAll((element) => element.type === 'path' && element.props['data-lane'] === '1')
   assert.ok(sideLanePaths.length >= 2, 'the side lane keeps its own color as it runs and joins')
-  const sideLaneCell = rows[2].children[0]
-  const joiningEdges = collectElements(sideLaneCell, (element) => element.type === 'path')
-  const joiningEdge = joiningEdges[joiningEdges.length - 1]
+  const branches = mounted.harness.findAll((element) => element.type === 'circle' && String(element.props.className).includes('dshgg-graphNode'))
+  assert.deepEqual(branches.slice(0, 3).map((circle) => circle.props.cx), [6, 6, 18])
+  const joiningEdges = collectElements(rows[3].children[0], (element) => element.type === 'path')
+  const joiningEdge = joiningEdges.find((edge) => edge.props['data-lane'] === '1')
   assert.equal(joiningEdge.props['data-lane'], '1', 'the joining connector does not adopt the target color early')
-  assert.equal(joiningEdge.props.d, 'M18 14C18 27 6 27 6 40', 'the leftward join mirrors a rightward fork')
+  assert.equal(joiningEdge.props.d, 'M18 0Q18 6 14 6H10Q6 6 6 10V14', 'the branch remains vertical until joining at the shared parent')
   const targetNode = circles[3]
   assert.equal(targetNode.props['data-lane'], '0', 'the shared parent stays on its original colored lane')
+  const bodies = mounted.harness.findAll((element) => element.props.className === 'dshgg-graphBody')
+  assert.deepEqual(bodies.map((body) => body.props.style?.marginLeft), ['-6px', '-6px', '-2px', '-6px'], 'text follows its node and clears the incoming line at the shared parent')
+  const metadata = mounted.harness.findAll((element) => element.props.className === 'dshgg-graphMeta')
+  assert.equal(metadata.length, 4)
+  metadata.forEach((line, index) => {
+    assert.equal(line.type, 'span')
+    assert.equal(bodies[index].children[0].children.at(-1), line, 'metadata joins the subject and refs on the single commit line')
+    assert.equal(collectElements(line, (element) => element.props.className === 'dshgg-graphHash').length, 1)
+    assert.equal(collectElements(line, (element) => element.props.className === 'dshgg-graphAuthor').length, 1)
+    assert.equal(collectElements(line, (element) => element.props.className === 'dshgg-graphTime').length, 1)
+    assert.equal(collectElements(line, (element) => element.props.className === 'dshgg-dot dshgg-graphAuthorDot').length, 1)
+    assert.equal(collectElements(line, (element) => element.props.className === 'dshgg-dot dshgg-graphTimeDot').length, 1)
+  })
+  assert.match(rows[0].props.title, /main/, 'the complete row title preserves ref labels when narrow layout hides chips')
+  await mounted.harness.dispose()
+})
+
+test('a secondary-parent line waits for the shared parent row', async () => {
+  const now = Math.floor(Date.now() / 1000)
+  const oid = (char) => char.repeat(40)
+  const history = {
+    commits: [
+      { oid: oid('a'), shortOid: 'aaaaaaa', author: 'Ann', authoredAt: now, refs: 'HEAD -> main', subject: 'Head', parents: [oid('b'), oid('c')] },
+      { oid: oid('b'), shortOid: 'bbbbbbb', author: 'Ann', authoredAt: now - 60, refs: '', subject: 'Main work', parents: [oid('f')] },
+      { oid: oid('c'), shortOid: 'ccccccc', author: 'Bob', authoredAt: now - 120, refs: '', subject: 'Side work', parents: [oid('d')] },
+      { oid: oid('d'), shortOid: 'ddddddd', author: 'Bob', authoredAt: now - 180, refs: '', subject: 'Merge side', parents: [oid('e'), oid('f')] },
+      { oid: oid('e'), shortOid: 'eeeeeee', author: 'Bob', authoredAt: now - 240, refs: '', subject: 'First parent line', parents: [] },
+      { oid: oid('f'), shortOid: 'fffffff', author: 'Cy', authoredAt: now - 300, refs: 'tag: v1.0', subject: 'Shared parent', parents: [] },
+    ],
+  }
+  const mounted = await mountGit({ history })
+  const rows = mounted.harness.findAll((element) => String(element.props?.className ?? '') === 'dshgg-graphRow')
+  assert.equal(rows.length, 6)
+  const svgs = mounted.harness.findAll((element) => element.type === 'svg' && element.props.className === 'dshgg-graphSvg')
+  assert.equal(svgs.length, 6)
+  for (const svg of svgs) assert.equal(svg.props.width, 42, 'three lanes and trailing clearance share one width across rows')
+  const circles = mounted.harness.findAll((element) => element.type === 'circle' && element.props.className === 'dshgg-graphNode')
+  assert.deepEqual(circles.map((circle) => circle.props['data-lane']), ['0', '0', '1', '1', '1', '0'])
+  const mergeEdges = collectElements(rows[3].children[0], (element) => element.type === 'path')
+  assert.deepEqual(mergeEdges.map((edge) => edge.props.d), [
+    'M6 0V28',
+    'M18 0V14',
+    'M18 14V28',
+    'M18 14Q18 20 22 20H26Q30 20 30 24V28',
+  ], 'the merge launches its secondary parent into a lane of its own')
+  const intermediateEdges = collectElements(rows[4].children[0], (element) => element.type === 'path')
+  const waiting = intermediateEdges.find((edge) => edge.props.d === 'M30 0V28')
+  assert.ok(waiting, 'the connector stays vertical on the intermediate row')
+  assert.equal(waiting.props['data-lane'], '1', 'it keeps its source branch color while waiting')
+  const joinEdges = collectElements(rows[5].children[0], (element) => element.type === 'path')
+  const join = joinEdges.find((edge) => edge.props['data-lane'] === '1')
+  assert.equal(join.props.d, 'M30 0Q30 6 26 6H10Q6 6 6 10V14', 'the connector turns only at the shared parent row')
+  assert.equal(circles[5].props['data-lane'], '0', 'the shared parent keeps its original lane color')
+  const bodies = mounted.harness.findAll((element) => element.props.className === 'dshgg-graphBody')
+  assert.deepEqual(bodies.map((body) => body.props.style?.marginLeft), ['-18px', '-18px', '-14px', '-6px', '-6px', '-6px'], 'text follows each node and clears the waiting lane')
   await mounted.harness.dispose()
 })
 

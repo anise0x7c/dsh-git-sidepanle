@@ -41,7 +41,8 @@ src/
     data/caller.js           createCaller, makeFailure (the only fetch layer)
     git/format.js            status letters, staging state, names, refs, time
     git/tree.js              buildTree, collectTreePaths
-    git/graph.js             computeGraph, graphRowGeometry (pure lane layout)
+    git/graph.js             deferred parent joins, grid topology and geometry,
+                             branch color assignment
     menu/bus.js              command bus + the shared panel subscription point
     menu/trigger.js          row -> host trigger props adapter
     menu/clipboard.js        absolute paths, clipboard copy

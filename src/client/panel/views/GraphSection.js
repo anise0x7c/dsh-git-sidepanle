@@ -75,10 +75,10 @@ export function GraphSection(props) {
 }
 
 /**
- * One commit row: the tree-graph cell, the subject with ref labels, and the
- * hash, author and relative time beneath it. Activating the row opens the
- * commit's details; the row stays a focus stop and keeps its context-menu
- * gesture.
+ * One commit row: the tree-graph cell, then the subject, ref labels, hash,
+ * author and relative time on a single line beside this row's own node.
+ * Activating the row opens the commit's details; the row stays a focus stop and
+ * keeps its context-menu gesture.
  * @param {object} props - row props.
  * @param {object} props.commit - commit record.
  * @param {object} props.row - laid-out graph row for this commit.
@@ -115,9 +115,11 @@ function GraphRow(props) {
     ? interactive
     : menuTrigger(props.menuTarget, { ...interactive, 'aria-haspopup': 'menu' })
   const subject = commit.subject === '' ? t('graph.noSubject') : commit.subject
+  const ago = formatAgo(t, commit.authoredAt)
+  const titlePrefix = refs.length === 0 ? '' : `${refs.map((ref) => ref.label).join(', ')} · `
   return h('div', {
     className: 'dshgg-graphRow',
-    title: `${commit.shortOid} ${subject} \u00b7 ${t('menu.hint')}`,
+    title: `${titlePrefix}${commit.shortOid} ${subject} · ${commit.author} · ${ago} · ${t('menu.hint')}`,
     ...rowProps,
   },
   h('svg', {
@@ -141,16 +143,19 @@ function GraphRow(props) {
     cy: geometry.node.cy,
     r: geometry.node.r,
   })),
-  h('div', { className: 'dshgg-graphBody' },
-    h('div', { className: 'dshgg-graphSubjectLine' },
-      h('span', { className: 'dshgg-graphSubject' }, subject),
-      visibleRefs.length === 0 ? null : h('span', { className: 'dshgg-refs' },
-        visibleRefs.map((ref, index) => h('span', { key: `${ref.label}:${index}`, className: 'dshgg-ref', 'data-kind': ref.kind, title: ref.label }, ref.label)),
-        hidden > 0 ? h('span', { key: 'more', className: 'dshgg-ref', 'data-kind': 'more', title: refs.slice(VISIBLE_REFS).map((ref) => ref.label).join(', ') }, `+${hidden}`) : null)),
-    h('div', { className: 'dshgg-graphMeta' },
+  h('div', {
+    className: 'dshgg-graphBody',
+    style: { marginLeft: `${geometry.textOffset - geometry.width}px` },
+  },
+  h('div', { className: 'dshgg-graphSubjectLine' },
+    h('span', { className: 'dshgg-graphSubject' }, subject),
+    visibleRefs.length === 0 ? null : h('span', { className: 'dshgg-refs' },
+      visibleRefs.map((ref, index) => h('span', { key: `${ref.label}:${index}`, className: 'dshgg-ref', 'data-kind': ref.kind, title: ref.label }, ref.label)),
+      hidden > 0 ? h('span', { key: 'more', className: 'dshgg-ref', 'data-kind': 'more', title: refs.slice(VISIBLE_REFS).map((ref) => ref.label).join(', ') }, `+${hidden}`) : null),
+    h('span', { className: 'dshgg-graphMeta' },
       h('span', { className: 'dshgg-graphHash' }, commit.shortOid),
-      h('span', { className: 'dshgg-dot' }, '\u00b7'),
-      h('span', null, commit.author),
-      h('span', { className: 'dshgg-dot' }, '\u00b7'),
-      h('span', null, formatAgo(t, commit.authoredAt)))))
+      h('span', { className: 'dshgg-dot dshgg-graphAuthorDot' }, '·'),
+      h('span', { className: 'dshgg-graphAuthor' }, commit.author),
+      h('span', { className: 'dshgg-dot dshgg-graphTimeDot' }, '·'),
+      h('span', { className: 'dshgg-graphTime' }, ago)))))
 }

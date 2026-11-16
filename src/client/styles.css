@@ -652,9 +652,9 @@
 .dshgg-graphRow {
   display: flex;
   flex: none;
-  align-items: flex-start;
-  gap: 8px;
-  height: 40px;
+  align-items: stretch;
+  gap: 0;
+  height: 28px;
   min-width: 0;
   padding: 0 6px 0 4px;
   border-radius: var(--dsw-radius-md);
@@ -730,22 +730,22 @@
 .dshgg-graphBody {
   display: flex;
   flex: 1;
-  flex-direction: column;
   min-width: 0;
-  padding: 4px 0 2px;
+  container-type: inline-size;
 }
 
 .dshgg-graphSubjectLine {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  height: 20px;
+  height: 28px;
 }
 
 .dshgg-graphSubject {
-  flex: 1;
-  min-width: 0;
+  flex: 0 1 auto;
+  min-width: min(8ch, 100%);
   overflow: hidden;
   font: var(--dsw-font-xs-13);
   white-space: nowrap;
@@ -753,10 +753,10 @@
 }
 
 .dshgg-graphMeta {
-  display: flex;
+  display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 4px;
-  height: 14px;
   min-width: 0;
   overflow: hidden;
   color: var(--dsw-alias-label-tertiary);
@@ -765,13 +765,47 @@
 }
 
 .dshgg-graphMeta span {
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.dshgg-graphAuthor {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.dshgg-graphHash,
+.dshgg-graphTime,
+.dshgg-graphMeta .dshgg-dot {
+  flex: none;
+}
+
 .dshgg-graphHash {
   font-family: var(--ds-font-family-code);
+}
+
+/* Protect the subject before removing secondary information. Each row's text
+ * body is a width container, so these thresholds follow the Sidebar pane size
+ * rather than the unrelated width of a floating Web window. */
+@container (max-width: 360px) {
+  .dshgg-graphTime,
+  .dshgg-graphTimeDot {
+    display: none;
+  }
+}
+
+@container (max-width: 280px) {
+  .dshgg-graphAuthor,
+  .dshgg-graphAuthorDot {
+    display: none;
+  }
+}
+
+@container (max-width: 200px) {
+  .dshgg-graphMeta,
+  .dshgg-refs {
+    display: none;
+  }
 }
 
 .dshgg-refs {

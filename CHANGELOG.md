@@ -3,6 +3,48 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## 0.5.2
+
+Defer every shared-parent join to the parent's own row so a branch line no
+longer starts at an intermediate child:
+
+- A secondary parent now opens and keeps its own right-hand lane even when
+  another lane already expects that parent. The line keeps its source branch
+  color until the shared parent's row, where it joins the node together with
+  every other expected lane. A commit row can receive several branch lines, and
+  a merge commit can launch a distinct lane for each parent.
+- The node stays on the oldest expectation's lane, so an older line keeps its
+  branch identity when a newer connector opens a free lane to its left.
+- Secondary parents below the 60-commit window still fold into the existing
+  trailing line, because they have no visible row where both lines could join;
+  first parents keep their own lane there as everywhere else.
+- Commit order, parent topology, graph result and edge contracts, text
+  clearance, lane squeezing, colors, commit details, activation, menus, Host
+  APIs, and theme behavior remain unchanged.
+- Tests: 214 (was 210), including the shared-secondary-parent regression with
+  exact SVG paths and rendered-panel margins, lane ownership for an older
+  expectation, and the invisible-parent boundary. This browser-only change
+  needs no Host restart.
+
+## 0.5.1
+
+Correct lane ownership for shared parents and refine the commit graph's grid
+presentation:
+
+- First-parent lines remain vertical in their own lanes even when another lane
+  already expects the same parent. Parallel branches now hold those lanes until
+  the actual shared-parent row, where the additional incoming lines join the
+  node; an intermediate child no longer turns early into the reserved lane.
+- The graph uses bounded row-and-column curves, branch-meeting color assignment,
+  and one-line information beside each node. Text leaves clearance for active
+  right-hand lines and narrow rows progressively suppress secondary metadata.
+- Commit order, parent topology, commit details, row activation, context menus,
+  Host APIs, and theme behavior remain unchanged.
+- Tests: 210 (was 209), including a regression with two multi-commit chains
+  converging on one parent, the exact shared-parent SVG paths, cross-lane palette
+  conflicts, and rendered-panel text clearance. This browser-only fix needs no
+  Host restart.
+
 ## 0.5.0
 
 Native look and a real commit graph. The panel now sits in the host's visual

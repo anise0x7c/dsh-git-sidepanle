@@ -59,6 +59,22 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
 
   assert.equal(styleTags.length, 1)
   assert.equal(styleTags[0].getAttribute('data-plugin'), '@local/dsh-git-graph')
+  const graphStyles = styleTags[0].textContent
+  assert.match(graphStyles, /\.dshgg-graphBody\s*\{[^}]*container-type: inline-size;/)
+  assert.match(graphStyles, /\.dshgg-graphSubject\s*\{[^}]*min-width: min\(8ch, 100%\);/)
+  const narrowGroups = [
+    [360, ['.dshgg-graphTime', '.dshgg-graphTimeDot']],
+    [280, ['.dshgg-graphAuthor', '.dshgg-graphAuthorDot']],
+    [200, ['.dshgg-graphMeta', '.dshgg-refs']],
+  ]
+  for (const [width, selectors] of narrowGroups) {
+    const start = graphStyles.indexOf(`@container (max-width: ${width}px)`)
+    assert.notEqual(start, -1, `the ${width}px row fallback must be bundled`)
+    const next = graphStyles.indexOf('@container', start + 1)
+    const block = graphStyles.slice(start, next === -1 ? graphStyles.length : next)
+    for (const selector of selectors) assert.ok(block.includes(selector), `${selector} has its own narrow-row fallback`)
+    assert.match(block, /display: none;/)
+  }
   assert.equal(records.localeDictionaries.length, 1)
   assert.equal(records.localeDictionaries[0].namespace, 'gitGraph')
   assert.ok(records.localeDictionaries[0].dictionaries.en.title)
