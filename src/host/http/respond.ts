@@ -4,16 +4,26 @@
  * This module is a leaf: it must not import anything from the project so the
  * routes stay testable without a Host context or a Git repository.
  */
+import type { IncomingMessage, ServerResponse } from 'node:http'
 
 const MAX_BODY_BYTES = 256 * 1024
 
 /**
- * Answer one JSON body with a stable envelope.
- * @param {import('node:http').ServerResponse} response - Node response.
- * @param {number} status - HTTP status.
- * @param {unknown} value - JSON-serializable value.
+ * Whether a parsed JSON value is a plain object.
+ * @param value - parsed value.
+ * @returns true for a non-null, non-array object.
  */
-export function sendJson(response, status, value) {
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * Answer one JSON body with a stable envelope.
+ * @param response - Node response.
+ * @param status - HTTP status.
+ * @param value - JSON-serializable value.
+ */
+export function sendJson(response: ServerResponse, status: number, value: unknown): void {
   const body = JSON.stringify(value)
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -25,15 +35,15 @@ export function sendJson(response, status, value) {
 
 /**
  * Read a bounded JSON object body.
- * @param {import('node:http').IncomingMessage} request - Node request.
- * @returns {Promise<Record<string, unknown> | null>} the parsed object, or null when malformed or oversized.
+ * @param request - Node request.
+ * @returns the parsed object, or null when malformed or oversized.
  */
-export function readJsonBody(request) {
+export function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown> | null> {
   return new Promise((resolveBody) => {
-    const chunks = []
+    const chunks: Buffer[] = []
     let bytes = 0
     let refused = false
-    request.on('data', (chunk) => {
+    request.on('data', (chunk: Buffer | string) => {
       if (refused) return
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
       bytes += buffer.length
@@ -47,8 +57,8 @@ export function readJsonBody(request) {
     request.on('end', () => {
       if (refused) return resolveBody(null)
       try {
-        const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-        resolveBody(parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null)
+        const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+        resolveBody(isJsonObject(parsed) ? parsed : null)
       } catch {
         resolveBody(null)
       }

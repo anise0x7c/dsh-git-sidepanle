@@ -1,7 +1,16 @@
 /**
  * Working-tree status: porcelain-v2 parsing and reading.
  */
-import { changeEntry, findRepositoryRoot, gitOrThrow } from './exec.js'
+import type { ChangeEntry, RepositoryInfo, StatusResult } from '../../shared/git.ts'
+import { changeEntry, findRepositoryRoot, gitOrThrow } from './exec.ts'
+
+/** Status separated into the repository summary and its changed files. */
+export interface ParsedStatus {
+  /** Repository summary with an empty root until `readStatus` fills it in. */
+  repo: RepositoryInfo
+  /** Changed files in Git's record order. */
+  files: ChangeEntry[]
+}
 
 /**
  * Parse `git status --porcelain=v2 --branch -z` output.
@@ -10,13 +19,13 @@ import { changeEntry, findRepositoryRoot, gitOrThrow } from './exec.js'
  * the parser must therefore consume the original path when it sees a `2 `
  * record instead of treating it as a separate entry.
  *
- * @param {string} output - NUL-terminated records.
- * @returns {{ repo: object, files: object[] }} status payload.
+ * @param output - NUL-terminated records.
+ * @returns status payload.
  */
-export function parseStatus(output) {
+export function parseStatus(output: string): ParsedStatus {
   const tokens = output.split('\0')
-  const files = []
-  const repo = {
+  const files: ChangeEntry[] = []
+  const repo: RepositoryInfo = {
     root: '',
     branch: null,
     detached: false,
@@ -28,7 +37,7 @@ export function parseStatus(output) {
   }
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index]
-    if (token === '') continue
+    if (token === undefined || token === '') continue
     if (token.startsWith('# branch.oid ')) {
       const oid = token.slice('# branch.oid '.length)
       repo.unborn = oid === '(initial)'
@@ -55,20 +64,31 @@ export function parseStatus(output) {
     }
     if (token.startsWith('1 ')) {
       const match = /^1 (.)(.) \S+ (\S+) (\S+) (\S+) (\S+) (\S+) (.*)$/s.exec(token)
-      if (match !== null) files.push(changeEntry('ordinary', match[1], match[2], match[8]))
+      if (match !== null)
+        files.push(changeEntry('ordinary', match[1] ?? '', match[2] ?? '', match[8] ?? ''))
       continue
     }
     if (token.startsWith('2 ')) {
       const match = /^2 (.)(.) \S+ (\S+) (\S+) (\S+) (\S+) (\S+) ([^ ]+) (.*)$/s.exec(token)
       const origPath = tokens[index + 1]
       index += 1
-      if (match !== null) files.push(changeEntry('renamed', match[1], match[2], match[9], typeof origPath === 'string' && origPath !== '' ? origPath : undefined))
+      if (match !== null)
+        files.push(
+          changeEntry(
+            'renamed',
+            match[1] ?? '',
+            match[2] ?? '',
+            match[9] ?? '',
+            typeof origPath === 'string' && origPath !== '' ? origPath : undefined,
+          ),
+        )
       continue
     }
     if (token.startsWith('u ')) {
       // u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
       const match = /^u (.)(.) \S+ (\S+) (\S+) (\S+) (\S+) (\S+) (\S+) (\S+) (.*)$/s.exec(token)
-      if (match !== null) files.push(changeEntry('unmerged', match[1], match[2], match[10]))
+      if (match !== null)
+        files.push(changeEntry('unmerged', match[1] ?? '', match[2] ?? '', match[10] ?? ''))
       continue
     }
     if (token.startsWith('? ')) {
@@ -80,13 +100,19 @@ export function parseStatus(output) {
 
 /**
  * Read the full status of one working directory.
- * @param {string} cwd - Session working directory.
- * @returns {Promise<{ repo: object | null, cwd: string, files: object[] }>} status payload.
+ * @param cwd - Session working directory.
+ * @returns status payload.
  */
-export async function readStatus(cwd) {
+export async function readStatus(cwd: string): Promise<StatusResult> {
   const root = await findRepositoryRoot(cwd)
   if (root === null) return { repo: null, cwd, files: [] }
-  const output = await gitOrThrow(root, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all'])
+  const output = await gitOrThrow(root, [
+    'status',
+    '--porcelain=v2',
+    '--branch',
+    '-z',
+    '--untracked-files=all',
+  ])
   const { repo, files } = parseStatus(output)
   return { repo: { ...repo, root, cwd }, files }
 }

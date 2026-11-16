@@ -4,17 +4,25 @@
  * One operation per request: the payload names a Session and an operation, and
  * the repository is always resolved from the Session's working directory, so
  * the browser never sends a repository path of its own. Operations reuse the
- * validated path helpers from `git/exec.js`; none of them run through a shell.
+ * validated path helpers from `git/exec.ts`; none of them run through a shell.
  */
 import { existsSync } from 'node:fs'
 import { lstat, unlink } from 'node:fs/promises'
-import { GitGraphError } from './errors.js'
-import { branchExists, readBranches } from './git/branches.js'
-import { readDiff, readCommitDiff } from './git/diff.js'
-import { findRepositoryRoot, gitOrThrow, resolveRepositoryPath, resolveRepositoryPaths, runGit } from './git/exec.js'
-import { readCommitDetails, readHistory } from './git/history.js'
-import { readStatus } from './git/status.js'
-import { resolveSessionDirectory } from './session.js'
+import type { GitGraphRpcValue } from '../shared/git.ts'
+import type { HostContext } from './context.ts'
+import { GitGraphError } from './errors.ts'
+import { branchExists, readBranches } from './git/branches.ts'
+import { readCommitDiff, readDiff } from './git/diff.ts'
+import {
+  findRepositoryRoot,
+  gitOrThrow,
+  resolveRepositoryPath,
+  resolveRepositoryPaths,
+  runGit,
+} from './git/exec.ts'
+import { readCommitDetails, readHistory } from './git/history.ts'
+import { readStatus } from './git/status.ts'
+import { resolveSessionDirectory } from './session.ts'
 
 /** Route paths of the guarded family. */
 export const RPC_PATH = '/api/dsh-git-graph/rpc'
@@ -25,27 +33,41 @@ const FULL_OID = /^[0-9a-f]{40}$/
 
 /**
  * Dispatch one operation inside the repository containing a Session's directory.
- * @param {import('@deepseek-ai/cordis').Context} ctx - Host context.
- * @param {Record<string, unknown>} payload - validated request.
- * @returns {Promise<unknown>} operation value.
+ * @param ctx - Host context.
+ * @param payload - validated request.
+ * @returns operation value.
  */
-export async function dispatch(ctx, payload) {
+export async function dispatch(
+  ctx: HostContext,
+  payload: Record<string, unknown>,
+): Promise<GitGraphRpcValue> {
   const cwd = await resolveSessionDirectory(ctx, payload.sessionId)
-  if (!existsSync(cwd)) throw new GitGraphError('workspace-not-found', `The working directory "${cwd}" does not exist.`, 404)
+  if (!existsSync(cwd))
+    throw new GitGraphError(
+      'workspace-not-found',
+      `The working directory "${cwd}" does not exist.`,
+      404,
+    )
   const op = payload.op
   if (op === 'status') return readStatus(cwd)
 
   const root = await findRepositoryRoot(cwd)
-  if (root === null) throw new GitGraphError('not-a-repository', `The working directory "${cwd}" is not inside a Git repository.`, 409)
+  if (root === null)
+    throw new GitGraphError(
+      'not-a-repository',
+      `The working directory "${cwd}" is not inside a Git repository.`,
+      409,
+    )
 
   switch (op) {
     case 'history':
       return { commits: await readHistory(root) }
     case 'commit-details': {
-      if (typeof payload.oid !== 'string' || !FULL_OID.test(payload.oid)) {
+      const oid = payload.oid
+      if (typeof oid !== 'string' || !FULL_OID.test(oid)) {
         throw new GitGraphError('bad-request', 'A full commit identifier is required.', 400)
       }
-      return readCommitDetails(root, payload.oid)
+      return readCommitDetails(root, oid)
     }
     case 'branches':
       return { branches: await readBranches(root) }
@@ -59,9 +81,21 @@ export async function dispatch(ctx, payload) {
       const restored = await runGit(root, ['restore', '--staged', '--', ...paths])
       if (!restored.ok) {
         // An unborn branch has no HEAD to restore from; remove the entries instead.
-        const removed = await runGit(root, ['rm', '--cached', '-r', '--quiet', '--ignore-unmatch', '--', ...paths])
+        const removed = await runGit(root, [
+          'rm',
+          '--cached',
+          '-r',
+          '--quiet',
+          '--ignore-unmatch',
+          '--',
+          ...paths,
+        ])
         if (!removed.ok) {
-          throw new GitGraphError('git-command-failed', removed.stderr.trim() || restored.stderr.trim() || 'git restore failed', 409)
+          throw new GitGraphError(
+            'git-command-failed',
+            removed.stderr.trim() || restored.stderr.trim() || 'git restore failed',
+            409,
+          )
         }
       }
       return { ok: true }
@@ -78,30 +112,56 @@ export async function dispatch(ctx, payload) {
         await unlink(absolute)
         return { ok: true }
       }
-      const restored = await runGit(root, ['restore', '--source=HEAD', '--staged', '--worktree', '--', ...paths])
+      const restored = await runGit(root, [
+        'restore',
+        '--source=HEAD',
+        '--staged',
+        '--worktree',
+        '--',
+        ...paths,
+      ])
       if (!restored.ok) {
         if (/could not resolve HEAD|unknown revision|bad revision/i.test(restored.stderr)) {
-          throw new GitGraphError('discard-unborn', 'Changes cannot be discarded before the first commit.', 409)
+          throw new GitGraphError(
+            'discard-unborn',
+            'Changes cannot be discarded before the first commit.',
+            409,
+          )
         }
-        throw new GitGraphError('git-command-failed', restored.stderr.trim() || 'git restore failed', 409)
+        throw new GitGraphError(
+          'git-command-failed',
+          restored.stderr.trim() || 'git restore failed',
+          409,
+        )
       }
       return { ok: true }
     }
     case 'commit': {
       const message = typeof payload.message === 'string' ? payload.message.trim() : ''
-      if (message === '') throw new GitGraphError('empty-message', 'A commit message is required.', 400)
-      if (message.length > 20_000) throw new GitGraphError('message-too-long', 'The commit message is too long.', 400)
+      if (message === '')
+        throw new GitGraphError('empty-message', 'A commit message is required.', 400)
+      if (message.length > 20_000)
+        throw new GitGraphError('message-too-long', 'The commit message is too long.', 400)
       if (payload.stageAll === true) await gitOrThrow(root, ['add', '-A'])
       const staged = await runGit(root, ['diff', '--cached', '--quiet'])
       // Exit code 1 means staged differences exist; anything else is a real failure.
-      if (staged.ok) throw new GitGraphError('nothing-staged', 'There are no staged changes to commit.', 409)
+      if (staged.ok)
+        throw new GitGraphError('nothing-staged', 'There are no staged changes to commit.', 409)
       if (staged.code !== 1) {
-        if (staged.code === 'ENOENT') throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
-        throw new GitGraphError('git-command-failed', staged.stderr.trim() || 'git diff --cached failed', 409)
+        if (staged.code === 'ENOENT')
+          throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
+        throw new GitGraphError(
+          'git-command-failed',
+          staged.stderr.trim() || 'git diff --cached failed',
+          409,
+        )
       }
-      const committed = await runGit(root, ['commit', '-m', message], { timeout: COMMIT_TIMEOUT_MS })
+      const committed = await runGit(root, ['commit', '-m', message], {
+        timeout: COMMIT_TIMEOUT_MS,
+      })
       if (!committed.ok) {
-        if (committed.code === 'ENOENT') throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
+        if (committed.code === 'ENOENT')
+          throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
         const detail = `${committed.stdout}\n${committed.stderr}`.trim() || 'git commit failed'
         if (/nothing to commit|no changes added to commit/i.test(detail)) {
           throw new GitGraphError('nothing-staged', 'There are no staged changes to commit.', 409)
@@ -117,26 +177,37 @@ export async function dispatch(ctx, payload) {
         throw new GitGraphError('bad-request', 'A local branch name is required.', 400)
       }
       const formatted = await runGit(root, ['check-ref-format', '--branch', branch])
-      if (!formatted.ok || !await branchExists(root, branch)) {
+      if (!formatted.ok || !(await branchExists(root, branch))) {
         throw new GitGraphError('unknown-branch', `No local branch named "${branch}" exists.`, 404)
       }
       const switched = await runGit(root, ['switch', branch])
       if (!switched.ok) {
-        if (switched.code === 'ENOENT') throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
-        throw new GitGraphError('git-command-failed', `${switched.stdout}\n${switched.stderr}`.trim() || 'git switch failed', 409)
+        if (switched.code === 'ENOENT')
+          throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
+        throw new GitGraphError(
+          'git-command-failed',
+          `${switched.stdout}\n${switched.stderr}`.trim() || 'git switch failed',
+          409,
+        )
       }
       return { ok: true, branch }
     }
     case 'diff': {
-      if (typeof payload.path !== 'string') throw new GitGraphError('bad-request', 'A file path is required.', 400)
+      const path = payload.path
+      if (typeof path !== 'string')
+        throw new GitGraphError('bad-request', 'A file path is required.', 400)
       if (payload.commit !== undefined) {
-        if (typeof payload.commit !== 'string' || !FULL_OID.test(payload.commit)) {
+        const commit = payload.commit
+        if (typeof commit !== 'string' || !FULL_OID.test(commit)) {
           throw new GitGraphError('bad-request', 'A full commit identifier is required.', 400)
         }
-        const origPath = typeof payload.origPath === 'string' && payload.origPath !== '' ? payload.origPath : undefined
-        return readCommitDiff(root, payload.path, payload.commit, origPath)
+        const origPath =
+          typeof payload.origPath === 'string' && payload.origPath !== ''
+            ? payload.origPath
+            : undefined
+        return readCommitDiff(root, path, commit, origPath)
       }
-      return readDiff(root, payload.path, payload.staged === true, payload.untracked === true)
+      return readDiff(root, path, payload.staged === true, payload.untracked === true)
     }
     default:
       throw new GitGraphError('unknown-operation', `Unknown operation "${String(op)}".`, 400)

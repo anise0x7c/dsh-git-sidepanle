@@ -1,16 +1,21 @@
 /**
  * Local branch listing and lookup.
  */
-import { gitOrThrow, runGit } from './exec.js'
+import type { BranchInfo } from '../../shared/git.ts'
+import { gitOrThrow, runGit } from './exec.ts'
 
 /**
  * List local branches.
- * @param {string} root - repository root.
- * @returns {Promise<Array<{ name: string, current: boolean }>>} branches.
+ * @param root - repository root.
+ * @returns branches.
  */
-export async function readBranches(root) {
-  const output = await gitOrThrow(root, ['for-each-ref', '--format=%(HEAD)%09%(refname:short)', 'refs/heads'])
-  const branches = []
+export async function readBranches(root: string): Promise<BranchInfo[]> {
+  const output = await gitOrThrow(root, [
+    'for-each-ref',
+    '--format=%(HEAD)%09%(refname:short)',
+    'refs/heads',
+  ])
+  const branches: BranchInfo[] = []
   for (const line of output.split('\n')) {
     if (line === '') continue
     const separator = line.indexOf('\t')
@@ -24,11 +29,11 @@ export async function readBranches(root) {
 
 /**
  * Whether the branch name exists as a local branch.
- * @param {string} root - repository root.
- * @param {string} name - candidate branch.
- * @returns {Promise<boolean>} true when present.
+ * @param root - repository root.
+ * @param name - candidate branch.
+ * @returns true when present.
  */
-export async function branchExists(root, name) {
+export async function branchExists(root: string, name: string): Promise<boolean> {
   const result = await runGit(root, ['show-ref', '--verify', '--quiet', `refs/heads/${name}`])
   return result.ok
 }

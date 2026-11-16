@@ -6,27 +6,32 @@
  * markers, and the bundle's own request header so a cross-site form post
  * cannot forge a call. This module is a leaf: no project imports.
  */
+import type { IncomingMessage } from 'node:http'
 
 /**
  * Whether a socket address names loopback.
- * @param {string | undefined} address - socket remote address.
- * @returns {boolean} true for 127/8, ::1, and IPv4-mapped loopback.
+ * @param address - socket remote address.
+ * @returns true for 127/8, ::1, and IPv4-mapped loopback.
  */
-export function isLoopbackAddress(address) {
+export function isLoopbackAddress(address: string | undefined): boolean {
   if (typeof address !== 'string') return false
   const normalized = address.toLowerCase()
   if (normalized === '::1') return true
   if (normalized.startsWith('::ffff:')) return isLoopbackAddress(normalized.slice(7))
   const parts = normalized.split('.')
-  return parts.length === 4 && parts[0] === '127' && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+  return (
+    parts.length === 4 &&
+    parts[0] === '127' &&
+    parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+  )
 }
 
 /**
  * Whether a Host header names a loopback authority.
- * @param {string} hostname - URL hostname.
- * @returns {boolean} true for localhost and loopback literals.
+ * @param hostname - URL hostname.
+ * @returns true for localhost and loopback literals.
  */
-export function isLoopbackHostname(hostname) {
+export function isLoopbackHostname(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '[::1]' || isLoopbackAddress(hostname)
 }
 
@@ -34,16 +39,20 @@ export function isLoopbackHostname(hostname) {
  * The same local-request fence the other local plugin routes use: an unproxied
  * loopback socket, a loopback Host header, same-origin browser markers, and the
  * bundle's own request header so a cross-site form post cannot forge a call.
- * @param {import('node:http').IncomingMessage} request - Node request.
- * @returns {boolean} whether the request may enter.
+ * @param request - Node request.
+ * @returns whether the request may enter.
  */
-export function isTrustedRequest(request) {
+export function isTrustedRequest(request: IncomingMessage): boolean {
   if (request.headers['x-dsh-git-graph'] !== '1') return false
-  if (request.headers['x-forwarded-for'] !== undefined || request.headers['cf-connecting-ip'] !== undefined) return false
+  if (
+    request.headers['x-forwarded-for'] !== undefined ||
+    request.headers['cf-connecting-ip'] !== undefined
+  )
+    return false
   if (!isLoopbackAddress(request.socket?.remoteAddress)) return false
   const host = request.headers.host
   if (typeof host !== 'string' || host === '') return false
-  let hostUrl
+  let hostUrl: URL
   try {
     hostUrl = new URL(`http://${host}`)
   } catch {

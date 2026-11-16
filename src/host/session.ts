@@ -1,15 +1,19 @@
 /**
  * Session identity to working directory resolution.
  */
-import { GitGraphError } from './errors.js'
+import type { HostContext } from './context.ts'
+import { GitGraphError } from './errors.ts'
 
 /**
  * Resolve a Session's working directory without activating its Agent.
- * @param {import('@deepseek-ai/cordis').Context} ctx - Host context.
- * @param {unknown} sessionId - wire identity.
- * @returns {Promise<string>} absolute directory.
+ * @param ctx - Host context.
+ * @param sessionId - wire identity.
+ * @returns absolute directory.
  */
-export async function resolveSessionDirectory(ctx, sessionId) {
+export async function resolveSessionDirectory(
+  ctx: HostContext,
+  sessionId: unknown,
+): Promise<string> {
   if (typeof sessionId !== 'string' || sessionId === '') {
     throw new GitGraphError('bad-request', 'A Session identity is required.', 400)
   }
@@ -32,5 +36,9 @@ export async function resolveSessionDirectory(ctx, sessionId) {
     const directory = snapshot?.header?.cwd
     if (typeof directory === 'string' && directory !== '') return directory
   }
-  throw new GitGraphError('session-not-found', `Session "${sessionId}" has no working directory.`, 404)
+  throw new GitGraphError(
+    'session-not-found',
+    `Session "${sessionId}" has no working directory.`,
+    404,
+  )
 }
