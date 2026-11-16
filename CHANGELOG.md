@@ -3,6 +3,17 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## 0.8.2
+
+Pinned section headers now cover the pane's top edge completely:
+
+- The resting inset above the first section now belongs to the section instead
+  of the scroll frame. A pinned header reaches the very top edge of the pane, so
+  no sliver of a row can show in the strip above it.
+- Tests stay at 273; the stylesheet assertions now cover the scroll-frame and
+  first-section geometry.
+- This is a browser-only change: no Host restart is needed.
+
 ## 0.8.1
 
 Pinned section headers keep their hover highlight:
