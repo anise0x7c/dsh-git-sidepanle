@@ -120,10 +120,19 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   assert.match(graphStyles, /\.dshgg-graphLabel\s*\{[^}]*text-overflow: ellipsis;/)
   assert.match(graphStyles, /\.dshgg-graphBadges\s*\{[^}]*flex-shrink: 0;/)
   assert.match(graphStyles, /\.dshgg-graphBadgeName\s*\{[^}]*max-width: 100px;/)
+  // The lines of the whole graph share one layer, so a lane that crosses a row
+  // boundary is a single stroke; the layer is positioned against the rows' own
+  // inset and paints over their hover surface without taking their pointer.
+  assert.match(graphStyles, /\.dshgg-graphBody\s*\{[^}]*position: relative;/)
   assert.match(
     graphStyles,
-    /\.dshgg-graphRow:hover \.dshgg-graphGap\s*\{[^}]*r: var\(--dshgg-gap-hover\);/,
+    /\.dshgg-graphRow\s*\{[^}]*padding: 0 6px 0 var\(--dshgg-graph-inset\);/,
   )
+  assert.match(
+    graphStyles,
+    /\.dshgg-graphLayer\s*\{[^}]*position: absolute;[^}]*top: 0;[^}]*left: var\(--dshgg-graph-inset\);[^}]*pointer-events: none;/,
+  )
+  assert.match(graphStyles, /\.dshgg-graphEdge\s*\{[^}]*stroke-linecap: round;/)
   // Panel chrome follows the host: standard divider color, larger section
   // titles and two independently scrolling panes.
   assert.match(

@@ -12,8 +12,10 @@
  * the node and end, every additional merge parent opens a lane at the right
  * end, and lanes right of an ended lane shift left. The constants, color
  * rotation, SVG path commands and badge grouping match VS Code; see the
- * change's design notes for the two deliberate deviations (root commits keep
- * other lanes; node gaps are masks rather than background-colored strokes).
+ * change's design notes for the deliberate deviations (root commits keep other
+ * lanes; node gaps are a mask rather than background-colored strokes; the lines
+ * of the whole graph are one layer, so a lane crossing a row boundary is one
+ * stroke instead of two).
  *
  * Pure data in and out: no React, no DOM, no plugin context, so the layout is
  * directly unit-testable.
@@ -32,6 +34,14 @@ export const SWIMLANE_CURVE_RADIUS = 5
 export const CIRCLE_RADIUS = 4
 /** Stroke of VS Code's node circles (VS Code `CIRCLE_STROKE_WIDTH`). */
 export const CIRCLE_STROKE_WIDTH = 2
+/**
+ * How far above its own top edge, in pixels, a row also draws the lanes it takes
+ * over from the row above. Within one color the whole graph is a single path, so
+ * the overlap costs nothing; it is there for the few places where a lane changes
+ * color at a row boundary, where the two colors cannot share one element and the
+ * upper one would otherwise leave the shared device pixel half covered.
+ */
+export const ROW_OVERHANG = 1
 
 /** VS Code's `scmGraph.foreground1`..`5`, in rotation order. */
 export const LANE_COLORS = ['lane1', 'lane2', 'lane3', 'lane4', 'lane5'] as const
@@ -142,7 +152,11 @@ export interface GraphRowGeometry {
   readonly width: number
   /** Row height. */
   readonly height: number
-  /** Lines, in VS Code's drawing order. */
+  /** Height above the row's top edge that the row's lines also cover. */
+  readonly overhang: number
+  /** Segments carrying the row's incoming lanes through the overhang above it. */
+  readonly bridge: readonly GraphPath[]
+  /** Lines of this row, in VS Code's drawing order. */
   readonly paths: readonly GraphPath[]
   /** Node. */
   readonly node: GraphNodeGeometry
@@ -379,6 +393,28 @@ function findLastIndex(lanes: readonly Swimlane[], id: string): number {
 }
 
 /**
+ * Segments that carry the row's incoming lanes through the overhang above its
+ * top edge (see `ROW_OVERHANG`). Every incoming lane arrives at the row's top
+ * edge in its own position, and the row above leaves that position at its
+ * bottom edge, so one short segment per lane joins the two rows' strokes.
+ * @param input - lanes entering the row.
+ * @param offset - distance from the top of the graph, in pixels.
+ * @returns one path per incoming lane, in lane order.
+ */
+function bridgePaths(input: readonly Swimlane[], offset: number): GraphPath[] {
+  const paths: GraphPath[] = []
+  for (let index = 0; index < input.length; index += 1) {
+    const lane = input[index]
+    if (lane === undefined) continue
+    paths.push({
+      d: `M ${laneX(index)} ${offset - ROW_OVERHANG} V ${offset}`,
+      color: lane.color,
+    })
+  }
+  return paths
+}
+
+/**
  * Node circles and gaps per shape. Visible radii equal VS Code's circles after
  * their background-colored strokes: a normal node is a 4px disc with a gap to
  * 6px; a merge node a 2px dot inside a ring from 4 to 5px with a gap to 7px;
@@ -411,16 +447,21 @@ const NODE_SHAPES: Record<
 }
 
 /**
- * Build one row's SVG geometry (VS Code `renderSCMHistoryItemGraph`).
+ * Build one row's SVG geometry (VS Code `renderSCMHistoryItemGraph`). Every y
+ * lands in the graph's own coordinates, so a path that carries several rows can
+ * be built by calling this once per row with the row's offset.
  * @param row - laid-out row.
- * @returns geometry for the row's `<svg>`.
+ * @param offset - distance from the top of the graph, in pixels, added to every y.
+ * @returns geometry for the row.
  */
-export function graphRowGeometry(row: GraphRow): GraphRowGeometry {
+export function graphRowGeometry(row: GraphRow, offset = 0): GraphRowGeometry {
   const { input, output, parents } = row
   const circleIndex = row.lane
   const paths: GraphPath[] = []
   const W = SWIMLANE_WIDTH
   const H = SWIMLANE_HEIGHT
+  /** A y coordinate of this row, in the graph's coordinates. */
+  const y = (value: number): number => value + offset
 
   let outputIndex = 0
   for (let index = 0; index < input.length; index += 1) {
@@ -431,8 +472,8 @@ export function graphRowGeometry(row: GraphRow): GraphRowGeometry {
         // Another lane heading for this commit: draw ╯ then ─ into the node.
         paths.push({
           d: [
-            `M ${laneX(index)} 0`,
-            `A ${W} ${W} 0 0 1 ${W * index} ${W}`,
+            `M ${laneX(index)} ${y(0)}`,
+            `A ${W} ${W} 0 0 1 ${W * index} ${y(W)}`,
             `H ${laneX(circleIndex)}`,
           ].join(' '),
           color: lane.color,
@@ -445,17 +486,17 @@ export function graphRowGeometry(row: GraphRow): GraphRowGeometry {
     const next = output[outputIndex]
     if (next === undefined || lane.id !== next.id) continue
     if (index === outputIndex) {
-      paths.push({ d: verticalLine(laneX(index), 0, H), color: lane.color })
+      paths.push({ d: verticalLine(laneX(index), y(0), y(H)), color: lane.color })
     } else {
       // A lane shifting left: | then ╯ then ─ then ╭ then |.
       paths.push({
         d: [
-          `M ${laneX(index)} 0`,
-          'V 6',
-          `A ${SWIMLANE_CURVE_RADIUS} ${SWIMLANE_CURVE_RADIUS} 0 0 1 ${laneX(index) - SWIMLANE_CURVE_RADIUS} ${H / 2}`,
+          `M ${laneX(index)} ${y(0)}`,
+          `V ${y(6)}`,
+          `A ${SWIMLANE_CURVE_RADIUS} ${SWIMLANE_CURVE_RADIUS} 0 0 1 ${laneX(index) - SWIMLANE_CURVE_RADIUS} ${y(H / 2)}`,
           `H ${laneX(outputIndex) + SWIMLANE_CURVE_RADIUS}`,
-          `A ${SWIMLANE_CURVE_RADIUS} ${SWIMLANE_CURVE_RADIUS} 0 0 0 ${laneX(outputIndex)} ${H / 2 + SWIMLANE_CURVE_RADIUS}`,
-          `V ${H}`,
+          `A ${SWIMLANE_CURVE_RADIUS} ${SWIMLANE_CURVE_RADIUS} 0 0 0 ${laneX(outputIndex)} ${y(H / 2 + SWIMLANE_CURVE_RADIUS)}`,
+          `V ${y(H)}`,
         ].join(' '),
         color: lane.color,
       })
@@ -472,9 +513,9 @@ export function graphRowGeometry(row: GraphRow): GraphRowGeometry {
     if (parentIndex === -1 || lane === undefined) continue
     paths.push({
       d: [
-        `M ${W * parentIndex} ${H / 2}`,
-        `A ${W} ${W} 0 0 1 ${W * (parentIndex + 1)} ${H}`,
-        `M ${W * parentIndex} ${H / 2}`,
+        `M ${W * parentIndex} ${y(H / 2)}`,
+        `A ${W} ${W} 0 0 1 ${W * (parentIndex + 1)} ${y(H)}`,
+        `M ${W * parentIndex} ${y(H / 2)}`,
         `H ${laneX(circleIndex)}`,
       ].join(' '),
       color: lane.color,
@@ -484,10 +525,10 @@ export function graphRowGeometry(row: GraphRow): GraphRowGeometry {
   const inputIndex = input.findIndex((lane) => lane.id === row.oid)
   const incoming = input[inputIndex]
   if (incoming !== undefined) {
-    paths.push({ d: verticalLine(laneX(circleIndex), 0, H / 2), color: incoming.color })
+    paths.push({ d: verticalLine(laneX(circleIndex), y(0), y(H / 2)), color: incoming.color })
   }
   if (parents.length > 0) {
-    paths.push({ d: verticalLine(laneX(circleIndex), H / 2, H), color: row.color })
+    paths.push({ d: verticalLine(laneX(circleIndex), y(H / 2), y(H)), color: row.color })
   }
 
   const shape: GraphNodeShape = row.kind === 'HEAD' ? 'head' : parents.length > 1 ? 'merge' : 'node'
@@ -495,16 +536,83 @@ export function graphRowGeometry(row: GraphRow): GraphRowGeometry {
   return {
     width: W * (Math.max(input.length, output.length, 1) + 1),
     height: H,
+    overhang: ROW_OVERHANG,
+    bridge: bridgePaths(input, offset),
     paths,
     node: {
       shape,
       cx: laneX(circleIndex),
-      cy: W,
+      cy: y(W),
       color: row.color,
       circles: shapeSpec.circles,
       gap: shapeSpec.gap,
       hoverGap: shapeSpec.hoverGap,
     },
+  }
+}
+
+/** One node gap the graph's line layer cuts around. */
+export interface GraphGap {
+  /** Index of the row the node belongs to. */
+  readonly row: number
+  /** Gap centre x, in the layer's coordinates. */
+  readonly cx: number
+  /** Gap centre y, in the layer's coordinates. */
+  readonly cy: number
+  /** Radius that hides the lines at rest. */
+  readonly gap: number
+  /** Radius that hides the lines while the row is hovered. */
+  readonly hoverGap: number
+}
+
+/** All of a graph's lines, drawn as one layer. */
+export interface GraphLayer {
+  /**
+   * One path per color, in the order the colors first appear. Every row's
+   * segments go into the same element, because a single element is rasterized
+   * once: a lane that crosses a row boundary keeps exactly the coverage it has
+   * anywhere else instead of being split into two antialiased strokes that
+   * leave a seam between them.
+   */
+  readonly paths: readonly GraphPath[]
+  /** Node gaps, top to bottom. */
+  readonly gaps: readonly GraphGap[]
+  /** Layer width; the widest row's cell. */
+  readonly width: number
+  /** Layer height; one row height per row. */
+  readonly height: number
+}
+
+/**
+ * Collect every row's lines into one layer for the whole graph.
+ * @param rows - laid-out rows, top to bottom.
+ * @returns the layer's paths, node gaps and size.
+ */
+export function graphLayer(rows: readonly GraphRow[]): GraphLayer {
+  const segments = new Map<GraphColor, string[]>()
+  const gaps: GraphGap[] = []
+  let width = 0
+  rows.forEach((row, index) => {
+    const geometry = graphRowGeometry(row, index * SWIMLANE_HEIGHT)
+    width = Math.max(width, geometry.width)
+    for (const path of [...geometry.bridge, ...geometry.paths]) {
+      const list = segments.get(path.color)
+      if (list === undefined) segments.set(path.color, [path.d])
+      else list.push(path.d)
+    }
+    gaps.push({
+      row: index,
+      cx: geometry.node.cx,
+      cy: geometry.node.cy,
+      gap: geometry.node.gap,
+      hoverGap: geometry.node.hoverGap,
+    })
+  })
+  return {
+    paths: [...segments].map(([color, list]) => ({ d: list.join(' '), color })),
+    gaps,
+    width,
+    height: rows.length * SWIMLANE_HEIGHT,
   }
 }
 

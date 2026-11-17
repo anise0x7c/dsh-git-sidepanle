@@ -683,29 +683,56 @@ test('a clean repository shows the clean text without a check icon', async () =>
   await mounted.harness.dispose()
 })
 
-test('the commit graph draws VS Code nodes and masked lane lines', async () => {
+test('the commit graph draws one line layer and a node per row', async () => {
   const mounted = await mountGit()
-  const svgs = mounted.harness.findAll(
+  const layers = mounted.harness.findAll(
+    (element) => element.type === 'svg' && element.props.className === 'dshgg-graphLayer',
+  )
+  assert.equal(layers.length, 1, 'the rows share one layer')
+  const [layer] = layers
+  assert.ok(layer)
+  assert.equal(layer.props['aria-hidden'], 'true')
+  assert.equal(layer.props.width, 22, 'one lane plus one position')
+  assert.equal(layer.props.height, 44, 'two rows')
+  assert.equal(layer.props.viewBox, '0 0 22 44')
+  const [mask] = collectElements(layer, (element) => element.type === 'mask')
+  assert.ok(mask)
+  assert.equal(mask.props.maskUnits, 'userSpaceOnUse')
+  assert.equal(mask.props.height, 44, 'the mask covers the whole layer')
+  const gaps = collectElements(mask, (element) => element.type === 'circle')
+  assert.deepEqual(
+    gaps.map((gap) => [
+      gap.props.className,
+      gap.props.cx,
+      gap.props.cy,
+      gap.props.r,
+      gap.props.fill,
+    ]),
+    [
+      ['dshgg-graphGap', 11, 11, 8, 'black'],
+      ['dshgg-graphGap', 11, 33, 6, 'black'],
+    ],
+    'the gap cuts the lines around each node',
+  )
+  const [lines] = collectElements(layer, (element) => element.type === 'g')
+  assert.ok(lines)
+  assert.equal(lines.props.mask, `url(#${String(mask.props.id)})`)
+  const cells = mounted.harness.findAll(
     (element) => element.type === 'svg' && element.props.className === 'dshgg-graphSvg',
   )
-  assert.equal(svgs.length, 2, 'one graph cell per commit row')
-  const maskIds = new Set<string>()
-  for (const svg of svgs) {
-    assert.equal(svg.props['aria-hidden'], 'true')
-    assert.equal(svg.props.width, 22, 'one lane plus one position')
-    assert.equal(svg.props.height, 22)
-    const [mask] = collectElements(svg, (element) => element.type === 'mask')
-    assert.ok(mask)
-    assert.equal(mask.props.maskUnits, 'userSpaceOnUse')
-    maskIds.add(String(mask.props.id))
-    const [lines] = collectElements(svg, (element) => element.type === 'g')
-    assert.ok(lines)
-    assert.equal(lines.props.mask, `url(#${String(mask.props.id)})`)
-    const [gap] = collectElements(mask, (element) => element.type === 'circle')
-    assert.ok(gap)
-    assert.equal(gap.props.fill, 'black', 'the gap cuts the lines around the node')
+  assert.equal(cells.length, 2, 'one graph cell per commit row')
+  for (const cell of cells) {
+    assert.equal(cell.props.height, 22, 'a cell is one row high')
+    assert.equal(
+      collectElements(cell, (element) => element.type === 'path').length,
+      0,
+      'the cell holds no lines',
+    )
   }
-  assert.equal(maskIds.size, 2, 'each row owns a distinct mask')
+  assert.deepEqual(
+    cells.map((cell) => cell.props.viewBox),
+    ['0 0 22 22', '0 0 22 22'],
+  )
   const nodes = mounted.harness.findAll(
     (element) => element.type === 'circle' && element.props.className === 'dshgg-graphNode',
   )
@@ -730,10 +757,8 @@ test('the commit graph draws VS Code nodes and masked lane lines', async () => {
   )
   assert.deepEqual(
     paths.map((path) => [path.props.d, path.props.style?.stroke]),
-    [
-      ['M 11 11 V 22', 'var(--dshgg-scm-ref)'],
-      ['M 11 0 V 11', 'var(--dshgg-scm-ref)'],
-    ],
+    [['M 11 11 V 22 M 11 21 V 22 M 11 22 V 33', 'var(--dshgg-scm-ref)']],
+    'both rows are one path, and the second row also covers the pixel above it',
   )
   const rows = mounted.harness.findAll(
     (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
@@ -742,6 +767,51 @@ test('the commit graph draws VS Code nodes and masked lane lines', async () => {
     rows.map((row) => row.props['data-current']),
     ['true', undefined],
     'only the checked-out commit renders bold',
+  )
+  await mounted.harness.dispose()
+})
+
+test('hovering a row closes its node gap in the line layer', async () => {
+  const mounted = await mountGit()
+  const body = mounted.harness.findAll(
+    (element) => String(element.props?.className ?? '') === 'dshgg-graphBody',
+  )[0]
+  assert.ok(body)
+  const gaps = (): [unknown, unknown][] =>
+    mounted.harness
+      .findAll(
+        (element) => element.type === 'circle' && element.props.className === 'dshgg-graphGap',
+      )
+      .map((gap) => [gap.props.cy, gap.props.r])
+  assert.deepEqual(gaps(), [
+    [11, 8],
+    [33, 6],
+  ])
+  const rows = mounted.harness.findAll(
+    (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
+  )
+  const enter = rows[1]?.props.onMouseEnter as (() => void) | undefined
+  assert.equal(typeof enter, 'function', 'the row reports the pointer')
+  enter?.()
+  await mounted.harness.flush()
+  assert.deepEqual(
+    gaps(),
+    [
+      [11, 8],
+      [33, 5],
+    ],
+    'the hovered row keeps the smaller gap',
+  )
+  const leave = rows[1]?.props.onMouseLeave as (() => void) | undefined
+  leave?.()
+  await mounted.harness.flush()
+  assert.deepEqual(
+    gaps(),
+    [
+      [11, 8],
+      [33, 6],
+    ],
+    'the gap restores when the pointer leaves',
   )
   await mounted.harness.dispose()
 })
@@ -819,19 +889,36 @@ test('a merge fans out to the right and joins its fork point like VS Code', asyn
     ],
   )
   assert.equal(nodeOf(cells[2] as TestElement).props.cx, 22, 'the side branch sits on lane 1')
-  const pathsOf = (cell: TestElement): [unknown, unknown][] =>
-    collectElements(cell, (element) => element.type === 'path').map((path) => [
-      path.props.d,
-      path.props['data-color'],
-    ])
-  assert.deepEqual(pathsOf(cells[0] as TestElement), [
-    ['M 11 11 A 11 11 0 0 1 22 22 M 11 11 H 11', 'lane1'],
-    ['M 11 11 V 22', 'ref'],
-  ])
-  assert.deepEqual(pathsOf(cells[3] as TestElement), [
-    ['M 22 0 A 11 11 0 0 1 11 11 H 11', 'lane1'],
-    ['M 11 0 V 11', 'ref'],
-  ])
+  assert.equal(
+    collectElements(cells[0] as TestElement, (element) => element.type === 'path').length,
+    0,
+    'the row cell holds only its node',
+  )
+  const [layer] = mounted.harness.findAll(
+    (element) => element.type === 'svg' && element.props.className === 'dshgg-graphLayer',
+  )
+  assert.ok(layer)
+  const layerPaths = collectElements(layer, (element) => element.type === 'path')
+  assert.deepEqual(
+    layerPaths.map((path) => path.props['data-color']),
+    ['lane1', 'ref'],
+    'one path per color for the whole graph',
+  )
+  assert.match(
+    String(layerPaths[0]?.props.d),
+    /^M 11 11 A 11 11 0 0 1 22 22 M 11 11 H 11 /,
+    'the merge opens its second parent on the first row',
+  )
+  assert.match(
+    String(layerPaths[0]?.props.d),
+    /M 22 66 A 11 11 0 0 1 11 77 H 11$/,
+    'the branch joins the fork point three rows below',
+  )
+  assert.match(
+    String(layerPaths[1]?.props.d),
+    /^M 11 11 V 22 M 11 21 V 22 M 11 22 V 33 M 11 33 V 44 M 11 43 V 44 M 11 44 V 66 /,
+    'the checked-out lane runs through every row, bridging the row edges',
+  )
   const labels = mounted.harness.findAll(
     (element) => element.props.className === 'dshgg-graphLabel',
   )
@@ -926,19 +1013,43 @@ test('lanes right of a joined lane shift left with VS Code curves', async () => 
   )
   const joinRow = cells[3]
   assert.ok(joinRow)
-  assert.deepEqual(
-    collectElements(joinRow, (element) => element.type === 'path').map((path) => path.props.d),
-    [
-      'M 22 0 A 11 11 0 0 1 11 11 H 11',
-      'M 33 0 V 6 A 5 5 0 0 1 28 11 H 27 A 5 5 0 0 0 22 16 V 22',
-      'M 11 0 V 11',
-      'M 11 11 V 22',
-    ],
+  assert.equal(
+    collectElements(joinRow, (element) => element.type === 'path').length,
+    0,
+    'the row cell holds only its node',
   )
-  const [gap] = collectElements(joinRow, (element) => element.props.className === 'dshgg-graphGap')
-  assert.ok(gap)
-  assert.equal(gap.props.r, 6)
-  assert.equal(gap.props.style?.['--dshgg-gap-hover'], '5px', 'the gap closes on hover')
+  const [layer] = mounted.harness.findAll(
+    (element) => element.type === 'svg' && element.props.className === 'dshgg-graphLayer',
+  )
+  assert.ok(layer)
+  const layerPaths = collectElements(layer, (element) => element.type === 'path')
+  assert.deepEqual(
+    layerPaths.map((path) => path.props['data-color']),
+    ['lane1', 'lane2', 'lane3'],
+  )
+  assert.match(
+    String(layerPaths[2]?.props.d),
+    /M 33 66 V 72 A 5 5 0 0 1 28 77 H 27 A 5 5 0 0 0 22 82 V 88/,
+    'the lane right of the ended one turns into its new position on the join row',
+  )
+  assert.match(
+    String(layerPaths[1]?.props.d),
+    /M 22 66 A 11 11 0 0 1 11 77 H 11/,
+    'the fork point curve sits on the join row, not on the row below',
+  )
+  const gaps = collectElements(layer, (element) => element.props.className === 'dshgg-graphGap')
+  assert.deepEqual(
+    gaps.map((gap) => [gap.props.cy, gap.props.r]),
+    [
+      [11, 6],
+      [33, 6],
+      [55, 6],
+      [77, 6],
+      [99, 6],
+      [121, 6],
+    ],
+    'one node gap per row, in the layer coordinates',
+  )
   await mounted.harness.dispose()
 })
 

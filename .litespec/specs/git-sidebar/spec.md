@@ -474,7 +474,9 @@ horizontally into the node. A merge's additional parent line SHALL leave the
 node horizontally and turn with an 11-pixel quarter curve down into its own
 position at the row's bottom edge. Each row's graph cell SHALL be one position
 wider than the larger of its incoming and outgoing line counts, and the row's
-text SHALL begin right after that cell.
+text SHALL begin right after that cell. A line that enters a row from above
+SHALL join the line the row above leaves at its bottom edge without a break,
+including when the rows' edges fall between device pixels.
 
 #### Scenario: A join turns into the node
 
@@ -495,6 +497,14 @@ text SHALL begin right after that cell.
 - **THEN** it leaves the row's top edge in its old position and reaches the
   row's bottom edge in its new position through two 5-pixel turns joined by a
   horizontal run
+
+#### Scenario: A line crosses a row boundary
+
+- **GIVEN** the row edges do not line up with whole device pixels, as they do
+  not at a zoom of 125%
+- **WHEN** a lane continues from one row into the row below
+- **THEN** the stroke reads as one unbroken line, with no lighter pixel row
+  where the two rows meet
 
 #### Scenario: Text follows each row's own graph width
 

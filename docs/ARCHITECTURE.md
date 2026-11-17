@@ -99,7 +99,11 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
    the next page. `git/graph.ts` turns the loaded commits into VS Code swimlane
    view models, SVG paths, node shapes and reference badges (a port of VS Code's
    `scmHistory.ts`, checked against a literal transcription in
-   `test/support/vscode-scm-history.ts`).
+   `test/support/vscode-scm-history.ts`). The lines of the whole list are one
+   layer with one path per color, so a lane that crosses a row boundary is
+   rasterized as one stroke; each row's cell keeps only its node and its graph
+   width, and the node gaps are circles in the layer's mask that the section
+   closes for the hovered row.
 4. The body is a resizable split: change groups scroll above the graph in their
    own pane, and `panel/split.ts` owns the 20%–80% ratio mapped from pointer and
    keyboard gestures. `GitPanel` keeps the ratio so commit details can replace

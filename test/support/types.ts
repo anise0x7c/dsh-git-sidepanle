@@ -85,6 +85,8 @@ export interface TestProps {
   onContextMenu?: TestEventHandler
   onKeyDown?: TestEventHandler
   onChange?: TestEventHandler
+  onMouseEnter?: TestEventHandler
+  onMouseLeave?: TestEventHandler
   onPointerDown?: TestEventHandler
   onPointerMove?: TestEventHandler
   onPointerUp?: TestEventHandler

@@ -1,21 +1,22 @@
 /**
  * The commit-history section: its loading note, failure banner, empty note and
- * the commit rows, drawn like VS Code's Source Control Graph — the row's
- * swimlane cell, the subject with its dimmed author, and the colored reference
- * badges — plus the copy-menu targets.
+ * the commit rows, drawn like VS Code's Source Control Graph — the swimlane
+ * lines of the whole graph in one layer, each row's node, the subject with its
+ * dimmed author, and the colored reference badges — plus the copy-menu targets.
  */
 
 import type React from 'react'
-import { createElement, useMemo } from 'react'
+import { createElement, useMemo, useState } from 'react'
 import { errorText, formatAgo, parseRefs } from '../../git/format.ts'
 import type {
   BadgeIcon,
   GraphColor,
+  GraphLayer,
   GraphRowGeometry,
   GraphRow as GraphRowLayout,
   RefBadge,
 } from '../../git/graph.ts'
-import { computeGraph, graphRowGeometry, refBadges } from '../../git/graph.ts'
+import { computeGraph, graphLayer, graphRowGeometry, refBadges } from '../../git/graph.ts'
 import { CloudIcon, GitBranchIcon, TagIcon, TargetIcon } from '../../icons.ts'
 import type { MenuTarget, MenuTriggerFactory } from '../../menu/trigger.ts'
 import type { CommitSummary, Failure, GraphReferences } from '../../types/domain.ts'
@@ -43,7 +44,7 @@ export interface GraphSectionProps {
   readonly commits: readonly CommitSummary[] | null
   /** Checked-out, upstream and base references, when known. */
   readonly references?: GraphReferences | null
-  /** Document-unique prefix for the rows' SVG mask ids. */
+  /** Document-unique prefix for the line layer's mask id. */
   readonly graphId?: string
   /** History loading. */
   readonly loading: boolean
@@ -100,6 +101,11 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
     [commits, references],
   )
   const graphId = props.graphId ?? 'git-graph'
+  const layer = useMemo(() => graphLayer(rowsLayout), [rowsLayout])
+  // The node gap that closes while a row is hovered lives in the line layer's
+  // mask, so the row cannot reach it with a stylesheet rule: the section holds
+  // the hovered row and passes its index down to the layer.
+  const [hovered, setHovered] = useState<number | null>(null)
   const menu = props.menu
   const trigger = menu === undefined ? null : menu.trigger
   const rows: React.ReactNode[] = []
@@ -118,25 +124,39 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
   } else if (commits === null || commits.length === 0) {
     rows.push(h('div', { key: 'empty', className: 'dshgg-note' }, t('graph.empty')))
   } else {
+    const rowElements: React.ReactNode[] = []
     for (let index = 0; index < commits.length; index += 1) {
       const commit = commits[index]
       const row = rowsLayout[index]
       if (commit === undefined || row === undefined) continue
-      rows.push(
+      rowElements.push(
         h(GraphRow, {
           key: commit.oid,
+          index,
           commit,
           row,
           geometry: graphRowGeometry(row),
-          maskId: `${graphId}-mask-${index}`,
           t,
           onSelect: props.onSelect,
           menuTrigger: trigger,
           menuTarget:
             menu === undefined || trigger === null ? undefined : menu.commitTarget(commit),
+          onHover: setHovered,
         }),
       )
     }
+    rows.push(
+      h(
+        GraphBody,
+        {
+          key: 'body',
+          layer,
+          maskId: `${graphId}-lines-mask`,
+          hovered,
+        },
+        rowElements,
+      ),
+    )
     const loadMore = typeof props.onLoadMore === 'function' ? props.onLoadMore : null
     const moreFailure = props.moreFailure ?? null
     if (loadMore !== null && moreFailure !== null) {
@@ -198,12 +218,12 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
 export interface GraphRowProps {
   /** Commit record. */
   readonly commit: CommitSummary
+  /** Position of the row from the top of the graph. */
+  readonly index: number
   /** Laid-out graph row for this commit. */
   readonly row: GraphRowLayout
   /** SVG geometry for the row. */
   readonly geometry: GraphRowGeometry
-  /** Document-unique id of the row's node-gap mask. */
-  readonly maskId: string
   /** Locale binder. */
   readonly t: LocaleBinder
   /** Open this commit's details. */
@@ -212,18 +232,98 @@ export interface GraphRowProps {
   readonly menuTrigger: MenuTriggerFactory | null
   /** Captured target for this row. */
   readonly menuTarget?: MenuTarget
+  /** Report the row under the pointer, or null when it leaves the rows. */
+  readonly onHover: (row: number | null) => void
+}
+
+/** Props of the rows' shared line layer. */
+export interface GraphBodyProps {
+  /** The whole graph's lines and node gaps. */
+  readonly layer: GraphLayer
+  /** Document-unique id of the layer's mask. */
+  readonly maskId: string
+  /** Row whose node gap is closed, if any. */
+  readonly hovered: number | null
+  /** The commit rows. */
+  readonly children?: React.ReactNode
 }
 
 /**
- * The row's swimlane cell (VS Code `renderSCMHistoryItemGraph`). Lines are
- * cut around the node by a mask, so the gap shows whatever surface lies
- * behind the row; the mask circle and the node circles carry their hover radii
- * as custom properties for the stylesheet.
- * @param props - geometry and mask id.
+ * The graph's rows and the one layer that draws their lines. The layer takes the
+ * rows as children so a hover only re-renders the layer and its mask, never the
+ * rows themselves.
+ * @param props - layer, hovered row and rows.
+ * @returns the rows with their line layer.
+ */
+function GraphBody(props: GraphBodyProps): React.ReactElement {
+  const layer = props.layer
+  return h(
+    'div',
+    { className: 'dshgg-graphBody' },
+    h(
+      'svg',
+      {
+        className: 'dshgg-graphLayer',
+        width: layer.width,
+        height: layer.height,
+        viewBox: `0 0 ${layer.width} ${layer.height}`,
+        'aria-hidden': 'true',
+        focusable: false,
+      },
+      h(
+        'defs',
+        null,
+        h(
+          'mask',
+          {
+            id: props.maskId,
+            maskUnits: 'userSpaceOnUse',
+            x: 0,
+            y: 0,
+            width: layer.width,
+            height: layer.height,
+          },
+          h('rect', { x: 0, y: 0, width: layer.width, height: layer.height, fill: 'white' }),
+          layer.gaps.map((gap) =>
+            h('circle', {
+              key: `gap:${gap.row}`,
+              className: 'dshgg-graphGap',
+              cx: gap.cx,
+              cy: gap.cy,
+              r: props.hovered === gap.row ? gap.hoverGap : gap.gap,
+              fill: 'black',
+            }),
+          ),
+        ),
+      ),
+      h(
+        'g',
+        { className: 'dshgg-graphLines', mask: `url(#${props.maskId})` },
+        layer.paths.map((path, index) =>
+          h('path', {
+            key: `${path.color}:${index}`,
+            className: 'dshgg-graphEdge',
+            'data-color': path.color,
+            d: path.d,
+            style: { stroke: graphColorValue(path.color) },
+          }),
+        ),
+      ),
+    ),
+    props.children,
+  )
+}
+
+/**
+ * The row's cell (VS Code `renderSCMHistoryItemGraph`): the node on top of the
+ * section's line layer, sized to the row's graph width so the text starts right
+ * after it. The node circles carry their hover radii as custom properties for
+ * the stylesheet.
+ * @param props - row geometry.
  * @returns the SVG cell.
  */
-function GraphCell(props: { geometry: GraphRowGeometry; maskId: string }): React.ReactElement {
-  const { geometry, maskId } = props
+function GraphCell(props: { geometry: GraphRowGeometry }): React.ReactElement {
+  const geometry = props.geometry
   const node = geometry.node
   return h(
     'svg',
@@ -235,43 +335,6 @@ function GraphCell(props: { geometry: GraphRowGeometry; maskId: string }): React
       'aria-hidden': 'true',
       focusable: false,
     },
-    h(
-      'defs',
-      null,
-      h(
-        'mask',
-        {
-          id: maskId,
-          maskUnits: 'userSpaceOnUse',
-          x: 0,
-          y: 0,
-          width: geometry.width,
-          height: geometry.height,
-        },
-        h('rect', { x: 0, y: 0, width: geometry.width, height: geometry.height, fill: 'white' }),
-        h('circle', {
-          className: 'dshgg-graphGap',
-          cx: node.cx,
-          cy: node.cy,
-          r: node.gap,
-          fill: 'black',
-          style: { '--dshgg-gap-hover': `${node.hoverGap}px` },
-        }),
-      ),
-    ),
-    h(
-      'g',
-      { className: 'dshgg-graphLines', mask: `url(#${maskId})` },
-      geometry.paths.map((path, index) =>
-        h('path', {
-          key: `path:${index}`,
-          className: 'dshgg-graphEdge',
-          'data-color': path.color,
-          d: path.d,
-          style: { stroke: graphColorValue(path.color) },
-        }),
-      ),
-    ),
     node.circles.map((circle, index) =>
       h('circle', {
         key: `node:${index}`,
@@ -339,11 +402,11 @@ function Badge(props: { badge: RefBadge }): React.ReactElement {
 }
 
 /**
- * One commit row: the swimlane cell, then the subject and dimmed author on one
+ * One commit row: the node cell, then the subject and dimmed author on one
  * ellipsized line, then the reference badges. Activating the row opens the
  * commit's details; the row stays a focus stop and keeps its context-menu
  * gesture. The short identifier and relative time live in the tooltip, as in
- * VS Code's hover.
+ * VS Code's hover. Hovering the row closes its node's gap in the line layer.
  * @param props - row props.
  * @returns commit row element.
  */
@@ -360,6 +423,8 @@ function GraphRow(props: GraphRowProps): React.ReactElement {
     role: 'button',
     tabIndex: 0,
     onClick: open,
+    onMouseEnter: () => props.onHover(props.index),
+    onMouseLeave: () => props.onHover(null),
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()
@@ -383,7 +448,7 @@ function GraphRow(props: GraphRowProps): React.ReactElement {
       title: `${titlePrefix}${commit.shortOid} ${subject} · ${commit.author} · ${ago} · ${t('menu.hint')}`,
       ...rowProps,
     },
-    h(GraphCell, { geometry: props.geometry, maskId: props.maskId }),
+    h(GraphCell, { geometry: props.geometry }),
     h(
       'span',
       { className: 'dshgg-graphLabel' },

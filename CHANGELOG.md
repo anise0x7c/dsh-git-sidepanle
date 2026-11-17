@@ -3,6 +3,30 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## 0.9.1
+
+Commit graph lines no longer break where two rows meet:
+
+- A lane that continues from one commit row into the next is drawn as one
+  stroke. The whole graph's lines now live in a single layer with one path per
+  color, instead of a separate clipped cell per row, so the browser rasterizes
+  a lane that crosses a row edge once and no seam can appear between the two
+  rows.
+- The break showed up whenever row edges did not line up with device pixels — a
+  page zoom of 125%, for example — as a one-pixel lighter spot in every lane that
+  crossed the boundary.
+- Each row keeps its node and its graph width, so the text still starts after
+  the row's own cell, and the node gap still closes while a row is hovered: the
+  gap belongs to the layer now, so the section tracks the hovered row and passes
+  it to the layer's mask.
+- Lane positions, row height, curve geometry, node shapes, node gaps, colors and
+  the per-row cell width are unchanged, and each row's paths still match VS
+  Code's geometry exactly.
+- Tests: 293 (was 282), covering the layer's per-color paths and offsets, the
+  node gaps in layer coordinates, the row cells holding only their node, and the
+  hovered row closing its gap.
+- This is a browser-only change: no Host restart is needed.
+
 ## 0.9.0
 
 The commit message box now takes the height its message needs:

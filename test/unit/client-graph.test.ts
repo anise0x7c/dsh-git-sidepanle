@@ -17,8 +17,10 @@ import type { GraphCommit, GraphRow } from '../../src/client/git/graph.ts'
 import {
   badgeIcon,
   computeGraph,
+  graphLayer,
   graphRowGeometry,
   LANE_COLORS,
+  ROW_OVERHANG,
   refBadges,
   referenceColors,
   SWIMLANE_HEIGHT,
@@ -447,6 +449,161 @@ describe('graphRowGeometry nodes', () => {
   })
 })
 
+describe('graphRowGeometry overhang', () => {
+  test('reaches one pixel above the row', () => {
+    const [row] = computeGraph([commit('a', ['b'])])
+    assert.ok(row)
+    const geometry = graphRowGeometry(row)
+    assert.equal(ROW_OVERHANG, 1, 'one pixel covers the shared device pixel at any zoom')
+    assert.equal(geometry.height, SWIMLANE_HEIGHT)
+    assert.equal(geometry.overhang, ROW_OVERHANG)
+    assert.deepEqual(
+      graphRowGeometry(row, 44).bridge.map((path) => path.d),
+      [],
+      'a row with no incoming lane has nothing to carry',
+    )
+  })
+
+  test('moves every y with the row offset', () => {
+    const rows = computeGraph([commit('a', ['b'])])
+    const geometry = graphRowGeometry(rows[0] as GraphRow, 22)
+    assert.deepEqual(
+      geometry.paths.map((path) => path.d),
+      ['M 11 33 V 44'],
+    )
+    assert.deepEqual({ cx: geometry.node.cx, cy: geometry.node.cy }, { cx: 11, cy: 33 })
+  })
+
+  test('starts the first row with nothing in the overhang', () => {
+    const [row] = computeGraph([commit('a', ['b'])])
+    assert.ok(row)
+    assert.deepEqual(graphRowGeometry(row).bridge, [])
+  })
+
+  test('carries every incoming lane through the overhang in its own color', () => {
+    const rows = computeGraph([
+      commit('x1', ['p']),
+      commit('x2', ['p']),
+      commit('y', ['q']),
+      commit('p', ['o']),
+      commit('q', ['o']),
+      commit('o'),
+    ])
+    const row = byOid(rows).q
+    assert.ok(row)
+    assert.deepEqual(
+      graphRowGeometry(row).bridge,
+      [
+        { d: 'M 11 -1 V 0', color: 'lane1' },
+        { d: 'M 22 -1 V 0', color: 'lane3' },
+      ],
+      'the shifted lane continues at its new position, not at the position above',
+    )
+  })
+
+  test('puts one segment per incoming lane at the position it arrives in', () => {
+    const rows = computeGraph([
+      commit('a', ['d']),
+      commit('b', ['d']),
+      commit('c', ['e']),
+      commit('d', ['f']),
+    ])
+    const row = byOid(rows).d
+    assert.ok(row)
+    assert.deepEqual(lanes(row.input), ['d:lane1', 'd:lane2', 'e:lane3'])
+    assert.deepEqual(graphRowGeometry(row).bridge, [
+      { d: 'M 11 -1 V 0', color: 'lane1' },
+      { d: 'M 22 -1 V 0', color: 'lane2' },
+      { d: 'M 33 -1 V 0', color: 'lane3' },
+    ])
+  })
+
+  test('leaves the row paths themselves VS Code-exact', () => {
+    const rows = computeGraph([
+      commit('tip', ['main', 'side']),
+      commit('main', ['base']),
+      commit('side', ['base']),
+      commit('base'),
+    ])
+    const row = byOid(rows).base
+    assert.ok(row)
+    assert.deepEqual(
+      graphRowGeometry(row).paths.map((path) => path.d),
+      ['M 22 0 A 11 11 0 0 1 11 11 H 11', 'M 11 0 V 11'],
+      'the overhang is drawn beside the ported geometry, not inside it',
+    )
+  })
+})
+
+describe('graphLayer', () => {
+  test('puts every row of one color into a single path', () => {
+    const rows = computeGraph([commit('c3', ['c2']), commit('c2', ['c1']), commit('c1')])
+    const layer = graphLayer(rows)
+    assert.deepEqual(layer.paths, [
+      {
+        // One element per color: the rasterizer unions its subpaths, so the rows
+        // join without a seam and without a second antialiased edge.
+        d: 'M 11 11 V 22 M 11 21 V 22 M 11 22 V 33 M 11 33 V 44 M 11 43 V 44 M 11 44 V 55',
+        color: 'lane1',
+      },
+    ])
+    assert.equal(layer.width, 22, 'the widest cell')
+    assert.equal(layer.height, 66, 'three rows')
+  })
+
+  test('orders colors by first appearance and offsets each row', () => {
+    const rows = computeGraph([
+      commit('tip', ['main', 'side']),
+      commit('main', ['base']),
+      commit('side', ['base']),
+      commit('base'),
+    ])
+    const layer = graphLayer(rows)
+    assert.deepEqual(
+      layer.paths.map((path) => path.color),
+      ['lane2', 'lane1'],
+      'the merge parent line is drawn before the first parent line on the top row',
+    )
+    assert.deepEqual(
+      layer.paths.map((path) => path.d),
+      [
+        'M 11 11 A 11 11 0 0 1 22 22 M 11 11 H 11 M 22 21 V 22 M 22 22 V 44 M 22 43 V 44 M 22 44 V 55 M 22 55 V 66 M 22 65 V 66 M 22 66 A 11 11 0 0 1 11 77 H 11',
+        'M 11 11 V 22 M 11 21 V 22 M 11 22 V 33 M 11 33 V 44 M 11 43 V 44 M 11 44 V 66 M 11 65 V 66 M 11 66 V 77',
+      ],
+      'the fork point lane runs to the bottom, the first parent lane to its node',
+    )
+    assert.equal(layer.width, 33)
+    assert.equal(layer.height, 88)
+  })
+
+  test('reports one node gap per row in the layer coordinates', () => {
+    const rows = computeGraph(
+      [
+        commit('head', ['a', 'b'], 'HEAD -> refs/heads/main'),
+        commit('a', ['root']),
+        commit('b', ['root']),
+        commit('root'),
+      ],
+      {
+        current: { id: 'refs/heads/main', name: 'main', revision: 'head' },
+        remote: null,
+        base: null,
+      },
+    )
+    const layer = graphLayer(rows)
+    assert.deepEqual(layer.gaps, [
+      { row: 0, cx: 11, cy: 11, gap: 8, hoverGap: 7 },
+      { row: 1, cx: 11, cy: 33, gap: 6, hoverGap: 5 },
+      { row: 2, cx: 22, cy: 55, gap: 6, hoverGap: 5 },
+      { row: 3, cx: 11, cy: 77, gap: 6, hoverGap: 5 },
+    ])
+  })
+
+  test('has no paths and no gaps for no rows', () => {
+    assert.deepEqual(graphLayer([]), { paths: [], gaps: [], width: 0, height: 0 })
+  })
+})
+
 /**
  * Deterministic pseudo-random generator (mulberry32).
  * @param seed - seed.
@@ -541,6 +698,12 @@ describe('equivalence with VS Code', () => {
           geometry.paths.map((path) => [path.d, path.color]),
           rendered.paths.map((path) => [path.d.trim(), path.color]),
           `${where} paths`,
+        )
+        assert.equal(geometry.overhang, ROW_OVERHANG, where)
+        assert.equal(
+          geometry.bridge.reduce((count, path) => count + path.d.split('M ').length - 1, 0),
+          row.input.length,
+          `${where} one overhang segment per incoming lane`,
         )
         assert.deepEqual(
           row.refs.map((ref) => [ref.id, ref.color]),
