@@ -54,7 +54,8 @@ src/
     types/                    local structural DSH and UI/domain contracts
     constants.ts              identifiers, paths, rendering limits
     locale/{en,zh}.ts          UI dictionaries
-    styles.css, styles.ts     inline stylesheet and effect-owned, refcounted style lease
+    styles/                   per-area CSS sections and the ordered cascade assembly
+    styles.ts                 effect-owned, refcounted style lease
     icons.ts                  SVG renderers
     data/caller.ts            the only fetch layer
     git/{format,list,graph}.ts pure formatting, list ordering, VS Code graph port

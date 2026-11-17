@@ -1,0 +1,14 @@
+/* --------------------------------------------------------------- titles --- */
+
+.dshgg-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dshgg-titleText {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

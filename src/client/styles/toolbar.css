@@ -1,0 +1,103 @@
+/* --------------------------------------------------------------- toolbar --- */
+
+.dshgg-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 38px;
+  padding: 0 6px;
+  /* Include the hairline: the host's 38px tab strip and 38px header meet at 76px. */
+  box-sizing: border-box;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.dshgg-branchWrap {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.dshgg-branchChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 6px;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+  background: transparent;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+}
+
+.dshgg-branchChip:disabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: default;
+}
+
+.dshgg-branchChip svg:first-child {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dshgg-branchName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-upstream {
+  display: inline-flex;
+  flex: 0 1000 auto;
+  align-items: center;
+  min-width: 0;
+  max-width: 140px;
+  padding: 0 2px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-sync {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 1px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (hover: hover) {
+  .dshgg-branchChip:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dshgg-chevron {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-caption);
+  transition: transform 150ms var(--ds-ease-in-out);
+}
+
+.dshgg-chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+.dshgg-chevron[data-open="true"] {
+  transform: rotate(90deg);
+}

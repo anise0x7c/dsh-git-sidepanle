@@ -1,0 +1,11 @@
+/* --------------------------------------------------------------- motion --- */
+
+@media (prefers-reduced-motion: reduce) {
+  .dshgg-iconBtn[data-spinning="true"] svg {
+    animation: none;
+  }
+
+  .dshgg-chevron {
+    transition: none;
+  }
+}

@@ -1,0 +1,130 @@
+/* ----------------------------------------------------------------- rows --- */
+
+.dshgg-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-md);
+}
+
+.dshgg-fileRow {
+  cursor: pointer;
+  user-select: none;
+}
+
+@media (hover: hover) {
+  .dshgg-fileRow:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dshgg-fileRow:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
+.dshgg-status {
+  flex: none;
+  width: 14px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-strong-12);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.dshgg-status[data-status="M"] {
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.dshgg-status[data-status="A"],
+.dshgg-status[data-status="U"] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.dshgg-status[data-status="D"] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dshgg-status[data-status="R"],
+.dshgg-status[data-status="C"] {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.dshgg-status[data-status="T"] {
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.dshgg-status[data-status="!"] {
+  color: var(--dsw-alias-state-error-secondary);
+}
+
+.dshgg-fileName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font: var(--dsw-font-xs-13);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The dimmed parent directory trails the file name: it disambiguates equally
+   named files without turning the flat list back into a hierarchy. */
+.dshgg-fileDir {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-fileName[data-obsolete="true"] {
+  color: var(--dsw-alias-label-secondary);
+  text-decoration: line-through;
+}
+
+.dshgg-fileArrow {
+  flex: none;
+  max-width: 38%;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-fileActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0;
+  margin-left: auto;
+  opacity: 0;
+}
+
+@media (hover: hover) {
+  .dshgg-fileRow:hover .dshgg-fileActions {
+    opacity: 1;
+  }
+}
+
+.dshgg-fileRow:focus-within .dshgg-fileActions {
+  opacity: 1;
+}
+
+.dshgg-fileActions .dshgg-iconBtn {
+  width: 22px;
+  height: 22px;
+  padding: 4px;
+}
+
+.dshgg-fileActions .dshgg-iconBtn svg {
+  width: 14px;
+  height: 14px;
+}

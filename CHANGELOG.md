@@ -14,6 +14,10 @@ is the `engines.dsh` range in `package.json`.
 - Extracted change-group rules, graph artwork/row presentation, Host validation
   and mutation boundaries; consolidated menu commands and path-copy actions, and
   made clipboard/UI-test cleanup reliable on failure.
+- Split the 1,400-line stylesheet into per-area files assembled by one ordered
+  module. Every selector and declaration is unchanged; only two obsolete lint
+  suppression comments disappear, so panel styling, theme tokens and the
+  commit-graph palette are identical.
 - The read-only maintenance gate now checks unused declarations and runtime
   architecture boundaries, cycles and unreachable executable production modules.
   No dependencies, public routes or loader contracts changed. See the maintenance

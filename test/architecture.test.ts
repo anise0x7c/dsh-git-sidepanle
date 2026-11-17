@@ -66,7 +66,7 @@ function validTree(): Record<string, string> {
     `,
     [CLIENT_ENTRY]: `
       import { createElement } from 'react'
-      import './client/styles.css'
+      import './client/styles/graph.css'
       import { mount } from './client/plugin.ts'
       export const inject: unknown[] = []
       export function apply(): unknown { return createElement('div', null, mount()) }

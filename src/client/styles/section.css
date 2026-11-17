@@ -1,0 +1,103 @@
+/* -------------------------------------------------------------- section --- */
+
+.dshgg-section {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+}
+
+/* The header pins to its own pane's top edge while its section still reaches
+ * into the pane. Its containing block is that one section, so a header can
+ * never outlive it: the next section's header takes the top edge as the
+ * previous one leaves, and only one header is ever pinned. The header owns the
+ * opaque pane surface itself, because a stacking context paints its own
+ * background below its negative-z-index children. Square corners keep that
+ * surface covering the rows up to the edges. */
+.dshgg-sectionHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  padding: 0 4px 0 2px;
+  background: var(--dsw-alias-bg-base);
+}
+
+/* A floating tab paints layer-2 behind its content, so the mask follows it. */
+[data-dockkit-float] .dshgg-sectionHeader {
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+/* The host hover highlight: above the header's own surface, below the title,
+ * count and actions, and inside the rounded header shape. */
+.dshgg-sectionHeader::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-interactive-bg-hover);
+  opacity: 0;
+}
+
+@media (hover: hover) {
+  .dshgg-sectionHeader:hover::before {
+    opacity: 1;
+  }
+}
+
+.dshgg-sectionToggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 4px 0 6px;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-s-strong-14);
+  font-weight: 600;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+}
+
+.dshgg-sectionTitle {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-sectionCount {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  font-variant-numeric: tabular-nums;
+}
+
+.dshgg-sectionActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 1px;
+}
+
+.dshgg-sectionActions .dshgg-iconBtn {
+  width: 24px;
+  height: 24px;
+  padding: 5px;
+}
+
+.dshgg-sectionActions .dshgg-iconBtn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.dshgg-sectionBody {
+  display: flex;
+  flex-direction: column;
+}

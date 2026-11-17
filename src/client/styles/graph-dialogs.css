@@ -1,0 +1,46 @@
+/* -------------------------------------------------------- graph dialogs --- */
+
+.dshgg-dialogField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.dshgg-dialogLabel,
+.dshgg-dialogHint {
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.dshgg-dialogHint {
+  margin-top: 4px;
+}
+
+.dshgg-dialogInput {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 8px;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+  background: var(--dsw-specific-input-major);
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  outline: none;
+}
+
+.dshgg-dialogInput:focus {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.dshgg-dialogInput:disabled {
+  opacity: 0.5;
+}
+
+.dshgg-dialogMessage {
+  min-height: 48px;
+  max-height: 120px;
+  resize: vertical;
+}

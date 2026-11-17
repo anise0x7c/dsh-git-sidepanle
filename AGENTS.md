@@ -33,7 +33,7 @@ and right-click menus.
 | `src/host/git/` | `exec.ts` (literal-path Git execution + repository discovery), `paths.ts` (containment), `files.ts` (safe direct untracked access), `changes.ts` (file actions), `mutations.ts` (commit/ref writes), `status.ts`, `history.ts`, `references.ts` (graph's checked-out/upstream/base refs), `branches.ts`, `diff.ts`, `ignore.ts` |
 | `src/host/watch/` | `classify.ts` (watch-event to change-kind rules, pure), `registry.ts` (shared per-repository watchers, debounce, subscription lifetime, change counters) |
 | `src/host/` | `rpc.ts` (dispatch + route paths), `validation.ts` (wire fields), `session.ts`, `errors.ts` |
-| `src/client/**` | Browser half, layered: `constants`, `locale/`, `styles.css`, `icons`, `data/caller`, `git/` (pure), `menu/` (pure + clipboard), `panel/` component files, `panel/hooks`, `panel/views`, `panel/GitPanel.ts`, `diff/`, `titles.ts`, `plugin.ts` |
+| `src/client/**` | Browser half, layered: `constants`, `locale/`, `styles/` (per-area CSS + ordered assembly in `index.ts`) and `styles.ts` (style lease), `icons`, `data/caller`, `git/` (pure), `menu/` (pure + clipboard), `panel/` component files, `panel/hooks`, `panel/views`, `panel/GitPanel.ts`, `diff/`, `titles.ts`, `plugin.ts` |
 | `src/client-entry.ts` | Build entry: exports `{ inject, apply }` from `src/client/plugin.ts` |
 | `index.js`, `index.js.map`, `client.js`, `client.js.map` | **Generated** by `scripts/build.ts` — never hand-edit; committed |
 | `scripts/build.ts` | esbuild build: `pnpm build`, `pnpm dev` (watch), `pnpm check:build` |
