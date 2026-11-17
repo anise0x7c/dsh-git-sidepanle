@@ -3,7 +3,10 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
-## Unreleased
+## 0.12.1
+
+The refactoring rounds since 0.12.0 now pass the stricter TypeScript rules
+without relaxing them, and their maintenance fixes ship together:
 
 - Adapted source, contract tooling and test fixtures to the existing strict
   TypeScript checks, including unchecked indexed access and exact optional
