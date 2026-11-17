@@ -33,6 +33,8 @@ src/
     git/references.ts         graph references: checked-out, upstream, base
     git/branches.ts           branch list + branch existence
     git/diff.ts               working-tree/commit diffs and unified parser
+    watch/classify.ts         watch-event classification (pure)
+    watch/registry.ts         shared repository watchers and change counters
     session.ts                resolve Session working directory
     errors.ts                 typed failure normalization
     rpc.ts                    operation dispatch and route constants
@@ -77,7 +79,7 @@ client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, loca
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
 panel/views/* -> { panel/autosize, panel/controls, panel/split, icons, git/format, git/graph }
 pure git/menu/locale logic -> no React, no ctx
-host: http/* -> nothing; git/* -> git/exec; rpc -> readers; host-entry -> rpc + http/*
+host: http/* -> nothing; git/* -> git/exec; watch/* -> git/exec; rpc -> readers + watch; host-entry -> rpc + http/* + watch
 either half -- import type --> shared/git
 ```
 
@@ -90,9 +92,19 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
 
 1. The keyed `sidebar.right.pane.tab` slot supplies Session identity, translation,
    tab-info and context-menu hooks.
-2. `useRepoStatus` creates a caller for `/api/dsh-git-graph/rpc`, loads status and
-   polls every 5 seconds while visible and no modal/operation is in flight.
-3. History loads one page on mount and more on demand. `history` returns commits
+2. `useRepoStatus` creates a caller for `/api/dsh-git-graph/rpc` and loads status.
+   While the tab is visible, `useLiveUpdates` subscribes the panel's repository to
+   the Host watch registry and polls two in-memory counters (working tree/index
+   and references) about every 700 ms; a counter move refreshes only the status,
+   or the status plus the graph references, without re-reading the commits. The
+   old 5-second status check stays as the fallback while the Host cannot watch
+   and stands down once the counters are live.
+3. The Host watch registry shares one recursive working-tree watcher, one Git
+   metadata watcher and one refs watcher per repository, coalesces a burst with a
+   short debounce, and releases them when the last panel unsubscribes, its
+   subscription lapses, the Session moves, or the plugin unloads. Watch events
+   only move counters; the Git reads still happen when the browser asks.
+4. History loads one page on mount and more on demand. `history` returns commits
    in `--topo-order` with full decorations, an `offset` for earlier pages, a
    `hasMore` flag, and the checked-out, upstream and base references; reaching
    the end of the graph pane (`panel/scroll.ts`) asks the history hook to append
@@ -104,15 +116,15 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
    rasterized as one stroke; each row's cell keeps only its node and its graph
    width, and the node gaps are circles in the layer's mask that the section
    closes for the hovered row.
-4. The body is a resizable split: change groups scroll above the graph in their
+5. The body is a resizable split: change groups scroll above the graph in their
    own pane, and `panel/split.ts` owns the 20%–80% ratio mapped from pointer and
    keyboard gestures. `GitPanel` keeps the ratio so commit details can replace
    the split and return to it, while commit metadata and files load lazily.
-5. Change actions share a busy lock, failure handling, confirmation and refresh
+6. Change actions share a busy lock, failure handling, confirmation and refresh
    path. Commit/checkout also refresh history. The commit box sizes itself to its
    message (`panel/autosize.ts`): one line at rest, ten at most, re-measured from
    a layout effect per message and from a width watcher when the box rewraps.
-6. Triggers capture targets. The shared overlay calls a contribution with the
+7. Triggers capture targets. The shared overlay calls a contribution with the
    target's **value**, never the wrapper. Menu actions travel through the bus to
    the owning panel, guarded by Session id, panel id, busy and stale checks.
 

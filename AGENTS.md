@@ -29,6 +29,7 @@ and right-click menus.
 | `src/host-entry.ts` | Host source entry: `inject = ['webServer']`, `apply` registers the RPC and health routes and maps failures |
 | `src/host/http/` | `respond.ts` (sendJson, readJsonBody), `trust.ts` (loopback/same-origin fence) |
 | `src/host/git/` | `exec.ts` (process execution, repository root, path checks), `status.ts`, `history.ts`, `references.ts` (graph's checked-out/upstream/base refs), `branches.ts`, `diff.ts` |
+| `src/host/watch/` | `classify.ts` (watch-event to change-kind rules, pure), `registry.ts` (shared per-repository watchers, debounce, subscription lifetime, change counters) |
 | `src/host/` | `rpc.ts` (dispatch + paths), `session.ts`, `errors.ts` |
 | `src/client/**` | Browser half, layered: `constants`, `locale/`, `styles.css`, `icons`, `data/caller`, `git/` (pure), `menu/` (pure + clipboard), `panel/` component files, `panel/hooks`, `panel/views`, `panel/GitPanel.ts`, `diff/`, `titles.ts`, `plugin.ts` |
 | `src/client-entry.ts` | Build entry: exports `{ inject, apply }` from `src/client/plugin.ts` |
