@@ -274,7 +274,12 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   const behind = repo?.behind ?? 0
   const canAct = repo !== null && busy === null
 
-  const targets = createMenuTargets({ sessionId: props.sessionId, panelId, busy, cwd: repoRoot })
+  const targets = createMenuTargets({
+    sessionId: props.sessionId,
+    panelId,
+    busy,
+    ...(repoRoot === undefined ? {} : { cwd: repoRoot }),
+  })
   const graphMenu = {
     trigger: menuTrigger,
     sectionTarget: targets.sectionTarget,

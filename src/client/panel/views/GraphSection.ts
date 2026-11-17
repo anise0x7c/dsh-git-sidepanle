@@ -133,9 +133,10 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
           t,
           onSelect: props.onSelect,
           menuTrigger: trigger,
-          menuTarget:
-            menu === undefined || trigger === null ? undefined : menu.commitTarget(commit),
-          onInvoke: menu.onInvoke,
+          ...(menu === undefined || trigger === null
+            ? {}
+            : { menuTarget: menu.commitTarget(commit) }),
+          ...(menu.onInvoke === undefined ? {} : { onInvoke: menu.onInvoke }),
           onHover: setHovered,
         }),
       )
@@ -202,7 +203,9 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
       onToggle: props.onToggle,
       menuTrigger: trigger,
       menuHint: t('menu.hint'),
-      menuTarget: menu === undefined || trigger === null ? undefined : menu.sectionTarget('graph'),
+      ...(menu === undefined || trigger === null
+        ? {}
+        : { menuTarget: menu.sectionTarget('graph') }),
     },
     rows,
   )

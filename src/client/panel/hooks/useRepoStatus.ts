@@ -18,8 +18,8 @@ import { usePanelMenu } from '../menu.ts'
 export interface UseRepoStatusOptions {
   /** Session the panel is bound to. */
   readonly sessionId: string
-  /** Host context-menu trigger hook. */
-  readonly useContextMenu?: UseContextMenu
+  /** Host context-menu trigger hook; undefined when menus are unavailable. */
+  readonly useContextMenu?: UseContextMenu | undefined
   /** Whether the tab is visible. */
   readonly visible: boolean
   /** Shared panel refs. */

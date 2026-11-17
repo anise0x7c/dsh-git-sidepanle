@@ -77,7 +77,8 @@ export function DiffPanel(props: DiffPanelProps): React.ReactElement {
       path,
       staged,
       untracked,
-      ...(commit === null ? {} : { commit, origPath }),
+      ...(commit === null ? {} : { commit }),
+      ...(commit === null || origPath === undefined ? {} : { origPath }),
     })
       .then((diff) => {
         if (!cancelled) setState({ phase: 'ready', diff, failure: null })
@@ -108,11 +109,14 @@ export function DiffPanel(props: DiffPanelProps): React.ReactElement {
   const headerMenu =
     menuTrigger === null || path === null
       ? null
-      : menuTrigger(menuTarget(sessionId, 'diff', { path, cwd }), {
-          tabIndex: -1,
-          'aria-haspopup': 'menu',
-          title: t('menu.hint'),
-        })
+      : menuTrigger(
+          menuTarget(sessionId, 'diff', { path, ...(cwd === undefined ? {} : { cwd }) }),
+          {
+            tabIndex: -1,
+            'aria-haspopup': 'menu',
+            title: t('menu.hint'),
+          },
+        )
   const rawOrigPath = params.origPath
   const header =
     path !== null
