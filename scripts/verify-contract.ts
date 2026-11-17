@@ -52,6 +52,7 @@ function dshRoot(argv: string[]): string {
   const index = argv.findIndex((arg) => arg === '--dsh-root' || arg.startsWith('--dsh-root='))
   if (index === -1) return resolve(process.env.DSH_ROOT ?? DEFAULT_DSH_ROOT)
   const argument = argv[index]
+  if (argument === undefined) fail('--dsh-root requires a directory path')
   const value = argument.includes('=') ? argument.slice(argument.indexOf('=') + 1) : argv[index + 1]
   if (!value || value.startsWith('--')) fail('--dsh-root requires a directory path')
   return resolve(value)
