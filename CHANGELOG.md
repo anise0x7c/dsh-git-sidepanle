@@ -3,7 +3,7 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
-## Unreleased
+## 0.11.0
 
 The context menus now follow VS Code's action structure and continue to use
 DSH's native shared menu presentation, including nested branch submenus:
