@@ -132,6 +132,13 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
    and a separate wrapping action footer. It does not enter the split's flex
    layout. `GitPanel` keeps prompts mutually exclusive and routes action errors
    into the open surface; hooks retain all operation state and Git calls.
+   Transient commit/ignore/reference success and stale/busy menu feedback use a stable
+   callback passed through the Git body's Slot injection face. `plugin.ts` binds
+   it to the optional shared `contextMenus.notify` service for that service's
+   lifetime and isolates notification delivery errors from Git work. Success is
+   opt-in; menu guards are non-success. The Host UI owns Toast placement,
+   replacement and dismissal; there is no private notice state, timer or strip.
+   Missing notification support does not gate the pane or its inline controls.
 7. Triggers capture targets. The shared overlay calls a contribution with the
    target's **value**, never the wrapper. Nested native checkout/deletion submenus
    come from the commit's local branch heads. Menu actions travel through the bus

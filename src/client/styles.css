@@ -359,16 +359,6 @@
   height: 12px;
 }
 
-.dshgg-notice {
-  margin: 0 8px 8px;
-  padding: 7px 10px;
-  color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xxs-12);
-  background: var(--dsw-alias-state-success-tertiary);
-  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 24%, transparent);
-  border-radius: var(--dsw-radius-md);
-}
-
 .dshgg-state {
   display: flex;
   flex-direction: column;

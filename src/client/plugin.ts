@@ -28,7 +28,13 @@ import { resolveMenuActions } from './menu/actions.ts'
 import { GitPanel } from './panel/GitPanel.ts'
 import { installStyles } from './styles.ts'
 import { DiffTabTitle, GitTabTitle } from './titles.ts'
-import type { ClientContext, ClientServices, SidebarRightTabDefinition } from './types/dsh.ts'
+import type {
+  ClientContext,
+  ClientServices,
+  ContextMenusService,
+  SidebarRightTabDefinition,
+  SlotRegisterOptions,
+} from './types/dsh.ts'
 
 export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight']
 
@@ -43,6 +49,7 @@ type PaneSlotName = 'sidebar.right.pane.tab' | 'sidebar.right.pane.tab.title'
  * @param key - tab id the component renders for.
  * @param component - body or title component.
  * @param label - effect label for diagnostics.
+ * @param inject - extra props this one registration receives from the Slot.
  */
 function registerPaneSlot<Props extends object>(
   ctx: ClientContext,
@@ -50,11 +57,11 @@ function registerPaneSlot<Props extends object>(
   key: string,
   component: React.ComponentType<Props>,
   label: string,
+  inject?: () => Readonly<Record<string, unknown>>,
 ): void {
-  ctx.effect(
-    () => ctx.slots.inject(name, () => ctx.slots.register({ name, key, locale: NS }, component)),
-    label,
-  )
+  const options: SlotRegisterOptions =
+    inject === undefined ? { name, key, locale: NS } : { name, key, locale: NS, inject }
+  ctx.effect(() => ctx.slots.inject(name, () => ctx.slots.register(options, component)), label)
 }
 
 /** Labels for the two failure points of an optional-service binding. */
@@ -100,6 +107,18 @@ function withOptionalService<Service extends keyof ClientServices>(
  */
 export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
+  // The shared Toast service is optional and can be rebound over the plugin
+  // lifetime. This stable delegate is what the Git pane receives through its
+  // Slot registration; it no-ops while no service is bound and contains a
+  // failing delivery so Git actions and refreshes still finish.
+  let toast: ContextMenusService | undefined
+  const notify: ContextMenusService['notify'] = (text, success) => {
+    try {
+      toast?.notify(text, success)
+    } catch (error) {
+      console.warn('[git-graph] shared toast failed', error)
+    }
+  }
   ctx.effect(() => installStyles(), 'git-graph: styles')
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'git-graph: dictionaries')
 
@@ -131,7 +150,14 @@ export function apply(ctx: ClientContext): void {
     'git-graph: diff tab type',
   )
 
-  registerPaneSlot(ctx, 'sidebar.right.pane.tab', GIT_ID, GitPanel, 'git-graph: git tab body')
+  registerPaneSlot(
+    ctx,
+    'sidebar.right.pane.tab',
+    GIT_ID,
+    GitPanel,
+    'git-graph: git tab body',
+    () => ({ notify }),
+  )
   registerPaneSlot(
     ctx,
     'sidebar.right.pane.tab.title',
@@ -196,6 +222,15 @@ export function apply(ctx: ClientContext): void {
       register: '[git-graph] context menu registration failed',
     },
     (menuCtx) => {
+      // Bind the current shared Toast service for the pane's stable delegate
+      // and unbind that exact service when this optional scope is disposed.
+      menuCtx.effect(() => {
+        const service = menuCtx.contextMenus
+        toast = service
+        return () => {
+          if (toast === service) toast = undefined
+        }
+      }, 'git-graph: shared toast')
       // The shared registry calls a contribution with the value captured
       // by the trigger, not with the { kind, value } target the trigger
       // received. Unwrapping again here leaves every menu empty.

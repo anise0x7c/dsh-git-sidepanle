@@ -1,20 +1,20 @@
 /**
  * Change actions: the single-busy-lock wrapper, stage/unstage/discard/commit,
- * the commit message, transient notices, action failures, and the confirmation
+ * the commit message, host Toast feedback, action failures, and the confirmation
  * dialog that guards discards and "commit everything".
  */
 
 import type { Dispatch, SetStateAction } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { makeFailure, toFailure } from '../../data/caller.ts'
 import type { ChangeEntry, CommitResult, Failure, OkResult, RpcCall } from '../../types/domain.ts'
-import type { LocaleBinder } from '../../types/dsh.ts'
+import type { ContextMenusService, LocaleBinder } from '../../types/dsh.ts'
 import type { ConfirmState } from '../confirm.ts'
 import type { PanelRefs } from '../menu.ts'
 
 /** Options of one busy-locked action. */
 export interface PerformOptions<Result> {
-  /** Toast shown after the action resolves. */
+  /** Success Toast shown after the action resolves. */
   readonly notice?: string
   /** Also refresh the commit graph. */
   readonly graph?: boolean
@@ -51,6 +51,8 @@ export interface UseChangeActionsOptions {
   readonly loadStatus: (options?: { readonly silent?: boolean }) => Promise<void>
   /** Graph refresh. */
   readonly loadGraph: () => Promise<void>
+  /** Host Toast callback, a no-op when the service is unavailable. */
+  readonly notify: ContextMenusService['notify']
 }
 
 /** Action state and handlers. */
@@ -65,10 +67,6 @@ export interface ChangeActionsState {
   readonly message: string
   /** Update the commit message. */
   readonly setMessage: Dispatch<SetStateAction<string>>
-  /** Transient success notice. */
-  readonly notice: string | null
-  /** Set or clear the transient notice. */
-  readonly setNotice: Dispatch<SetStateAction<string | null>>
   /** Open confirmation dialog. */
   readonly confirm: ConfirmState | null
   /** Set or clear the confirmation dialog. */
@@ -95,22 +93,13 @@ export interface ChangeActionsState {
  * @returns action state and handlers.
  */
 export function useChangeActions(options: UseChangeActionsOptions): ChangeActionsState {
-  const { call, t, refs, files, stagedFiles, loadStatus, loadGraph } = options
+  const { call, t, refs, files, stagedFiles, loadStatus, loadGraph, notify } = options
   const [actionFailure, setActionFailure] = useState<Failure | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState('')
-  const [notice, setNotice] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   refs.busy.current = busy
   refs.confirm.current = confirm
-
-  useEffect(() => {
-    if (notice === null) return undefined
-    const timer = setTimeout(() => {
-      if (refs.mounted.current) setNotice(null)
-    }, 4000)
-    return () => clearTimeout(timer)
-  }, [notice, refs])
 
   const perform = useCallback<Perform>(
     async (name, operation, actionOptions = {}) => {
@@ -121,7 +110,9 @@ export function useChangeActions(options: UseChangeActionsOptions): ChangeAction
       try {
         const result = await operation()
         if (!refs.mounted.current) return result
-        if (actionOptions.notice !== undefined) setNotice(actionOptions.notice)
+        if (actionOptions.notice !== undefined) {
+          notify(actionOptions.notice, true)
+        }
         if (actionOptions.after !== undefined) await actionOptions.after(result)
         await loadStatus({ silent: true })
         if (actionOptions.graph === true) await loadGraph()
@@ -134,7 +125,7 @@ export function useChangeActions(options: UseChangeActionsOptions): ChangeAction
         if (refs.mounted.current) setBusy(null)
       }
     },
-    [refs, loadStatus, loadGraph],
+    [refs, loadStatus, loadGraph, notify],
   )
 
   const stage = (entries: readonly ChangeEntry[]): Promise<OkResult | undefined> =>
@@ -160,7 +151,7 @@ export function useChangeActions(options: UseChangeActionsOptions): ChangeAction
       graph: true,
       after: (result: CommitResult) => {
         setMessage('')
-        setNotice(t('commit.done', { hash: result.commit ?? '' }))
+        notify(t('commit.done', { hash: result.commit ?? '' }), true)
       },
     })
   }
@@ -174,7 +165,7 @@ export function useChangeActions(options: UseChangeActionsOptions): ChangeAction
         graph: true,
         after: (result: CommitResult) => {
           setMessage('')
-          setNotice(t('commit.done', { hash: result.commit ?? '' }))
+          notify(t('commit.done', { hash: result.commit ?? '' }), true)
         },
       })
       return
@@ -200,8 +191,6 @@ export function useChangeActions(options: UseChangeActionsOptions): ChangeAction
     busy,
     message,
     setMessage,
-    notice,
-    setNotice,
     confirm,
     setConfirm,
     perform,

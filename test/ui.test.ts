@@ -32,10 +32,13 @@ import type {
   CapturedTarget,
   ClientRegistration,
   ContextMenuContribution,
+  ContextMenusService,
   FetchResponseLike,
   MenuMock,
+  MenuNotification,
   OpenedTab,
   RpcRequestRecord,
+  SlotRegistration,
   TestComponent,
   TestContextMenusService,
   TestElement,
@@ -84,7 +87,10 @@ interface MountOptions {
   /** Locale override for long translated copy and action labels. */
   t?: typeof translate
   diff?: boolean
+  /** Provide the host's context-menu trigger hook; false removes only the trigger. */
   menus?: boolean
+  /** Provide the optional shared notification/menu service to `ctx.inject`. */
+  menuService?: boolean
   tabInfo?: UiTabInfo
 }
 
@@ -96,6 +102,12 @@ interface LoadedComponents {
   diffTitle: TestComponent
   contextMenus: TestContextMenusService
   contributions: ContextMenuContribution[]
+  /** Toasts the bundle delivered through the host service. */
+  notifications: MenuNotification[]
+  /** Slot registrations, including the inject faces the host merges into props. */
+  slots: SlotRegistration[]
+  /** Dispose every effect the bundle registered, as unloading the plugin would. */
+  dispose(): void
 }
 
 /** One mounted panel plus its recorders. */
@@ -225,7 +237,7 @@ async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
     panel: { id: 'pane-1', isFloating: false },
     tab,
   })
-  const components = loadComponents(harness)
+  const components = loadComponents(harness, { contextMenus: options.menuService })
   const component = options.diff === true ? components.diff : components.git
   const menu = createMenuMock()
   harness.setComponent(component, {
@@ -246,18 +258,29 @@ function slotComponent(seats: Map<string, TestComponent>, seat: string): TestCom
   return component
 }
 
-function loadComponents(harness: TestHarness): LoadedComponents {
+/**
+ * Load the bundle's slot components, mirroring the host's Slot composition:
+ * each registration's inject face is merged into the props its component sees.
+ * @param harness - mini React runtime the bundle requires.
+ * @param options - optional host-service availability.
+ * @returns components, service recorders and a lifetime disposer.
+ */
+function loadComponents(
+  harness: TestHarness,
+  options: { contextMenus?: boolean } = {},
+): LoadedComponents {
   const module = registration.factory((specifier) => {
     if (specifier === 'react') return harness.React
     throw new Error(`unexpected require("${specifier}")`)
   })
-  const fake = createFakeContext()
+  const fake = createFakeContext({ contextMenus: options.contextMenus })
   module.apply(fake.ctx)
   const bySeat = new Map(
-    fake.records.slots.map(({ options, component }) => [
-      `${options.name}:${options.key}`,
-      component,
-    ]),
+    fake.records.slots.map(({ options: slot, component }) => {
+      const face = slot.inject?.() ?? {}
+      const injected: TestComponent = (props) => component({ ...props, ...face })
+      return [`${slot.name}:${slot.key}`, injected]
+    }),
   )
   return {
     git: slotComponent(bySeat, 'sidebar.right.pane.tab:@local/dsh-git-graph/git'),
@@ -266,7 +289,22 @@ function loadComponents(harness: TestHarness): LoadedComponents {
     diffTitle: slotComponent(bySeat, 'sidebar.right.pane.tab.title:@local/dsh-git-graph/diff'),
     contextMenus: fake.menu.contextMenus,
     contributions: fake.menu.contributions,
+    notifications: fake.menu.notifications,
+    slots: fake.records.slots,
+    dispose: () => fake.dispose(),
   }
+}
+
+/** The Toast callback the Git pane's Slot registration injects. */
+function slotNotify(components: LoadedComponents): ContextMenusService['notify'] {
+  const gitBody = components.slots.find(
+    ({ options }) =>
+      options.name === 'sidebar.right.pane.tab' && options.key === '@local/dsh-git-graph/git',
+  )
+  assert.ok(gitBody, 'the Git pane body was not registered')
+  const notify = gitBody.options.inject?.().notify
+  assert.equal(typeof notify, 'function', 'the Git pane registration injects notify')
+  return notify as ContextMenusService['notify']
 }
 
 /** Whether a rendered node is an element object. */
@@ -1305,7 +1343,12 @@ test('the commit button follows the message and posts a commit', async () => {
   const commitCall = mounted.calls.find((call) => call.op === 'commit')
   assert.equal(commitCall?.message, 'feat: git sidebar')
   assert.notEqual(commitCall?.stageAll, true)
-  assert.match(mounted.harness.text(), /commit\.done/)
+  assert.deepEqual(
+    mounted.components.notifications,
+    [{ text: 'commit.done', success: true }],
+    'one shared success Toast confirms the commit',
+  )
+  assert.equal(mounted.harness.text().includes('commit.done'), false, 'the panel keeps no notice')
   assert.equal(messageBox()?.props.value, '', 'a committed message leaves the box empty')
   await mounted.harness.dispose()
 })
@@ -1327,6 +1370,29 @@ test('committing with nothing staged offers to stage everything', async () => {
   await mounted.harness.flush()
   const commitCall = mounted.calls.find((call) => call.op === 'commit')
   assert.equal(commitCall?.stageAll, true)
+  assert.deepEqual(mounted.components.notifications, [{ text: 'commit.done', success: true }])
+  assert.equal(
+    mounted.harness.findAll((element) => element.type === 'textarea')[0]?.props.value,
+    '',
+    'stage-all commit still clears the message',
+  )
+  await mounted.harness.dispose()
+})
+
+test('a failed commit keeps its message and reports no success Toast', async () => {
+  const mounted = await mountGit({ failOp: 'commit' })
+  const messageBox = () => mounted.harness.findAll((element) => element.type === 'textarea')[0]
+  mounted.harness.change(messageBox(), 'fix: will fail')
+  await mounted.harness.flush()
+  mounted.harness.click(buttonByText(mounted.harness, 'commit.action'))
+  await mounted.harness.flush()
+  assert.match(mounted.harness.text(), /git said no/)
+  assert.equal(messageBox()?.props.value, 'fix: will fail', 'a failed commit keeps its message')
+  assert.equal(
+    mounted.components.notifications.some((notification) => notification.success),
+    false,
+    'a Git failure emits no success Toast',
+  )
   await mounted.harness.dispose()
 })
 
@@ -2237,7 +2303,15 @@ test('a changed-file menu ignores its path through the shared action refresh', a
   const ignore = mounted.calls.find((call) => call.op === 'ignore')
   assert.equal(ignore?.path, 'src/app.js')
   assert.ok(mounted.calls.filter((call) => call.op === 'status').length >= 2)
-  assert.match(mounted.harness.text(), /menu\.ignoredTracked/)
+  assert.deepEqual(mounted.components.notifications.pop(), {
+    text: 'menu.ignoredTracked',
+    success: true,
+  })
+  assert.equal(
+    mounted.harness.text().includes('menu.ignored'),
+    false,
+    'no inline notice is rendered',
+  )
   const untracked = mounted.harness.findAll(
     (element) =>
       String(element.props?.className ?? '').includes('dshgg-fileRow') &&
@@ -2248,7 +2322,52 @@ test('a changed-file menu ignores its path through the shared action refresh', a
   await runMenuAction(mounted.components, lastTarget(mounted.menu), 'ignore')
   await mounted.harness.flush()
   assert.equal(mounted.calls.filter((call) => call.op === 'ignore').at(-1)?.path, 'README.md')
-  assert.match(mounted.harness.text(), /menu\.ignored/)
+  assert.deepEqual(mounted.components.notifications.pop(), {
+    text: 'menu.ignored',
+    success: true,
+  })
+  await mounted.harness.dispose()
+})
+
+test('a failed ignore refreshes no success Toast and keeps its error', async () => {
+  const mounted = await mountGit({ failOp: 'ignore' })
+  const rows = mounted.harness.findAll(
+    (element) =>
+      String(element.props?.className ?? '').includes('dshgg-fileRow') &&
+      element.props?.title === 'src/app.js',
+  )
+  mounted.harness.contextmenu(rows[rows.length - 1])
+  await runMenuAction(mounted.components, lastTarget(mounted.menu), 'ignore')
+  await mounted.harness.flush()
+  assert.match(mounted.harness.text(), /git said no/)
+  assert.equal(
+    mounted.components.notifications.some((notification) => notification.success),
+    false,
+    'a failed ignore emits no success Toast',
+  )
+  await mounted.harness.dispose()
+})
+
+test('an ignored path is notified again when the same message repeats', async () => {
+  const mounted = await mountGit()
+  const target = {
+    kind: 'gitGraphItem',
+    value: {
+      sessionId: 'session-1',
+      kind: 'file',
+      section: 'changes',
+      path: 'src/app.js',
+      cwd: '/repo',
+    },
+  }
+  await runMenuAction(mounted.components, target, 'ignore')
+  await mounted.harness.flush()
+  await runMenuAction(mounted.components, target, 'ignore')
+  await mounted.harness.flush()
+  assert.deepEqual(mounted.components.notifications, [
+    { text: 'menu.ignoredTracked', success: true },
+    { text: 'menu.ignoredTracked', success: true },
+  ])
   await mounted.harness.dispose()
 })
 
@@ -2295,6 +2414,10 @@ test('commit submenus run checkout, creation and confirmed deletion', async () =
   await runMenuAction(mounted.components, await openMenu(), 'checkout-detached')
   await mounted.harness.flush()
   assert.equal(mounted.calls.find((call) => call.op === 'checkout-detached')?.oid, 'a'.repeat(40))
+  assert.deepEqual(mounted.components.notifications.pop(), {
+    text: 'menu.detached',
+    success: true,
+  })
 
   await runMenuAction(mounted.components, await openMenu(), 'create-branch')
   await mounted.harness.flush()
@@ -2310,6 +2433,10 @@ test('commit submenus run checkout, creation and confirmed deletion', async () =
   const branch = mounted.calls.find((call) => call.op === 'create-branch')
   assert.equal(branch?.oid, 'a'.repeat(40))
   assert.equal(branch?.name, 'feature/from-menu')
+  assert.deepEqual(mounted.components.notifications.pop(), {
+    text: 'menu.branchCreated',
+    success: true,
+  })
   assert.equal(mounted.harness.text().includes('menu.createBranchAt'), false)
 
   await runMenuAction(mounted.components, await openMenu(), 'create-tag')
@@ -2331,6 +2458,10 @@ test('commit submenus run checkout, creation and confirmed deletion', async () =
   assert.equal(tag?.oid, 'a'.repeat(40))
   assert.equal(tag?.name, 'v2.0')
   assert.equal(tag?.message, 'release\n\nnotes')
+  assert.deepEqual(mounted.components.notifications.pop(), {
+    text: 'menu.tagCreated',
+    success: true,
+  })
   assert.equal(focusRestores, 2, 'successful creation restores its triggering row')
 
   await runMenuAction(mounted.components, await openMenu(), 'delete-branch', 'feature/graph')
@@ -2368,6 +2499,10 @@ test('commit submenus run checkout, creation and confirmed deletion', async () =
   mounted.harness.click(buttonContaining(mounted.harness, 'menu.deleteBranch'))
   await mounted.harness.flush()
   assert.equal(mounted.calls.find((call) => call.op === 'delete-branch')?.branch, 'feature/graph')
+  assert.deepEqual(mounted.components.notifications.pop(), {
+    text: 'menu.branchDeleted',
+    success: true,
+  })
   assert.ok(mounted.calls.filter((call) => call.op === 'history').length >= 6)
   await mounted.harness.dispose()
 })
@@ -2424,6 +2559,11 @@ test('a failed tag creation keeps the dialog text and displays the failure', asy
   assert.match(elementText(body), /git said no/, 'the retained form itself explains its failure')
   assert.notEqual(dialog.props['aria-busy'], true)
   assert.equal(mounted.calls.filter((call) => call.op === 'create-tag').length, 1)
+  assert.equal(
+    mounted.components.notifications.some((notification) => notification.success),
+    false,
+    'a failed reference creation emits no success Toast',
+  )
   await mounted.harness.dispose()
 })
 
@@ -2607,6 +2747,117 @@ test('without host context menus the inline controls keep working', async () => 
   mounted.harness.click(buttonInside(row, 'actions.stage'))
   await mounted.harness.flush()
   assert.deepEqual(mounted.calls.find((call) => call.op === 'stage')?.paths, ['src/app.js'])
+  assert.deepEqual(mounted.components.notifications, [], 'staging has no new success feedback')
+  await mounted.harness.dispose()
+})
+
+test('without the host notification service the pane still registers and commits', async () => {
+  const mounted = await mountGit({ menuService: false })
+  assert.equal(
+    mounted.components.slots.length,
+    4,
+    'the Git pane is registered once without its service',
+  )
+  assert.equal(
+    mounted.components.contributions.length,
+    0,
+    'no menu contribution without the service',
+  )
+  assert.equal(
+    typeof slotNotify(mounted.components),
+    'function',
+    'the pane still gets a safe callback',
+  )
+  const messageBox = () => mounted.harness.findAll((element) => element.type === 'textarea')[0]
+  mounted.harness.change(messageBox(), 'fix: no toast service')
+  await mounted.harness.flush()
+  mounted.harness.click(buttonByText(mounted.harness, 'commit.action'))
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.find((call) => call.op === 'commit')?.message, 'fix: no toast service')
+  assert.equal(messageBox()?.props.value, '', 'the commit still clears its message')
+  assert.equal(mounted.calls.filter((call) => call.op === 'status').length >= 2, true)
+  assert.deepEqual(mounted.components.notifications, [], 'a missing service stays silent')
+  assert.doesNotMatch(mounted.harness.text(), /error\.title/)
+  await mounted.harness.dispose()
+})
+
+test('a busy panel rejects a menu command without a second write', async () => {
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const mounted = await mountGit({ pending: { op: 'stage', until: pending } })
+  const rows = mounted.harness.findAll(
+    (element) =>
+      String(element.props?.className ?? '').includes('dshgg-fileRow') &&
+      element.props?.title === 'src/app.js',
+  )
+  const row = rows[rows.length - 1]
+  assert.ok(row)
+  mounted.harness.click(buttonInside(row, 'actions.stage'))
+  mounted.harness.contextmenu(row)
+  const target = lastTarget(mounted.menu)
+  await runMenuAction(mounted.components, target, 'stage')
+  assert.deepEqual(mounted.components.notifications, [{ text: 'menu.busy', success: false }])
+  assert.equal(
+    mounted.calls.filter((call) => call.op === 'stage').length,
+    1,
+    'the busy refusal never starts a second write',
+  )
+  release()
+  await mounted.harness.flush()
+  assert.deepEqual(mounted.components.notifications, [{ text: 'menu.busy', success: false }])
+  await mounted.harness.dispose()
+})
+
+test('a failing host notification does not interrupt a commit', async () => {
+  const mounted = await mountGit()
+  mounted.components.contextMenus.notify = () => {
+    throw new Error('toast offline')
+  }
+  const originalWarn = console.warn
+  let warnings = 0
+  console.warn = () => {
+    warnings += 1
+  }
+  try {
+    const messageBox = () => mounted.harness.findAll((element) => element.type === 'textarea')[0]
+    mounted.harness.change(messageBox(), 'fix: toast is down')
+    await mounted.harness.flush()
+    mounted.harness.click(buttonByText(mounted.harness, 'commit.action'))
+    await mounted.harness.flush()
+    assert.equal(mounted.calls.find((call) => call.op === 'commit')?.message, 'fix: toast is down')
+    assert.equal(messageBox()?.props.value, '', 'the commit still clears its message')
+    assert.equal(mounted.calls.filter((call) => call.op === 'status').length >= 2, true)
+    assert.equal(mounted.calls.filter((call) => call.op === 'history').length >= 2, true)
+    assert.doesNotMatch(mounted.harness.text(), /toast offline/)
+    assert.doesNotMatch(mounted.harness.text(), /error\.title/)
+  } finally {
+    console.warn = originalWarn
+  }
+  assert.ok(warnings >= 1, 'the delivery failure is contained and logged')
+  await mounted.harness.dispose()
+})
+
+test('disposing the plugin lifetime stops the pane from reaching the old service', async () => {
+  const mounted = await mountGit()
+  const notify = slotNotify(mounted.components)
+  const before = mounted.components.notifications.length
+  mounted.components.dispose()
+  const messageBox = () => mounted.harness.findAll((element) => element.type === 'textarea')[0]
+  mounted.harness.change(messageBox(), 'fix: after unload')
+  await mounted.harness.flush()
+  mounted.harness.click(buttonByText(mounted.harness, 'commit.action'))
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.find((call) => call.op === 'commit')?.message, 'fix: after unload')
+  assert.equal(messageBox()?.props.value, '', 'the commit still clears its message')
+  notify('after unload', true)
+  assert.equal(
+    mounted.components.notifications.length,
+    before,
+    'the disposed binding never reaches the old service',
+  )
+  assert.doesNotMatch(mounted.harness.text(), /error\.title/)
   await mounted.harness.dispose()
 })
 
@@ -2674,7 +2925,8 @@ test('a menu command for a vanished change reports it instead of doing nothing',
   await runMenuAction(mounted.components, target, 'stage')
   await mounted.harness.flush()
   assert.equal(mounted.calls.filter((call) => call.op === 'stage').length, 0)
-  assert.match(mounted.harness.text(), /menu\.stale/)
+  assert.deepEqual(mounted.components.notifications, [{ text: 'menu.stale', success: false }])
+  assert.equal(mounted.harness.text().includes('menu.stale'), false, 'no inline notice is rendered')
   await mounted.harness.dispose()
 })
 

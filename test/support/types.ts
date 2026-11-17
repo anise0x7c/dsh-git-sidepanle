@@ -35,6 +35,7 @@ export type { ClientContext } from '../../src/client/types/dsh.ts'
 export type {
   ContextMenuAction,
   ContextMenuContribution,
+  ContextMenusService,
   LocaleBinder,
   LocaleParams,
   MenuActionView,
@@ -397,6 +398,8 @@ export interface FakeContext {
   ctx: import('../../src/client/types/dsh.ts').ClientContext
   records: FakeRecords
   menu: MenuService
+  /** Dispose every effect the bundle registered, as unloading the plugin would. */
+  dispose(): void
 }
 
 /** The services the fake context hands to an injected callback. */

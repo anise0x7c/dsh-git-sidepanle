@@ -306,12 +306,14 @@ export function createMenuService(): MenuService {
  * Build a recording Cordis plugin context for the bundle's `apply`.
  * @param options - context options.
  * @param options.sidebarRight - sidebarRight service stand-in.
- * @returns context, recorders, menu service.
+ * @param options.contextMenus - whether the optional shared menu service is available.
+ * @returns context, recorders, menu service and an effect disposer.
  */
 export function createFakeContext(
-  options: { sidebarRight?: ClientContext['sidebarRight'] } = {},
+  options: { sidebarRight?: ClientContext['sidebarRight']; contextMenus?: boolean } = {},
 ): FakeContext {
   const menu = createMenuService()
+  const effectCleanups: Array<() => void> = []
   const records: FakeRecords = {
     localeDictionaries: [],
     tabTypes: [],
@@ -355,9 +357,14 @@ export function createFakeContext(
   const base: Omit<ClientContext, 'inject'> = {
     effect(callback, _label) {
       const cleanup = callback()
-      return () => {
+      let disposed = false
+      const dispose = (): void => {
+        if (disposed) return
+        disposed = true
         if (typeof cleanup === 'function') cleanup()
       }
+      effectCleanups.push(dispose)
+      return dispose
     },
     locale,
     sidebarRightTabs,
@@ -374,14 +381,23 @@ export function createFakeContext(
       if (names.includes('shortcuts')) {
         callback({ ...ctx, shortcuts } as unknown as Parameters<typeof callback>[0])
       }
-      if (names.includes('contextMenus')) {
+      if (names.includes('contextMenus') && options.contextMenus !== false) {
         callback({ ...ctx, contextMenus: menu.contextMenus } as unknown as Parameters<
           typeof callback
         >[0])
       }
     },
   }
-  return { ctx, records, menu }
+  return {
+    ctx,
+    records,
+    menu,
+    dispose() {
+      // Effects are disposed in reverse registration order, as the host unwinds
+      // a plugin lifetime; each disposer is idempotent.
+      for (const dispose of [...effectCleanups].reverse()) dispose()
+    },
+  }
 }
 
 /** Re-export the module shape used by tests that evaluate the bundle factory. */
