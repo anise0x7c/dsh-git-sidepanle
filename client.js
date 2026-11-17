@@ -3169,7 +3169,6 @@ function GraphSection(props) {
     {
       id: "graph",
       title: t("sections.graph"),
-      count: commits === null ? void 0 : commits.length,
       open: props.open,
       onToggle: props.onToggle,
       menuTrigger: trigger,

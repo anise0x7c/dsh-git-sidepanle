@@ -803,9 +803,9 @@ surface while the pointer is over it, and the highlight SHALL stay inside the
 header's rounded corners. At most one header SHALL be pinned at a time: while a
 header is pinned, the next section's header SHALL keep its normal position until
 the pinned header's section has left the top edge, and SHALL then take that
-place. A pinned header SHALL keep its toggle, count and context menu usable. A
-pane whose content fits without scrolling SHALL show every header in its normal
-position.
+place. A pinned header SHALL keep its toggle, its count where it shows one, and
+its context menu usable. A pane whose content fits without scrolling SHALL show
+every header in its normal position.
 
 #### Scenario: A group header stays while its rows scroll
 
@@ -1059,3 +1059,22 @@ A branch/tag naming dialog SHALL initially focus its name input, and a branch-de
 
 - **WHEN** Git rejects a submitted name or deletion
 - **THEN** the pending indicator clears, Git's failure is shown, and the dialog retains its current values and logical focus for correction or cancellation
+
+### Requirement: Commit graph header
+
+The commit graph SHALL sit under a collapsible header that shows the graph
+title, its toggle and its context menu, and that header SHALL NOT show a count
+of the commits loaded so far. The change-group headers SHALL keep showing their
+file counts.
+
+#### Scenario: Loaded commits are not counted in the header
+
+- **GIVEN** the graph has loaded one or more commits
+- **WHEN** the graph section header is shown
+- **THEN** the header shows the graph title without a count chip
+
+#### Scenario: Change-group headers keep their counts
+
+- **GIVEN** the staged and unstaged groups list files
+- **WHEN** the panel is shown
+- **THEN** each change-group header still shows the number of files in its group

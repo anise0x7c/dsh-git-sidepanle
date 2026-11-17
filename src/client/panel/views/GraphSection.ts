@@ -215,7 +215,6 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
     {
       id: 'graph',
       title: t('sections.graph'),
-      count: commits === null ? undefined : commits.length,
       open: props.open,
       onToggle: props.onToggle,
       menuTrigger: trigger,

@@ -546,6 +546,39 @@ test('each section header belongs to its own section so only one can stick', asy
   await mounted.harness.dispose()
 })
 
+test('the graph header shows no commit count while group headers keep theirs', async () => {
+  const mounted = await mountGit()
+  const section = (id: string): TestElement => {
+    const [element] = mounted.harness.findAll(
+      (candidate) => candidate.props?.['data-section'] === id,
+    )
+    assert.ok(element, `no ${id} section rendered`)
+    return element
+  }
+  const countChips = (id: string): TestElement[] =>
+    collectElements(section(id), (element) =>
+      String(element.props?.className ?? '')
+        .split(' ')
+        .includes('dshgg-sectionCount'),
+    )
+  assert.equal(
+    countChips('graph').length,
+    0,
+    'the graph header shows no count of the loaded commits',
+  )
+  assert.deepEqual(
+    countChips('staged').map((chip) => elementText(chip)),
+    ['1'],
+    'the staged group keeps its file count',
+  )
+  assert.deepEqual(
+    countChips('changes').map((chip) => elementText(chip)),
+    ['2'],
+    'the changes group keeps its file count',
+  )
+  await mounted.harness.dispose()
+})
+
 test('scrolling the graph pane to its end appends the next page of commits', async () => {
   const pages = pagedHistory()
   const mounted = await mountGit({ historyPages: [pages.first, pages.second] })
