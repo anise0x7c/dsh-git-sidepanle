@@ -195,9 +195,14 @@ hooks do. Do not introduce project-to-project cycles.
 - Keep `docs/DETAIL.md` and `docs/DETAIL.zh.md` in sync; document behavior, not
   implementation. Update `docs/ARCHITECTURE.md` when module boundaries move and
   `CHANGELOG.md` for every released version.
-- Commit style: Conventional Commits (`feat(scope): ...`, `fix(scope): ...`,
-  `docs: ...`, `chore(release): ...`), imperative subject, a short body when the
-  reason is not obvious. Bump patch for fixes, minor for features.
+- **No automatic commits or version bumps.** Never run `git commit` (or push)
+  and never change the version in `package.json` / `CHANGELOG.md` on your own
+  initiative; do either only when the user explicitly asks. When asked:
+  commits follow Conventional Commits (`feat(scope): ...`, `fix(scope): ...`,
+  `docs: ...`, `chore(release): ...`) with an imperative subject and a short
+  body when the reason is not obvious; version bumps follow SemVer (breaking →
+  major, feature → minor, fix → patch) and update `CHANGELOG.md` in the same
+  change.
 
 ## Style
 
@@ -221,10 +226,9 @@ hooks do. Do not introduce project-to-project cycles.
 - Do not rename the artifact or its exports (`./client`, `{ inject, apply }`);
   the Host module system depends on them.
 
-<!-- litespec:start -->
 ## Spec-driven workflow (litespec)
 
 This project uses litespec. Current behavior lives in `.litespec/specs/`.
 Before changing observable behavior, create a change under `.litespec/changes/<change-id>/`
 with a proposal and a spec delta, implement its tasks, then run `litespec validate`.
-<!-- litespec:end -->
+
