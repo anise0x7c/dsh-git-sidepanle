@@ -40,6 +40,8 @@ export interface GraphSectionMenu {
   readonly sectionTarget: (section: string) => MenuTarget
   /** Build a commit-row target. */
   readonly commitTarget: (commit: CommitSummary) => MenuTarget
+  /** Remember the DOM row that invoked its native menu for focus restoration. */
+  readonly onInvoke?: (element: HTMLElement) => void
 }
 
 /** Props of the history section. */
@@ -150,6 +152,7 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
           menuTrigger: trigger,
           menuTarget:
             menu === undefined || trigger === null ? undefined : menu.commitTarget(commit),
+          onInvoke: menu.onInvoke,
           onHover: setHovered,
         }),
       )
@@ -241,6 +244,8 @@ export interface GraphRowProps {
   readonly menuTrigger: MenuTriggerFactory | null
   /** Captured target for this row. */
   readonly menuTarget?: MenuTarget
+  /** Capture the DOM row before the shared native menu takes focus. */
+  readonly onInvoke?: (element: HTMLElement) => void
   /** Report the row under the pointer, or null when it leaves the rows. */
   readonly onHover: (row: number | null) => void
 }
@@ -434,7 +439,11 @@ function GraphRow(props: GraphRowProps): React.ReactElement {
     onClick: open,
     onMouseEnter: () => props.onHover(props.index),
     onMouseLeave: () => props.onHover(null),
+    onContextMenu: (event: React.MouseEvent<HTMLElement>) => {
+      props.onInvoke?.(event.currentTarget)
+    },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+      props.onInvoke?.(event.currentTarget)
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()
         open()

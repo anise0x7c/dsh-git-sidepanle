@@ -32,6 +32,7 @@ src/
     git/history.ts            history, commit metadata and changed-file parsing
     git/references.ts         graph references: checked-out, upstream, base
     git/branches.ts           branch list + branch existence
+    git/ignore.ts             literal root-anchored .gitignore rules and append handling
     git/diff.ts               working-tree/commit diffs and unified parser
     watch/classify.ts         watch-event classification (pure)
     watch/registry.ts         shared repository watchers and change counters
@@ -59,7 +60,7 @@ src/
       scroll.ts               pure near-end rule that pages the commit history
       autosize.ts             commit-message height rule and its one element pass
       hooks/                  repository/history/branches/details/action hooks
-      views/                  branch/commit/change/graph sections and the split view
+      views/                  branch/commit/change/graph sections, reference dialogs and the split view
       GitPanel.ts             hook and view assembly
     diff/                     diff panel and pure diff rendering
     titles.ts, plugin.ts      tab titles and plugin registration assembly
@@ -125,8 +126,15 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
    message (`panel/autosize.ts`): one line at rest, ten at most, re-measured from
    a layout effect per message and from a width watcher when the box rewraps.
 7. Triggers capture targets. The shared overlay calls a contribution with the
-   target's **value**, never the wrapper. Menu actions travel through the bus to
-   the owning panel, guarded by Session id, panel id, busy and stale checks.
+   target's **value**, never the wrapper. Nested native checkout/deletion submenus
+   come from the commit's local branch heads. Menu actions travel through the bus
+   to the owning panel, guarded by Session id, panel id, busy and stale checks;
+   name/deletion dialogs open only after a command is selected, and their writes
+   share the same busy and refresh wrapper. Graph gestures capture the invoking
+   row for dialog focus restoration; deletion defaults to Cancel and idle Escape
+   cancels. Ignoring appends a literal escaped path rule at the repository root,
+   not in the Session's subdirectory. A no-follow descriptor rejects links and
+   non-regular targets, then reads and appends through one regular-file handle.
 
 ## Runtime contracts
 

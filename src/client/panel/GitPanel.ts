@@ -18,6 +18,7 @@ import { Banner, EmptyState } from './feedback.ts'
 import { useBranches } from './hooks/useBranches.ts'
 import { useChangeActions } from './hooks/useChangeActions.ts'
 import { useCommitDetails } from './hooks/useCommitDetails.ts'
+import { useCommitMenuActions } from './hooks/useCommitMenuActions.ts'
 import { useHistory } from './hooks/useHistory.ts'
 import { useLiveUpdates } from './hooks/useLiveUpdates.ts'
 import { useMenuCommands } from './hooks/useMenuCommands.ts'
@@ -29,6 +30,7 @@ import { BranchHeader } from './views/BranchHeader.ts'
 import { ChangeGroups } from './views/ChangeGroups.ts'
 import { CommitBox } from './views/CommitBox.ts'
 import { CommitDetails } from './views/CommitDetails.ts'
+import { CommitMenuDialog } from './views/CommitMenuDialog.ts'
 import { GraphSection } from './views/GraphSection.ts'
 import { SplitView } from './views/SplitView.ts'
 
@@ -168,6 +170,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     perform,
     stage,
     unstage,
+    ignore,
     requestCommit,
     confirmAction,
   } = actions
@@ -179,7 +182,15 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     loadBranches,
     toggleBranchMenu,
     checkout,
+    resetBranches,
   } = useBranches({ call, refs, perform })
+  const commitMenuActions = useCommitMenuActions({
+    call,
+    t,
+    refs,
+    perform,
+    onReferencesChanged: resetBranches,
+  })
   const commitState = useCommitDetails({ call, refs })
   const selectedCommit = commitState.selected
   const commitRows = useMemo<CommitFileRow[]>(
@@ -265,6 +276,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     trigger: menuTrigger,
     sectionTarget: targets.sectionTarget,
     commitTarget: targets.commitTarget,
+    onInvoke: commitMenuActions.rememberTrigger,
   }
   // The command bus subscription mounts before the handlers exist, so the
   // panel hands it the current options at the end of every render.
@@ -281,6 +293,12 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     refreshAll,
     stage,
     unstage,
+    ignore,
+    checkout,
+    checkoutDetached: commitMenuActions.checkoutDetached,
+    createBranch: commitMenuActions.createBranch,
+    createTag: commitMenuActions.createTag,
+    deleteBranch: commitMenuActions.deleteBranch,
     setConfirm,
     setNotice,
     openDiff,
@@ -475,6 +493,17 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
       : null,
     notice !== null ? h('div', { className: 'dshgg-notice', role: 'status' }, notice) : null,
     body,
+    commitMenuActions.dialog === null
+      ? null
+      : h(CommitMenuDialog, {
+          dialog: commitMenuActions.dialog,
+          t,
+          busy: busy !== null,
+          onNameChange: commitMenuActions.setName,
+          onMessageChange: commitMenuActions.setMessage,
+          onCancel: commitMenuActions.closeDialog,
+          onSubmit: commitMenuActions.submitDialog,
+        }),
     confirm !== null
       ? h(
           'div',

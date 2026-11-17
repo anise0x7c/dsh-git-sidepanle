@@ -273,10 +273,14 @@ export interface MenuActionView {
   readonly danger?: boolean
   /** Draw a divider above the action. */
   readonly separatorBefore?: boolean
+  /** Nested native menu entries. A parent opens these instead of executing. */
+  readonly children?: readonly MenuActionView[]
 }
 
 /** One contribution action with its execution callback. */
-export interface ContextMenuAction extends MenuActionView {
+export interface ContextMenuAction extends Omit<MenuActionView, 'children'> {
+  /** Nested native menu entries with their own callbacks. */
+  readonly children?: readonly ContextMenuAction[]
   /** Execute against the captured target. */
   readonly run?: () => void | Promise<void>
   /** Localized feedback when execution rejects. */

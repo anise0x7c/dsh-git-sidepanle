@@ -85,10 +85,14 @@ function labelsOf(actions: readonly MenuAction[]): string[] {
  * @param id - action id.
  * @returns action.
  */
-function actionById(actions: readonly MenuAction[], id: string): MenuAction {
+function actionById(
+  actions: readonly MenuAction[],
+  id: string,
+): MenuAction & { readonly run: NonNullable<MenuAction['run']> } {
   const action = actions.find((candidate) => candidate.id === id)
   assert.ok(action, `no action "${id}" in ${JSON.stringify(publishedIds(actions))}`)
-  return action
+  assert.equal(typeof action.run, 'function', `${id} must be an executable leaf`)
+  return action as MenuAction & { readonly run: NonNullable<MenuAction['run']> }
 }
 
 /**
@@ -245,6 +249,7 @@ describe('resolveMenuActions guards', () => {
       `${MENU_CONTRIBUTION_ID}/open`,
       `${MENU_CONTRIBUTION_ID}/stage`,
       `${MENU_CONTRIBUTION_ID}/discard`,
+      `${MENU_CONTRIBUTION_ID}/ignore`,
       `${MENU_CONTRIBUTION_ID}/copy-relative`,
       `${MENU_CONTRIBUTION_ID}/copy-path`,
     ])
@@ -258,6 +263,7 @@ describe('resolveMenuActions for files', () => {
       `${MENU_CONTRIBUTION_ID}/open`,
       `${MENU_CONTRIBUTION_ID}/stage`,
       `${MENU_CONTRIBUTION_ID}/discard`,
+      `${MENU_CONTRIBUTION_ID}/ignore`,
       `${MENU_CONTRIBUTION_ID}/copy-relative`,
       `${MENU_CONTRIBUTION_ID}/copy-path`,
     ])
@@ -265,6 +271,7 @@ describe('resolveMenuActions for files', () => {
       t('menu.openDiff'),
       t('actions.stage'),
       t('actions.discard'),
+      t('menu.addToGitignore'),
       t('menu.copyRelativePath'),
       t('menu.copyPath'),
     ])
@@ -272,8 +279,9 @@ describe('resolveMenuActions for files', () => {
     assert.equal(actions[0].danger, undefined)
     assert.equal(actions[1].separatorBefore, true)
     assert.equal(actions[2].danger, true)
-    assert.equal(actions[3].separatorBefore, true)
-    assert.equal(actions[4].separatorBefore, undefined)
+    assert.equal(actions[3].separatorBefore, undefined)
+    assert.equal(actions[4].separatorBefore, true)
+    assert.equal(actions[5].separatorBefore, undefined)
     for (const action of actions) assert.equal(typeof action.run, 'function')
   })
 
@@ -282,6 +290,7 @@ describe('resolveMenuActions for files', () => {
     assert.deepEqual(publishedIds(actions), [
       `${MENU_CONTRIBUTION_ID}/open`,
       `${MENU_CONTRIBUTION_ID}/unstage`,
+      `${MENU_CONTRIBUTION_ID}/ignore`,
       `${MENU_CONTRIBUTION_ID}/copy-relative`,
       `${MENU_CONTRIBUTION_ID}/copy-path`,
     ])
@@ -296,6 +305,7 @@ describe('resolveMenuActions for files', () => {
       `${MENU_CONTRIBUTION_ID}/open`,
       `${MENU_CONTRIBUTION_ID}/stage`,
       `${MENU_CONTRIBUTION_ID}/discard`,
+      `${MENU_CONTRIBUTION_ID}/ignore`,
       `${MENU_CONTRIBUTION_ID}/copy-relative`,
       `${MENU_CONTRIBUTION_ID}/copy-path`,
     ])
@@ -306,6 +316,7 @@ describe('resolveMenuActions for files', () => {
     assert.deepEqual(publishedIds(actions), [
       `${MENU_CONTRIBUTION_ID}/open`,
       `${MENU_CONTRIBUTION_ID}/stage`,
+      `${MENU_CONTRIBUTION_ID}/ignore`,
       `${MENU_CONTRIBUTION_ID}/copy-relative`,
       `${MENU_CONTRIBUTION_ID}/copy-path`,
     ])
@@ -317,6 +328,7 @@ describe('resolveMenuActions for files', () => {
       `${MENU_CONTRIBUTION_ID}/open`,
       `${MENU_CONTRIBUTION_ID}/stage`,
       `${MENU_CONTRIBUTION_ID}/discard`,
+      `${MENU_CONTRIBUTION_ID}/ignore`,
       `${MENU_CONTRIBUTION_ID}/copy-relative`,
       `${MENU_CONTRIBUTION_ID}/copy-path`,
     ])
@@ -328,6 +340,7 @@ describe('resolveMenuActions for files', () => {
       `${MENU_CONTRIBUTION_ID}/open`,
       `${MENU_CONTRIBUTION_ID}/stage`,
       `${MENU_CONTRIBUTION_ID}/discard`,
+      `${MENU_CONTRIBUTION_ID}/ignore`,
       `${MENU_CONTRIBUTION_ID}/copy-relative`,
     ])
   })
@@ -384,7 +397,7 @@ describe('resolveMenuActions for group headers', () => {
 })
 
 describe('resolveMenuActions for commit and diff targets', () => {
-  test('a commit row copies the full id and the subject', () => {
+  test('an ordinary commit offers checkout, reference creation, then renamed copies', () => {
     const value = {
       sessionId: SESSION,
       kind: 'commit',
@@ -393,19 +406,83 @@ describe('resolveMenuActions for commit and diff targets', () => {
       subject: 'Fix it',
     }
     const actions = actionsFor(value)
-    // The published ids are `copy-id`/`copy-message`, not `copy-commit-*`.
     assert.deepEqual(publishedIds(actions), [
+      'git-graph.actions/checkout-detached',
+      'git-graph.actions/create-branch',
+      'git-graph.actions/create-tag',
       'git-graph.actions/copy-id',
       'git-graph.actions/copy-message',
     ])
-    assert.deepEqual(labelsOf(actions), [t('menu.copyCommitId'), t('menu.copyCommitSubject')])
-    assert.equal(actions[0].danger, undefined)
-    assert.equal(actions[0].separatorBefore, undefined)
+    assert.deepEqual(labelsOf(actions), [
+      t('menu.checkoutDetached'),
+      t('menu.createBranch'),
+      t('menu.createTag'),
+      t('menu.copyCommitId'),
+      t('menu.copyCommitSubject'),
+    ])
+    assert.deepEqual(
+      actions.map((action) => action.separatorBefore === true),
+      [false, true, true, true, false],
+    )
+  })
+
+  test('a branch-head commit offers native checkout and deletion submenus', () => {
+    const actions = actionsFor({
+      sessionId: SESSION,
+      kind: 'commit',
+      oid: 'a'.repeat(40),
+      subject: 'Fix it',
+      branchHeads: [
+        { name: 'main', current: true },
+        { name: 'feature', current: false },
+        { name: 'other', current: false },
+      ],
+    })
+    assert.deepEqual(publishedIds(actions), [
+      'git-graph.actions/checkout',
+      'git-graph.actions/checkout-detached',
+      'git-graph.actions/create-branch',
+      'git-graph.actions/delete-branch',
+      'git-graph.actions/create-tag',
+      'git-graph.actions/copy-id',
+      'git-graph.actions/copy-message',
+    ])
+    const checkout = actions.find((action) => action.id === 'checkout')
+    const removal = actions.find((action) => action.id === 'delete-branch')
+    assert.deepEqual(
+      checkout?.children?.map((branch) => branch.id),
+      ['main', 'feature', 'other'],
+    )
+    assert.equal(checkout?.children?.[0].disabled, true)
+    assert.equal(checkout?.children?.[1].disabled, undefined)
+    assert.equal(checkout?.run, undefined)
+    assert.deepEqual(
+      removal?.children?.map((branch) => branch.id),
+      ['feature', 'other'],
+    )
+    assert.equal(removal?.danger, true)
+    assert.equal(removal?.run, undefined)
+  })
+
+  test('only a non-current local head creates the deletion submenu', () => {
+    const value = {
+      sessionId: SESSION,
+      kind: 'commit',
+      oid: 'a'.repeat(40),
+      subject: 'Fix it',
+      branchHeads: [{ name: 'main', current: true }],
+    }
+    const ids = publishedIds(actionsFor(value))
+    assert.equal(ids.includes(`${MENU_CONTRIBUTION_ID}/delete-branch`), false)
+    assert.equal(ids.includes(`${MENU_CONTRIBUTION_ID}/checkout`), true)
   })
 
   test('a commit row omits the command for a missing or empty field', () => {
     const base = { sessionId: SESSION, kind: 'commit' }
     assert.deepEqual(publishedIds(actionsFor({ ...base, oid: 'a'.repeat(40) })), [
+      `${MENU_CONTRIBUTION_ID}/checkout-detached`,
+      `${MENU_CONTRIBUTION_ID}/create-branch`,
+      `${MENU_CONTRIBUTION_ID}/create-tag`,
       `${MENU_CONTRIBUTION_ID}/copy-id`,
     ])
     assert.deepEqual(publishedIds(actionsFor({ ...base, subject: 'Fix it' })), [
@@ -470,7 +547,7 @@ describe('resolveMenuActions busy state', () => {
     const actions = actionsFor(fileValue({ busy: true }))
     assert.deepEqual(
       actions.filter((action) => action.disabled === true).map((action) => action.id),
-      ['open', 'stage', 'discard'],
+      ['open', 'stage', 'discard', 'ignore'],
     )
     assert.equal(actionById(actions, 'copy-relative').disabled, undefined)
     assert.equal(actionById(actions, 'copy-path').disabled, undefined)
@@ -486,7 +563,7 @@ describe('resolveMenuActions busy state', () => {
     assert.ok(actions.every((action) => action.disabled === true))
   })
 
-  test('leaves copy-only targets enabled while the panel is busy', () => {
+  test('disables graph mutations while leaving copy commands available', () => {
     const commit = actionsFor({
       sessionId: SESSION,
       kind: 'commit',
@@ -494,7 +571,14 @@ describe('resolveMenuActions busy state', () => {
       subject: 'Fix it',
       busy: true,
     })
-    assert.ok(commit.every((action) => action.disabled === undefined))
+    assert.deepEqual(
+      commit.filter((action) => action.disabled === true).map((action) => action.id),
+      ['checkout-detached', 'create-branch', 'create-tag'],
+    )
+    assert.deepEqual(
+      commit.filter((action) => action.disabled === undefined).map((action) => action.id),
+      ['copy-id', 'copy-message'],
+    )
     const diff = actionsFor({
       sessionId: SESSION,
       kind: 'diff',
@@ -520,12 +604,13 @@ describe('menu command payloads', () => {
   test('file commands emit the open, stage, and discard operations', () => {
     const actions = actionsFor(fileValue())
     const emitted = captureCommands(() => {
-      for (const id of ['open', 'stage', 'discard']) actionById(actions, id).run()
+      for (const id of ['open', 'stage', 'discard', 'ignore']) actionById(actions, id).run()
     })
     assert.deepEqual(emitted, [
       { sessionId: SESSION, panelId: PANEL, type: 'open', section: 'changes', path: 'src/app.js' },
       { sessionId: SESSION, panelId: PANEL, type: 'stage', paths: ['src/app.js'] },
       { sessionId: SESSION, panelId: PANEL, type: 'discard', paths: ['src/app.js'], single: true },
+      { sessionId: SESSION, panelId: PANEL, type: 'ignore', path: 'src/app.js' },
     ])
   })
 
@@ -570,6 +655,38 @@ describe('menu command payloads', () => {
     })
     assert.deepEqual(staged, [
       { sessionId: SESSION, panelId: PANEL, type: 'unstageSection', section: 'staged' },
+    ])
+  })
+
+  test('commit commands carry the captured commit and local branch', () => {
+    const value = {
+      sessionId: SESSION,
+      panelId: PANEL,
+      kind: 'commit',
+      oid: 'a'.repeat(40),
+      subject: 'Fix it',
+      branchHeads: [{ name: 'feature', current: false }],
+    }
+    const actions = actionsFor(value)
+    const emitted = captureCommands(() => {
+      actionById(
+        actions.find((action) => action.id === 'checkout')?.children ?? [],
+        'feature',
+      ).run()
+      actionById(actions, 'checkout-detached').run()
+      actionById(actions, 'create-branch').run()
+      actionById(
+        actions.find((action) => action.id === 'delete-branch')?.children ?? [],
+        'feature',
+      ).run()
+      actionById(actions, 'create-tag').run()
+    })
+    assert.deepEqual(emitted, [
+      { sessionId: SESSION, panelId: PANEL, type: 'checkout', branch: 'feature' },
+      { sessionId: SESSION, panelId: PANEL, type: 'checkoutDetached', oid: 'a'.repeat(40) },
+      { sessionId: SESSION, panelId: PANEL, type: 'createBranch', oid: 'a'.repeat(40) },
+      { sessionId: SESSION, panelId: PANEL, type: 'deleteBranch', branch: 'feature' },
+      { sessionId: SESSION, panelId: PANEL, type: 'createTag', oid: 'a'.repeat(40) },
     ])
   })
 

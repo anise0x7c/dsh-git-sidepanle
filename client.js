@@ -475,7 +475,10 @@ function createMenuTargets(options) {
     commitTarget: (commit) => menuTarget(sessionId, "commit", {
       oid: commit.oid,
       shortOid: commit.shortOid,
-      subject: commit.subject
+      subject: commit.subject,
+      branchHeads: parseRefs(commit.refs).filter((ref) => ref.kind === "head" || ref.kind === "branch").map((ref) => ({ name: ref.name, current: ref.kind === "head" })).sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0),
+      panelId,
+      busy: busy !== null
     }),
     rowTarget: (kind, detail) => menuTarget(sessionId, kind, { ...detail, cwd, busy: busy !== null, panelId })
   };
@@ -695,8 +698,29 @@ var en = {
   "menu.openDiff": "Open changes",
   "menu.copyRelativePath": "Copy relative path",
   "menu.copyPath": "Copy path",
-  "menu.copyCommitId": "Copy commit ID",
-  "menu.copyCommitSubject": "Copy commit subject",
+  "menu.copyCommitId": "Copy commit hash",
+  "menu.copyCommitSubject": "Copy commit message",
+  "menu.addToGitignore": "Add to .gitignore",
+  "menu.ignored": "Added {path} to .gitignore",
+  "menu.ignoredTracked": "Added {path} to .gitignore; tracked files remain tracked.",
+  "menu.checkout": "Checkout",
+  "menu.checkoutDetached": "Checkout (Detached)",
+  "menu.detached": "Checked out with detached HEAD",
+  "menu.createBranch": "Create branch",
+  "menu.createTag": "Create tag",
+  "menu.deleteBranch": "Delete branch",
+  "menu.createBranchAt": "Create a branch at {hash} and check it out.",
+  "menu.createTagAt": "Create a tag at {hash}. An optional message creates an annotated tag.",
+  "menu.deleteBranchConfirm": "Delete branch {name}? This cannot be undone. Git will refuse to delete an unmerged branch.",
+  "menu.referenceName": "Name",
+  "menu.tagMessage": "Message (optional)",
+  "menu.tagMessageHint": "Enter for a new line; Ctrl/Cmd+Enter to create the tag.",
+  "menu.creatingBranch": "Creating and checking out the branch…",
+  "menu.creatingTag": "Creating the tag…",
+  "menu.deletingBranch": "Deleting the branch…",
+  "menu.branchCreated": "Created and checked out {name}",
+  "menu.tagCreated": "Created tag {name}",
+  "menu.branchDeleted": "Deleted branch {name}",
   "menu.refreshHistory": "Refresh history",
   "menu.hint": "Right-click for actions",
   "menu.stale": "That change is no longer available.",
@@ -811,8 +835,29 @@ var zh = {
   "menu.openDiff": "查看更改",
   "menu.copyRelativePath": "复制相对路径",
   "menu.copyPath": "复制路径",
-  "menu.copyCommitId": "复制提交 ID",
-  "menu.copyCommitSubject": "复制提交主题",
+  "menu.copyCommitId": "复制提交哈希",
+  "menu.copyCommitSubject": "复制提交消息",
+  "menu.addToGitignore": "添加到 .gitignore",
+  "menu.ignored": "已将 {path} 添加到 .gitignore",
+  "menu.ignoredTracked": "已将 {path} 添加到 .gitignore；已跟踪文件仍会被 Git 跟踪。",
+  "menu.checkout": "签出",
+  "menu.checkoutDetached": "签出(已分离)",
+  "menu.detached": "已以分离头指针方式签出",
+  "menu.createBranch": "创建分支",
+  "menu.createTag": "创建标记 (Tag)",
+  "menu.deleteBranch": "删除分支",
+  "menu.createBranchAt": "从 {hash} 创建分支并签出。",
+  "menu.createTagAt": "在 {hash} 创建标记。填写可选消息时会创建附注标记。",
+  "menu.deleteBranchConfirm": "要删除分支“{name}”吗？此操作无法撤销；Git 会拒绝删除未合并的分支。",
+  "menu.referenceName": "名称",
+  "menu.tagMessage": "消息（可选）",
+  "menu.tagMessageHint": "Enter 换行；Ctrl/Cmd+Enter 创建标记。",
+  "menu.creatingBranch": "正在创建并签出分支…",
+  "menu.creatingTag": "正在创建标记…",
+  "menu.deletingBranch": "正在删除分支…",
+  "menu.branchCreated": "已创建并签出分支 {name}",
+  "menu.tagCreated": "已创建标记 {name}",
+  "menu.branchDeleted": "已删除分支 {name}",
   "menu.refreshHistory": "刷新提交历史",
   "menu.hint": "右键查看更多操作",
   "menu.stale": "该更改已不存在。",
@@ -1001,6 +1046,9 @@ function resolveMenuActions(value, t, notify) {
         );
     }
     actions.push(
+      menuAction("ignore", t("menu.addToGitignore"), command({ type: "ignore", path }), blocked)
+    );
+    actions.push(
       menuAction(
         "copy-relative",
         t("menu.copyRelativePath"),
@@ -1074,9 +1122,73 @@ function resolveMenuActions(value, t, notify) {
   }
   if (target.kind === "commit") {
     const actions = [];
-    if (typeof target.oid === "string" && target.oid !== "") {
+    const oid = target.oid;
+    const canMutate = typeof oid === "string" && /^[0-9a-f]{40}$/.test(oid);
+    const branchHeads = Array.isArray(target.branchHeads) ? target.branchHeads.filter(
+      (branch) => typeof branch === "object" && branch !== null && typeof branch.name === "string" && branch.name !== ""
+    ) : [];
+    if (canMutate) {
+      if (branchHeads.length > 0) {
+        actions.push({
+          id: "checkout",
+          label: t("menu.checkout"),
+          children: branchHeads.map(
+            (branch) => menuAction(
+              branch.name,
+              branch.name,
+              command({ type: "checkout", branch: branch.name }),
+              { ...blocked, ...branch.current === true ? { disabled: true } : {} }
+            )
+          ),
+          ...blocked
+        });
+      }
       actions.push(
-        menuAction("copy-id", t("menu.copyCommitId"), copy(target.oid, "menu.copiedCommitId"))
+        menuAction(
+          "checkout-detached",
+          t("menu.checkoutDetached"),
+          command({ type: "checkoutDetached", oid }),
+          blocked
+        ),
+        menuAction(
+          "create-branch",
+          t("menu.createBranch"),
+          command({ type: "createBranch", oid }),
+          { separatorBefore: true, ...blocked }
+        )
+      );
+      const deletable = branchHeads.filter((branch) => branch.current !== true);
+      if (deletable.length > 0) {
+        actions.push({
+          id: "delete-branch",
+          label: t("menu.deleteBranch"),
+          danger: true,
+          children: deletable.map(
+            (branch) => menuAction(
+              branch.name,
+              branch.name,
+              command({ type: "deleteBranch", branch: branch.name }),
+              { danger: true, ...blocked }
+            )
+          ),
+          ...blocked
+        });
+      }
+      actions.push(
+        menuAction("create-tag", t("menu.createTag"), command({ type: "createTag", oid }), {
+          separatorBefore: true,
+          ...blocked
+        })
+      );
+    }
+    if (typeof oid === "string" && oid !== "") {
+      actions.push(
+        menuAction(
+          "copy-id",
+          t("menu.copyCommitId"),
+          copy(oid, "menu.copiedCommitId"),
+          canMutate ? { separatorBefore: true } : {}
+        )
       );
     }
     if (typeof target.subject === "string" && target.subject !== "") {
@@ -1136,7 +1248,7 @@ function resolveMenuActions(value, t, notify) {
 }
 
 // src/client/panel/GitPanel.ts
-var import_react23 = require("react");
+var import_react25 = require("react");
 
 // src/client/git/list.ts
 function sortChangeEntries(entries) {
@@ -1207,14 +1319,15 @@ function useBranches(options) {
     setBranchMenu(next);
     if (next && branches === null && branchFailure === null) void loadBranches();
   };
+  const resetBranches = (0, import_react7.useCallback)(() => {
+    setBranches(null);
+    setBranchFailure(null);
+  }, []);
   const checkout = (branch) => {
     setBranchMenu(false);
     void perform("checkout", () => call("checkout", { branch }), {
       graph: true,
-      after: () => {
-        setBranches(null);
-        setBranchFailure(null);
-      }
+      after: resetBranches
     });
   };
   return {
@@ -1224,7 +1337,8 @@ function useBranches(options) {
     branchFailure,
     loadBranches,
     toggleBranchMenu,
-    checkout
+    checkout,
+    resetBranches
   };
 }
 
@@ -1272,6 +1386,9 @@ function useChangeActions(options) {
   );
   const stage = (entries) => perform("stage", () => call("stage", { paths: entries.map((entry) => entry.path) }));
   const unstage = (entries) => perform("unstage", () => call("unstage", { paths: entries.map((entry) => entry.path) }));
+  const ignore = (path, untracked = false) => perform("ignore", () => call("ignore", { path }), {
+    notice: t(untracked ? "menu.ignored" : "menu.ignoredTracked", { path })
+  });
   const requestCommit = () => {
     if (message.trim() === "" || refs.busy.current !== null) return;
     if (stagedFiles.length === 0) {
@@ -1332,6 +1449,7 @@ function useChangeActions(options) {
     perform,
     stage,
     unstage,
+    ignore,
     requestCommit,
     confirmAction
   };
@@ -1397,24 +1515,125 @@ function useCommitDetails(options) {
   return { selected, details, loading, failure, selectCommit, closeCommit, retryCommit };
 }
 
-// src/client/panel/hooks/useHistory.ts
+// src/client/panel/hooks/useCommitMenuActions.ts
 var import_react10 = require("react");
+function useCommitMenuActions(options) {
+  const { call, t, refs, perform, onReferencesChanged } = options;
+  const [dialog, setDialog] = (0, import_react10.useState)(null);
+  const invoker = (0, import_react10.useRef)(null);
+  const rememberTrigger = (element) => {
+    invoker.current = element;
+  };
+  const openDialog = (next) => {
+    if (invoker.current === null && typeof document !== "undefined") {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement) invoker.current = active;
+    }
+    setDialog(next);
+  };
+  const restoreTriggerFocus = () => {
+    const element = invoker.current;
+    invoker.current = null;
+    if (element === null) return;
+    queueMicrotask(() => {
+      if (refs.mounted.current && element.isConnected !== false) element.focus();
+    });
+  };
+  const closeDialog = () => {
+    setDialog(null);
+    restoreTriggerFocus();
+  };
+  const finishDialog = () => {
+    setDialog(null);
+    restoreTriggerFocus();
+    onReferencesChanged();
+  };
+  const checkoutDetached = (oid) => {
+    void perform("checkout", () => call("checkout-detached", { oid }), {
+      graph: true,
+      notice: t("menu.detached"),
+      after: onReferencesChanged
+    });
+  };
+  const createBranch = (oid) => {
+    openDialog({ kind: "createBranch", oid, name: "" });
+  };
+  const createTag = (oid) => {
+    openDialog({ kind: "createTag", oid, name: "", message: "" });
+  };
+  const deleteBranch = (branch) => {
+    openDialog({ kind: "deleteBranch", branch });
+  };
+  const setName = (name) => {
+    setDialog(
+      (current) => current === null || current.kind === "deleteBranch" ? current : { ...current, name }
+    );
+  };
+  const setMessage = (message) => {
+    setDialog((current) => current?.kind === "createTag" ? { ...current, message } : current);
+  };
+  const submitDialog = () => {
+    if (dialog === null || refs.busy.current !== null) return;
+    if (dialog.kind === "deleteBranch") {
+      const branch = dialog.branch;
+      void perform("deleteBranch", () => call("delete-branch", { branch }), {
+        graph: true,
+        notice: t("menu.branchDeleted", { name: branch }),
+        after: finishDialog
+      });
+      return;
+    }
+    const name = dialog.name.trim();
+    if (name === "") return;
+    if (dialog.kind === "createBranch") {
+      const oid2 = dialog.oid;
+      void perform("createBranch", () => call("create-branch", { oid: oid2, name }), {
+        graph: true,
+        notice: t("menu.branchCreated", { name }),
+        after: finishDialog
+      });
+      return;
+    }
+    const oid = dialog.oid;
+    const message = dialog.message.trim();
+    void perform("createTag", () => call("create-tag", { oid, name, message }), {
+      graph: true,
+      notice: t("menu.tagCreated", { name }),
+      after: finishDialog
+    });
+  };
+  return {
+    dialog,
+    rememberTrigger,
+    checkoutDetached,
+    createBranch,
+    createTag,
+    deleteBranch,
+    setName,
+    setMessage,
+    closeDialog,
+    submitDialog
+  };
+}
+
+// src/client/panel/hooks/useHistory.ts
+var import_react11 = require("react");
 function isReferences(value) {
   return typeof value === "object" && value !== null && "current" in value;
 }
 function useHistory(options) {
   const { call, refs } = options;
-  const [graph, setGraph] = (0, import_react10.useState)(null);
-  const [references, setReferences] = (0, import_react10.useState)(null);
-  const [graphLoading, setGraphLoading] = (0, import_react10.useState)(false);
-  const [graphFailure, setGraphFailure] = (0, import_react10.useState)(null);
-  const [hasMore, setHasMore] = (0, import_react10.useState)(false);
-  const [moreLoading, setMoreLoading] = (0, import_react10.useState)(false);
-  const [moreFailure, setMoreFailure] = (0, import_react10.useState)(null);
-  const offset = (0, import_react10.useRef)(0);
-  const generation = (0, import_react10.useRef)(0);
-  const moreInFlight = (0, import_react10.useRef)(false);
-  const loadGraph = (0, import_react10.useCallback)(async () => {
+  const [graph, setGraph] = (0, import_react11.useState)(null);
+  const [references, setReferences] = (0, import_react11.useState)(null);
+  const [graphLoading, setGraphLoading] = (0, import_react11.useState)(false);
+  const [graphFailure, setGraphFailure] = (0, import_react11.useState)(null);
+  const [hasMore, setHasMore] = (0, import_react11.useState)(false);
+  const [moreLoading, setMoreLoading] = (0, import_react11.useState)(false);
+  const [moreFailure, setMoreFailure] = (0, import_react11.useState)(null);
+  const offset = (0, import_react11.useRef)(0);
+  const generation = (0, import_react11.useRef)(0);
+  const moreInFlight = (0, import_react11.useRef)(false);
+  const loadGraph = (0, import_react11.useCallback)(async () => {
     const current = generation.current + 1;
     generation.current = current;
     if (refs.mounted.current) setGraphLoading(true);
@@ -1442,7 +1661,7 @@ function useHistory(options) {
       if (refs.mounted.current && generation.current === current) setGraphLoading(false);
     }
   }, [call, refs]);
-  const refreshReferences = (0, import_react10.useCallback)(async () => {
+  const refreshReferences = (0, import_react11.useCallback)(async () => {
     try {
       const value = await call("references");
       if (!refs.mounted.current) return null;
@@ -1452,7 +1671,7 @@ function useHistory(options) {
       return null;
     }
   }, [call, refs]);
-  const loadMore = (0, import_react10.useCallback)(async () => {
+  const loadMore = (0, import_react11.useCallback)(async () => {
     if (!refs.mounted.current || moreInFlight.current || graphLoading || !hasMore) return;
     const current = generation.current;
     moreInFlight.current = true;
@@ -1478,7 +1697,7 @@ function useHistory(options) {
       if (refs.mounted.current) setMoreLoading(false);
     }
   }, [call, graphLoading, hasMore, refs]);
-  (0, import_react10.useEffect)(() => {
+  (0, import_react11.useEffect)(() => {
     void loadGraph();
   }, [loadGraph]);
   return {
@@ -1496,17 +1715,17 @@ function useHistory(options) {
 }
 
 // src/client/panel/hooks/useLiveUpdates.ts
-var import_react11 = require("react");
+var import_react12 = require("react");
 function useLiveUpdates(options) {
   const { call, panelId, visible, repoRoot, refs, onWorktreeChange, onReferencesChange } = options;
-  const [watching, setWatching] = (0, import_react11.useState)(false);
-  const baseline = (0, import_react11.useRef)(null);
-  const handlers = (0, import_react11.useRef)({ onWorktreeChange, onReferencesChange });
-  (0, import_react11.useEffect)(() => {
+  const [watching, setWatching] = (0, import_react12.useState)(false);
+  const baseline = (0, import_react12.useRef)(null);
+  const handlers = (0, import_react12.useRef)({ onWorktreeChange, onReferencesChange });
+  (0, import_react12.useEffect)(() => {
     handlers.current = { onWorktreeChange, onReferencesChange };
   });
   refs.watching.current = watching;
-  const subscribe = (0, import_react11.useCallback)(async () => {
+  const subscribe = (0, import_react12.useCallback)(async () => {
     try {
       const state = await call("watch", { panel: panelId });
       if (!refs.mounted.current) return;
@@ -1521,7 +1740,7 @@ function useLiveUpdates(options) {
       }
     }
   }, [call, panelId, refs]);
-  (0, import_react11.useEffect)(() => {
+  (0, import_react12.useEffect)(() => {
     void subscribe();
     return () => {
       if (!refs.mounted.current) refs.watching.current = false;
@@ -1529,7 +1748,7 @@ function useLiveUpdates(options) {
       });
     };
   }, [subscribe, call, panelId, repoRoot, refs]);
-  (0, import_react11.useEffect)(() => {
+  (0, import_react12.useEffect)(() => {
     if (!visible) return void 0;
     let active = true;
     const poll = async () => {
@@ -1589,10 +1808,10 @@ function useLiveUpdates(options) {
 }
 
 // src/client/panel/hooks/useMenuCommands.ts
-var import_react12 = require("react");
+var import_react13 = require("react");
 function useMenuCommands() {
-  const optionsRef = (0, import_react12.useRef)(null);
-  (0, import_react12.useEffect)(
+  const optionsRef = (0, import_react13.useRef)(null);
+  (0, import_react13.useEffect)(
     () => panelCommands.subscribe((command) => {
       const options = optionsRef.current;
       if (options !== null) dispatch(options, command);
@@ -1603,7 +1822,20 @@ function useMenuCommands() {
 }
 function dispatch(options, command) {
   const { sessionId, panelId, repo, t, busyRef, files, stagedFiles, changedFiles, mergeFiles } = options;
-  const { refreshAll, stage, unstage, setConfirm, setNotice, openDiff } = options;
+  const {
+    refreshAll,
+    stage,
+    unstage,
+    ignore,
+    checkout,
+    checkoutDetached,
+    createBranch,
+    createTag,
+    deleteBranch,
+    setConfirm,
+    setNotice,
+    openDiff
+  } = options;
   if (command === null || typeof command !== "object") return;
   if (typeof command.sessionId === "string" && command.sessionId !== sessionId) return;
   if (typeof command.panelId === "string" && command.panelId !== panelId) return;
@@ -1646,6 +1878,32 @@ function dispatch(options, command) {
     openDiff(entry, section);
     return;
   }
+  if (command.type === "ignore") {
+    const entry = files.find((candidate) => candidate.path === command.path);
+    if (entry === void 0) {
+      reportStale();
+      return;
+    }
+    void ignore(entry.path, entry.untracked === true);
+    return;
+  }
+  if (command.type === "checkout" && typeof command.branch === "string" && command.branch !== "") {
+    checkout(command.branch);
+    return;
+  }
+  if (command.type === "checkoutDetached" && typeof command.oid === "string" && /^[0-9a-f]{40}$/.test(command.oid)) {
+    checkoutDetached(command.oid);
+    return;
+  }
+  if ((command.type === "createBranch" || command.type === "createTag") && typeof command.oid === "string" && /^[0-9a-f]{40}$/.test(command.oid)) {
+    if (command.type === "createBranch") createBranch(command.oid);
+    else createTag(command.oid);
+    return;
+  }
+  if (command.type === "deleteBranch" && typeof command.branch === "string" && command.branch !== "") {
+    deleteBranch(command.branch);
+    return;
+  }
   if (command.type === "stage" || command.type === "stageSection") {
     const entries = command.type === "stageSection" ? command.section === "merge" ? mergeFiles : changedFiles : files.filter((entry) => matches(entry) && entry.conflict === true).concat(files.filter((entry) => matches(entry) && isUnstaged(entry)));
     if (entries.length === 0) {
@@ -1685,14 +1943,14 @@ function dispatch(options, command) {
 }
 
 // src/client/panel/hooks/useRepoStatus.ts
-var import_react13 = require("react");
+var import_react14 = require("react");
 function useRepoStatus(options) {
   const { sessionId, useContextMenu, visible, refs } = options;
   const { call, menuTrigger, panelId } = usePanelMenu({ sessionId, useContextMenu });
-  const [status, setStatus] = (0, import_react13.useState)(null);
-  const [loading, setLoading] = (0, import_react13.useState)(true);
-  const [loadFailure, setLoadFailure] = (0, import_react13.useState)(null);
-  const loadStatus = (0, import_react13.useCallback)(
+  const [status, setStatus] = (0, import_react14.useState)(null);
+  const [loading, setLoading] = (0, import_react14.useState)(true);
+  const [loadFailure, setLoadFailure] = (0, import_react14.useState)(null);
+  const loadStatus = (0, import_react14.useCallback)(
     async (loadOptions = {}) => {
       if (refs.inFlight.current) return;
       refs.inFlight.current = true;
@@ -1712,10 +1970,10 @@ function useRepoStatus(options) {
     },
     [call, refs]
   );
-  (0, import_react13.useEffect)(() => {
+  (0, import_react14.useEffect)(() => {
     void loadStatus();
   }, [loadStatus]);
-  (0, import_react13.useEffect)(() => {
+  (0, import_react14.useEffect)(() => {
     if (!visible) return void 0;
     const timer = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
@@ -1761,11 +2019,11 @@ function adjustSplitRatio(ratio, key) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var import_react15 = require("react");
+var import_react16 = require("react");
 
 // src/client/panel/BranchMenu.ts
-var import_react14 = require("react");
-var h6 = import_react14.createElement;
+var import_react15 = require("react");
+var h6 = import_react15.createElement;
 function BranchMenu(props) {
   const t = props.t;
   let content;
@@ -1815,7 +2073,7 @@ function BranchMenu(props) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var h7 = import_react15.createElement;
+var h7 = import_react16.createElement;
 function BranchHeader(props) {
   const t = props.t;
   const repo = props.repo;
@@ -1883,11 +2141,11 @@ function BranchHeader(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var import_react18 = require("react");
+var import_react19 = require("react");
 
 // src/client/panel/rows.ts
-var import_react16 = require("react");
-var h8 = import_react16.createElement;
+var import_react17 = require("react");
+var h8 = import_react17.createElement;
 function FileRow(props) {
   const entry = props.entry;
   const letter = props.letter;
@@ -2000,8 +2258,8 @@ function renderFileRows(entries, context) {
 }
 
 // src/client/panel/Section.ts
-var import_react17 = require("react");
-var h9 = import_react17.createElement;
+var import_react18 = require("react");
+var h9 = import_react18.createElement;
 function Section(props) {
   const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
@@ -2039,7 +2297,7 @@ function Section(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var h10 = import_react18.createElement;
+var h10 = import_react19.createElement;
 function ChangeGroups(props) {
   const t = props.t;
   const sectionActions = {
@@ -2099,7 +2357,7 @@ function ChangeGroups(props) {
     menuTarget: (entry) => props.rowTarget("file", { section: mode, path: entry.path })
   });
   return h10(
-    import_react18.Fragment,
+    import_react19.Fragment,
     null,
     props.mergeRows.length === 0 ? null : h10(
       Section,
@@ -2156,7 +2414,7 @@ function ChangeGroups(props) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var import_react19 = require("react");
+var import_react20 = require("react");
 
 // src/client/panel/autosize.ts
 var COMMIT_MESSAGE_MAX_LINES = 10;
@@ -2203,11 +2461,11 @@ function autoGrowTextArea(area) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var h11 = import_react19.createElement;
+var h11 = import_react20.createElement;
 function CommitBox(props) {
   const t = props.t;
-  const messageArea = (0, import_react19.useRef)(null);
-  (0, import_react19.useLayoutEffect)(() => {
+  const messageArea = (0, import_react20.useRef)(null);
+  (0, import_react20.useLayoutEffect)(() => {
     const area = messageArea.current;
     if (area === null) return;
     return autoGrowTextArea(area);
@@ -2251,8 +2509,8 @@ function CommitBox(props) {
 }
 
 // src/client/panel/views/CommitDetails.ts
-var import_react20 = require("react");
-var h12 = import_react20.createElement;
+var import_react21 = require("react");
+var h12 = import_react21.createElement;
 function CommitDetails(props) {
   const t = props.t;
   const summary = props.summary;
@@ -2340,8 +2598,112 @@ function CommitDetails(props) {
   );
 }
 
+// src/client/panel/views/CommitMenuDialog.ts
+var import_react22 = require("react");
+var h13 = import_react22.createElement;
+function CommitMenuDialog(props) {
+  const { dialog, t } = props;
+  const descriptionId = (0, import_react22.useId)();
+  const title = dialog.kind === "createBranch" ? t("menu.createBranch") : dialog.kind === "createTag" ? t("menu.createTag") : t("menu.deleteBranch");
+  const description = dialog.kind === "createBranch" ? t("menu.createBranchAt", { hash: dialog.oid.slice(0, 7) }) : dialog.kind === "createTag" ? t("menu.createTagAt", { hash: dialog.oid.slice(0, 7) }) : t("menu.deleteBranchConfirm", { name: dialog.branch });
+  const progress = dialog.kind === "createBranch" ? t("menu.creatingBranch") : dialog.kind === "createTag" ? t("menu.creatingTag") : t("menu.deletingBranch");
+  const enter = (event) => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    props.onSubmit();
+  };
+  const annotationEnter = (event) => {
+    if (event.key !== "Enter" || !event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    props.onSubmit();
+  };
+  return h13(
+    "div",
+    {
+      className: "dshgg-confirm",
+      role: "alertdialog",
+      "aria-label": title,
+      "aria-describedby": descriptionId,
+      "aria-busy": props.busy,
+      onKeyDown: (event) => {
+        if (event.key !== "Escape" || props.busy) return;
+        event.preventDefault();
+        event.stopPropagation();
+        props.onCancel();
+      }
+    },
+    h13(
+      "div",
+      { className: "dshgg-confirmText" },
+      h13("div", { className: "dshgg-confirmTitle" }, title),
+      h13("div", { id: descriptionId, className: "dshgg-confirmDesc" }, description),
+      dialog.kind === "deleteBranch" ? null : h13(
+        "label",
+        { className: "dshgg-dialogField" },
+        h13("span", { className: "dshgg-dialogLabel" }, t("menu.referenceName")),
+        h13("input", {
+          type: "text",
+          className: "dshgg-dialogInput",
+          "aria-label": t("menu.referenceName"),
+          value: dialog.name,
+          maxLength: 200,
+          autoFocus: true,
+          readOnly: props.busy,
+          onChange: (event) => props.onNameChange(event.target.value),
+          onKeyDown: enter
+        })
+      ),
+      dialog.kind !== "createTag" ? null : h13(
+        "label",
+        { className: "dshgg-dialogField" },
+        h13("span", { className: "dshgg-dialogLabel" }, t("menu.tagMessage")),
+        h13("textarea", {
+          className: "dshgg-dialogInput dshgg-dialogMessage",
+          "aria-label": t("menu.tagMessage"),
+          value: dialog.message,
+          maxLength: 2e4,
+          rows: 3,
+          readOnly: props.busy,
+          onChange: (event) => props.onMessageChange(event.target.value),
+          onKeyDown: annotationEnter
+        }),
+        h13("span", { className: "dshgg-dialogHint" }, t("menu.tagMessageHint"))
+      ),
+      props.busy ? h13("div", { className: "dshgg-dialogHint", role: "status" }, progress) : null
+    ),
+    h13(
+      "div",
+      { className: "dshgg-confirmActions" },
+      h13(
+        "button",
+        {
+          type: "button",
+          className: "dshgg-btn dshgg-btnGhost",
+          autoFocus: dialog.kind === "deleteBranch",
+          "aria-disabled": props.busy ? "true" : void 0,
+          onClick: () => {
+            if (!props.busy) props.onCancel();
+          }
+        },
+        t("action.cancel")
+      ),
+      h13(
+        "button",
+        {
+          type: "button",
+          className: "dshgg-btn dshgg-btnPrimary",
+          disabled: !props.busy && dialog.kind !== "deleteBranch" && dialog.name.trim() === "",
+          "aria-disabled": props.busy || dialog.kind !== "deleteBranch" && dialog.name.trim() === "" ? "true" : void 0,
+          onClick: props.onSubmit
+        },
+        title
+      )
+    )
+  );
+}
+
 // src/client/panel/views/GraphSection.ts
-var import_react21 = require("react");
+var import_react23 = require("react");
 
 // src/client/git/graph.ts
 var SWIMLANE_HEIGHT = 22;
@@ -2688,7 +3050,7 @@ function refBadges(refs) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var h13 = import_react21.createElement;
+var h14 = import_react23.createElement;
 function graphColorValue(color) {
   return `var(--dshgg-scm-${color})`;
 }
@@ -2696,7 +3058,7 @@ function GraphSection(props) {
   const t = props.t;
   const commits = Array.isArray(props.commits) ? props.commits : null;
   const references = props.references ?? null;
-  const rowsLayout = (0, import_react21.useMemo)(
+  const rowsLayout = (0, import_react23.useMemo)(
     () => computeGraph(
       bindReferenceTargets(
         (commits ?? []).map((commit) => ({
@@ -2711,16 +3073,16 @@ function GraphSection(props) {
     [commits, references]
   );
   const graphId = props.graphId ?? "git-graph";
-  const layer = (0, import_react21.useMemo)(() => graphLayer(rowsLayout), [rowsLayout]);
-  const [hovered, setHovered] = (0, import_react21.useState)(null);
+  const layer = (0, import_react23.useMemo)(() => graphLayer(rowsLayout), [rowsLayout]);
+  const [hovered, setHovered] = (0, import_react23.useState)(null);
   const menu = props.menu;
   const trigger = menu === void 0 ? null : menu.trigger;
   const rows = [];
   if (props.loading === true && commits === null) {
-    rows.push(h13("div", { key: "loading", className: "dshgg-note" }, t("graph.loading")));
+    rows.push(h14("div", { key: "loading", className: "dshgg-note" }, t("graph.loading")));
   } else if (props.failure !== null) {
     rows.push(
-      h13(Banner, {
+      h14(Banner, {
         key: "error",
         title: t("error.title"),
         detail: errorText(t, props.failure),
@@ -2729,7 +3091,7 @@ function GraphSection(props) {
       })
     );
   } else if (commits === null || commits.length === 0) {
-    rows.push(h13("div", { key: "empty", className: "dshgg-note" }, t("graph.empty")));
+    rows.push(h14("div", { key: "empty", className: "dshgg-note" }, t("graph.empty")));
   } else {
     const rowElements = [];
     for (let index = 0; index < commits.length; index += 1) {
@@ -2737,7 +3099,7 @@ function GraphSection(props) {
       const row = rowsLayout[index];
       if (commit === void 0 || row === void 0) continue;
       rowElements.push(
-        h13(GraphRow, {
+        h14(GraphRow, {
           key: commit.oid,
           index,
           commit,
@@ -2747,12 +3109,13 @@ function GraphSection(props) {
           onSelect: props.onSelect,
           menuTrigger: trigger,
           menuTarget: menu === void 0 || trigger === null ? void 0 : menu.commitTarget(commit),
+          onInvoke: menu.onInvoke,
           onHover: setHovered
         })
       );
     }
     rows.push(
-      h13(
+      h14(
         GraphBody,
         {
           key: "body",
@@ -2767,11 +3130,11 @@ function GraphSection(props) {
     const moreFailure = props.moreFailure ?? null;
     if (loadMore !== null && moreFailure !== null) {
       rows.push(
-        h13(
+        h14(
           "div",
           { key: "moreError", className: "dshgg-graphMore" },
-          h13("span", { className: "dshgg-graphMoreText" }, errorText(t, moreFailure)),
-          h13(
+          h14("span", { className: "dshgg-graphMoreText" }, errorText(t, moreFailure)),
+          h14(
             "button",
             {
               type: "button",
@@ -2785,7 +3148,7 @@ function GraphSection(props) {
     } else if (loadMore !== null && props.hasMore === true) {
       const loading = props.moreLoading === true;
       rows.push(
-        h13(
+        h14(
           "button",
           {
             key: "more",
@@ -2801,7 +3164,7 @@ function GraphSection(props) {
       );
     }
   }
-  return h13(
+  return h14(
     Section,
     {
       id: "graph",
@@ -2818,10 +3181,10 @@ function GraphSection(props) {
 }
 function GraphBody(props) {
   const layer = props.layer;
-  return h13(
+  return h14(
     "div",
     { className: "dshgg-graphBody" },
-    h13(
+    h14(
       "svg",
       {
         className: "dshgg-graphLayer",
@@ -2831,10 +3194,10 @@ function GraphBody(props) {
         "aria-hidden": "true",
         focusable: false
       },
-      h13(
+      h14(
         "defs",
         null,
-        h13(
+        h14(
           "mask",
           {
             id: props.maskId,
@@ -2844,9 +3207,9 @@ function GraphBody(props) {
             width: layer.width,
             height: layer.height
           },
-          h13("rect", { x: 0, y: 0, width: layer.width, height: layer.height, fill: "white" }),
+          h14("rect", { x: 0, y: 0, width: layer.width, height: layer.height, fill: "white" }),
           layer.gaps.map(
-            (gap) => h13("circle", {
+            (gap) => h14("circle", {
               key: `gap:${gap.row}`,
               className: "dshgg-graphGap",
               cx: gap.cx,
@@ -2857,11 +3220,11 @@ function GraphBody(props) {
           )
         )
       ),
-      h13(
+      h14(
         "g",
         { className: "dshgg-graphLines", mask: `url(#${props.maskId})` },
         layer.paths.map(
-          (path, index) => h13("path", {
+          (path, index) => h14("path", {
             key: `${path.color}:${index}`,
             className: "dshgg-graphEdge",
             "data-color": path.color,
@@ -2877,7 +3240,7 @@ function GraphBody(props) {
 function GraphCell(props) {
   const geometry = props.geometry;
   const node = geometry.node;
-  return h13(
+  return h14(
     "svg",
     {
       className: "dshgg-graphSvg",
@@ -2888,7 +3251,7 @@ function GraphCell(props) {
       focusable: false
     },
     node.circles.map(
-      (circle, index) => h13("circle", {
+      (circle, index) => h14("circle", {
         key: `node:${index}`,
         className: "dshgg-graphNode",
         "data-shape": node.shape,
@@ -2916,14 +3279,14 @@ function GraphCell(props) {
   );
 }
 function badgeIconElement(icon) {
-  if (icon === "target") return h13(TargetIcon, { size: 16 });
-  if (icon === "cloud") return h13(CloudIcon, { size: 16 });
-  if (icon === "tag") return h13(TagIcon, { size: 16 });
-  return h13(GitBranchIcon, { size: 12 });
+  if (icon === "target") return h14(TargetIcon, { size: 16 });
+  if (icon === "cloud") return h14(CloudIcon, { size: 16 });
+  if (icon === "tag") return h14(TagIcon, { size: 16 });
+  return h14(GitBranchIcon, { size: 12 });
 }
 function Badge(props) {
   const badge = props.badge;
-  return h13(
+  return h14(
     "span",
     {
       className: "dshgg-graphBadge",
@@ -2932,9 +3295,9 @@ function Badge(props) {
       style: { backgroundColor: graphColorValue(badge.color) },
       title: badge.refs.map((ref) => ref.name).join(", ")
     },
-    badge.count > 1 ? h13("span", { className: "dshgg-graphBadgeCount" }, String(badge.count)) : null,
-    h13("span", { className: "dshgg-graphBadgeIcon" }, badgeIconElement(badge.icon)),
-    badge.name === null ? null : h13("span", { className: "dshgg-graphBadgeName" }, badge.name)
+    badge.count > 1 ? h14("span", { className: "dshgg-graphBadgeCount" }, String(badge.count)) : null,
+    h14("span", { className: "dshgg-graphBadgeIcon" }, badgeIconElement(badge.icon)),
+    badge.name === null ? null : h14("span", { className: "dshgg-graphBadgeName" }, badge.name)
   );
 }
 function GraphRow(props) {
@@ -2952,7 +3315,11 @@ function GraphRow(props) {
     onClick: open,
     onMouseEnter: () => props.onHover(props.index),
     onMouseLeave: () => props.onHover(null),
+    onContextMenu: (event) => {
+      props.onInvoke?.(event.currentTarget);
+    },
     onKeyDown: (event) => {
+      props.onInvoke?.(event.currentTarget);
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         open();
@@ -2963,7 +3330,7 @@ function GraphRow(props) {
   const subject = commit.subject === "" ? t("graph.noSubject") : commit.subject;
   const ago = formatAgo(t, commit.authoredAt);
   const titlePrefix = row.refs.length === 0 ? "" : `${row.refs.map((ref) => ref.name).join(", ")} · `;
-  return h13(
+  return h14(
     "div",
     {
       className: "dshgg-graphRow",
@@ -2971,29 +3338,29 @@ function GraphRow(props) {
       title: `${titlePrefix}${commit.shortOid} ${subject} · ${commit.author} · ${ago} · ${t("menu.hint")}`,
       ...rowProps
     },
-    h13(GraphCell, { geometry: props.geometry }),
-    h13(
+    h14(GraphCell, { geometry: props.geometry }),
+    h14(
       "span",
       { className: "dshgg-graphLabel" },
-      h13("span", { className: "dshgg-graphSubject" }, subject),
-      commit.author === "" ? null : h13("span", { className: "dshgg-graphAuthor" }, commit.author)
+      h14("span", { className: "dshgg-graphSubject" }, subject),
+      commit.author === "" ? null : h14("span", { className: "dshgg-graphAuthor" }, commit.author)
     ),
-    badges.length === 0 ? null : h13(
+    badges.length === 0 ? null : h14(
       "span",
       { className: "dshgg-graphBadges" },
       badges.map(
-        (badge, index) => h13(Badge, { key: `${badge.color}:${badge.icon}:${index}`, badge })
+        (badge, index) => h14(Badge, { key: `${badge.color}:${badge.icon}:${index}`, badge })
       )
     )
   );
 }
 
 // src/client/panel/views/SplitView.ts
-var import_react22 = require("react");
-var h14 = import_react22.createElement;
+var import_react24 = require("react");
+var h15 = import_react24.createElement;
 function SplitView(props) {
-  const [dragging, setDragging] = (0, import_react22.useState)(false);
-  const dragStart = (0, import_react22.useRef)(null);
+  const [dragging, setDragging] = (0, import_react24.useState)(false);
+  const dragStart = (0, import_react24.useRef)(null);
   const ratio = clampSplitRatio(props.ratio);
   const percent = `${Math.round(ratio * 1e3) / 10}%`;
   const beginDrag = (event) => {
@@ -3024,15 +3391,15 @@ function SplitView(props) {
     event.preventDefault();
     props.onRatioChange(next);
   };
-  return h14(
+  return h15(
     "div",
     { className: "dshgg-split" },
-    h14(
+    h15(
       "div",
       { className: "dshgg-scroll dshgg-paneTop", style: { flexBasis: percent } },
       props.changes
     ),
-    h14(
+    h15(
       "div",
       {
         className: "dshgg-splitter",
@@ -3051,9 +3418,9 @@ function SplitView(props) {
         onPointerCancel: endDrag,
         onKeyDown: handleKey
       },
-      h14("span", { className: "dshgg-splitterLine" })
+      h15("span", { className: "dshgg-splitterLine" })
     ),
-    h14(
+    h15(
       "div",
       {
         className: "dshgg-scroll dshgg-paneBottom",
@@ -3066,7 +3433,7 @@ function SplitView(props) {
 }
 
 // src/client/panel/GitPanel.ts
-var h15 = import_react23.createElement;
+var h16 = import_react25.createElement;
 function GitPanel(props) {
   const t = props.t;
   const tab = props.useTabInfo().tab;
@@ -3082,34 +3449,34 @@ function GitPanel(props) {
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const history = useHistory({ call, refs });
   const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history;
-  const graphPane = (0, import_react23.useRef)(null);
-  const reloadHistory = (0, import_react23.useCallback)(async () => {
+  const graphPane = (0, import_react25.useRef)(null);
+  const reloadHistory = (0, import_react25.useCallback)(async () => {
     await loadGraph();
     if (graphPane.current !== null) graphPane.current.scrollTop = 0;
   }, [loadGraph]);
-  const [openSections, setOpenSections] = (0, import_react23.useState)({
+  const [openSections, setOpenSections] = (0, import_react25.useState)({
     merge: true,
     staged: true,
     changes: true,
     graph: true
   });
-  const [splitRatio, setSplitRatio] = (0, import_react23.useState)(DEFAULT_SPLIT_RATIO);
+  const [splitRatio, setSplitRatio] = (0, import_react25.useState)(DEFAULT_SPLIT_RATIO);
   const repo = status?.repo ?? null;
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
   const files = status?.files ?? [];
-  const mergeFiles = (0, import_react23.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
-  const stagedFiles = (0, import_react23.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
-  const changedFiles = (0, import_react23.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
-  const mergeRows = (0, import_react23.useMemo)(
+  const mergeFiles = (0, import_react25.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
+  const stagedFiles = (0, import_react25.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
+  const changedFiles = (0, import_react25.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
+  const mergeRows = (0, import_react25.useMemo)(
     () => sortChangeEntries(mergeFiles).map((entry) => ({ ...entry, letter: "!" })),
     [mergeFiles]
   );
-  const stagedRows = (0, import_react23.useMemo)(
+  const stagedRows = (0, import_react25.useMemo)(
     () => sortChangeEntries(stagedFiles).map((entry) => ({ ...entry, letter: statusLetter(entry.x) })),
     [stagedFiles]
   );
-  const changedRows = (0, import_react23.useMemo)(
+  const changedRows = (0, import_react25.useMemo)(
     () => sortChangeEntries(changedFiles).map((entry) => ({
       ...entry,
       letter: entry.untracked === true ? "U" : statusLetter(entry.y)
@@ -3117,10 +3484,10 @@ function GitPanel(props) {
     [changedFiles]
   );
   const clean = repo !== null && mergeFiles.length === 0 && stagedFiles.length === 0 && changedFiles.length === 0;
-  const handleWorktreeChange = (0, import_react23.useCallback)(() => {
+  const handleWorktreeChange = (0, import_react25.useCallback)(() => {
     void loadStatus({ silent: true });
   }, [loadStatus]);
-  const handleReferencesChange = (0, import_react23.useCallback)(async () => {
+  const handleReferencesChange = (0, import_react25.useCallback)(async () => {
     const next = await refreshReferences();
     await loadStatus({ silent: true });
     const revision = next?.current?.revision;
@@ -3159,6 +3526,7 @@ function GitPanel(props) {
     perform,
     stage,
     unstage,
+    ignore,
     requestCommit,
     confirmAction
   } = actions;
@@ -3169,18 +3537,26 @@ function GitPanel(props) {
     branchFailure,
     loadBranches,
     toggleBranchMenu,
-    checkout
+    checkout,
+    resetBranches
   } = useBranches({ call, refs, perform });
+  const commitMenuActions = useCommitMenuActions({
+    call,
+    t,
+    refs,
+    perform,
+    onReferencesChanged: resetBranches
+  });
   const commitState = useCommitDetails({ call, refs });
   const selectedCommit = commitState.selected;
-  const commitRows = (0, import_react23.useMemo)(
+  const commitRows = (0, import_react25.useMemo)(
     () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
       ...file,
       kind: "commit"
     })),
     [commitState.details]
   );
-  const openDiff = (0, import_react23.useCallback)(
+  const openDiff = (0, import_react25.useCallback)(
     (entry, mode) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -3195,7 +3571,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openCommitDiff = (0, import_react23.useCallback)(
+  const openCommitDiff = (0, import_react25.useCallback)(
     (entry) => {
       if (selectedCommit === null) return;
       tab.actions.openTab(DIFF_KIND, {
@@ -3230,7 +3606,8 @@ function GitPanel(props) {
   const graphMenu = {
     trigger: menuTrigger,
     sectionTarget: targets.sectionTarget,
-    commitTarget: targets.commitTarget
+    commitTarget: targets.commitTarget,
+    onInvoke: commitMenuActions.rememberTrigger
   };
   commandOptions.current = {
     sessionId: props.sessionId,
@@ -3245,24 +3622,30 @@ function GitPanel(props) {
     refreshAll,
     stage,
     unstage,
+    ignore,
+    checkout,
+    checkoutDetached: commitMenuActions.checkoutDetached,
+    createBranch: commitMenuActions.createBranch,
+    createTag: commitMenuActions.createTag,
+    deleteBranch: commitMenuActions.deleteBranch,
     setConfirm,
     setNotice,
     openDiff
   };
   const renderState = () => {
     if (loading && status === null) {
-      return h15(EmptyState, {
-        icon: h15(GitBranchIcon, { size: 26 }),
+      return h16(EmptyState, {
+        icon: h16(GitBranchIcon, { size: 26 }),
         title: t("loading")
       });
     }
     if (loadFailure !== null && status === null) {
       if (loadFailure.code === "git-unavailable") {
-        return h15(EmptyState, {
-          icon: h15(AlertIcon, { size: 26 }),
+        return h16(EmptyState, {
+          icon: h16(AlertIcon, { size: 26 }),
           title: t("gitUnavailable.title"),
           desc: t("gitUnavailable.desc"),
-          action: h15(
+          action: h16(
             "button",
             {
               type: "button",
@@ -3275,11 +3658,11 @@ function GitPanel(props) {
           )
         });
       }
-      return h15(EmptyState, {
-        icon: h15(AlertIcon, { size: 26 }),
+      return h16(EmptyState, {
+        icon: h16(AlertIcon, { size: 26 }),
         title: t("error.title"),
         desc: errorText(t, loadFailure),
-        action: h15(
+        action: h16(
           "button",
           {
             type: "button",
@@ -3293,11 +3676,11 @@ function GitPanel(props) {
       });
     }
     if (status !== null && repo === null) {
-      return h15(EmptyState, {
-        icon: h15(GitBranchIcon, { size: 26 }),
+      return h16(EmptyState, {
+        icon: h16(GitBranchIcon, { size: 26 }),
         title: t("noRepo.title"),
         desc: t("noRepo.desc", { path: sessionDirectory ?? "" }),
-        action: h15(
+        action: h16(
           "button",
           { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: refreshAll },
           t("refresh")
@@ -3306,7 +3689,7 @@ function GitPanel(props) {
     }
     return null;
   };
-  const commitBody = selectedCommit === null ? null : h15(CommitDetails, {
+  const commitBody = selectedCommit === null ? null : h16(CommitDetails, {
     t,
     summary: selectedCommit,
     details: commitState.details,
@@ -3320,14 +3703,14 @@ function GitPanel(props) {
     rowTarget: targets.rowTarget
   });
   const singlePane = renderState() ?? commitBody;
-  const body = singlePane !== null ? h15("div", { className: "dshgg-scroll" }, singlePane) : h15(SplitView, {
+  const body = singlePane !== null ? h16("div", { className: "dshgg-scroll" }, singlePane) : h16(SplitView, {
     ratio: splitRatio,
     onRatioChange: setSplitRatio,
     label: t("split.label"),
     hint: t("split.hint"),
     onGraphScroll: handleGraphScroll,
     graphRef: graphPane,
-    changes: h15(ChangeGroups, {
+    changes: h16(ChangeGroups, {
       t,
       clean,
       mergeRows,
@@ -3346,7 +3729,7 @@ function GitPanel(props) {
       sectionTarget: targets.sectionTarget,
       rowTarget: targets.rowTarget
     }),
-    graph: h15(GraphSection, {
+    graph: h16(GraphSection, {
       t,
       commits: graph,
       references,
@@ -3370,10 +3753,10 @@ function GitPanel(props) {
   });
   const commitHint = stagedFiles.length > 0 ? t("commit.hint") : t("commit.hintNone");
   const placeholder = repo === null ? t("commit.placeholder", { branch: "" }) : t("commit.placeholder", { branch: branchLabel ?? "" });
-  return h15(
+  return h16(
     "div",
     { className: "dshgg-root", "data-dsh-git-graph": "" },
-    h15(BranchHeader, {
+    h16(BranchHeader, {
       t,
       wrapRef: refs.wrap,
       repo,
@@ -3392,7 +3775,7 @@ function GitPanel(props) {
       },
       onRefresh: refreshAll
     }),
-    repo === null || selectedCommit !== null ? null : h15(CommitBox, {
+    repo === null || selectedCommit !== null ? null : h16(CommitBox, {
       t,
       message,
       hint: commitHint,
@@ -3401,7 +3784,7 @@ function GitPanel(props) {
       onChange: setMessage,
       onCommit: requestCommit
     }),
-    loadFailure !== null && status !== null ? h15(Banner, {
+    loadFailure !== null && status !== null ? h16(Banner, {
       title: t("error.title"),
       detail: errorText(t, loadFailure),
       retryLabel: t("retry"),
@@ -3411,31 +3794,40 @@ function GitPanel(props) {
       dismissLabel: t("action.dismiss"),
       onDismiss: () => setLoadFailure(null)
     }) : null,
-    actionFailure !== null ? h15(Banner, {
+    actionFailure !== null ? h16(Banner, {
       title: t("error.title"),
       detail: errorText(t, actionFailure),
       dismissLabel: t("action.dismiss"),
       onDismiss: () => setActionFailure(null)
     }) : null,
-    notice !== null ? h15("div", { className: "dshgg-notice", role: "status" }, notice) : null,
+    notice !== null ? h16("div", { className: "dshgg-notice", role: "status" }, notice) : null,
     body,
-    confirm !== null ? h15(
+    commitMenuActions.dialog === null ? null : h16(CommitMenuDialog, {
+      dialog: commitMenuActions.dialog,
+      t,
+      busy: busy !== null,
+      onNameChange: commitMenuActions.setName,
+      onMessageChange: commitMenuActions.setMessage,
+      onCancel: commitMenuActions.closeDialog,
+      onSubmit: commitMenuActions.submitDialog
+    }),
+    confirm !== null ? h16(
       "div",
       {
         className: "dshgg-confirm",
         role: "alertdialog",
         "aria-label": confirmTitle(t, confirm)
       },
-      h15(
+      h16(
         "div",
         { className: "dshgg-confirmText" },
-        h15("div", { className: "dshgg-confirmTitle" }, confirmTitle(t, confirm)),
-        confirmDescription(t, confirm) === "" ? null : h15("div", { className: "dshgg-confirmDesc" }, confirmDescription(t, confirm))
+        h16("div", { className: "dshgg-confirmTitle" }, confirmTitle(t, confirm)),
+        confirmDescription(t, confirm) === "" ? null : h16("div", { className: "dshgg-confirmDesc" }, confirmDescription(t, confirm))
       ),
-      h15(
+      h16(
         "div",
         { className: "dshgg-confirmActions" },
-        h15(
+        h16(
           "button",
           {
             type: "button",
@@ -3445,7 +3837,7 @@ function GitPanel(props) {
           },
           t("action.cancel")
         ),
-        h15(
+        h16(
           "button",
           {
             type: "button",
@@ -3461,7 +3853,7 @@ function GitPanel(props) {
 }
 
 // src/client/styles.css
-var styles_default = '/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host\'s `--dsw-*`\n * theme tokens, and text uses the host\'s `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH\'s\n * own sidebar surfaces. Sizes follow the host\'s sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n * The commit graph is the one exception: it reproduces VS Code\'s Source\n * Control Graph, including its `scmGraph.*` palette and 22px rows.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n\n/* --------------------------------------------------------------- buttons --- */\n\n.dshgg-iconBtn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n  padding: 6px;\n  color: var(--dsw-alias-label-secondary);\n  line-height: 1;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-iconBtn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-iconBtn[data-spinning="true"] svg {\n  animation: dshgg-spin 1s linear infinite;\n}\n\n@keyframes dshgg-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.dshgg-btn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  height: 28px;\n  padding: 0 12px;\n  border: 0.5px solid transparent;\n  border-radius: var(--dsw-radius-sm);\n  font: var(--dsw-font-xxs-strong-12);\n  white-space: nowrap;\n  cursor: pointer;\n}\n\n.dshgg-btn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-btnPrimary {\n  color: var(--dsw-alias-label-primary-foreground);\n  background: var(--dsw-alias-button-primary-fill);\n}\n\n.dshgg-btnPrimary:hover:not(:disabled) {\n  background: var(--dsw-alias-button-primary-hover);\n}\n\n.dshgg-btnGhost {\n  color: var(--dsw-alias-label-primary);\n  background: transparent;\n  border-color: var(--dsw-alias-border-l3);\n  font-weight: 400;\n}\n\n.dshgg-btnGhost:hover:not(:disabled) {\n  background: var(--dsw-alias-interactive-bg-hover-solid);\n}\n\n.dshgg-linkBtn {\n  flex: none;\n  padding: 0;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-strong-12);\n  background: none;\n  border: none;\n  cursor: pointer;\n}\n\n.dshgg-linkBtn:hover {\n  text-decoration: underline;\n}\n\n/* --------------------------------------------------------------- toolbar --- */\n\n.dshgg-toolbar {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  height: 38px;\n  padding: 0 6px;\n  /* Include the hairline: the host\'s 38px tab strip and 38px header meet at 76px. */\n  box-sizing: border-box;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-branchWrap {\n  position: relative;\n  display: flex;\n  flex: 0 1 auto;\n  min-width: 0;\n}\n\n.dshgg-branchChip {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  height: 28px;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-branchChip:disabled {\n  color: var(--dsw-alias-label-tertiary);\n  cursor: default;\n}\n\n.dshgg-branchChip svg:first-child {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-branchName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font-weight: 500;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-upstream {\n  display: inline-flex;\n  flex: 0 1000 auto;\n  align-items: center;\n  min-width: 0;\n  max-width: 140px;\n  padding: 0 2px;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sync {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n@media (hover: hover) {\n  .dshgg-branchChip:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-chevron {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  color: var(--dsw-alias-label-caption);\n  transition: transform 150ms var(--ds-ease-in-out);\n}\n\n/* biome-ignore lint/style/noDescendingSpecificity: Component SVG sizing does not override the spinner animation. */\n.dshgg-chevron svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-chevron[data-open="true"] {\n  transform: rotate(90deg);\n}\n\n/* ------------------------------------------------------------ commit box --- */\n\n.dshgg-commitBox {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  gap: 8px;\n  padding: 10px 8px 8px;\n}\n\n/* The message decides the height: one row at rest and ten at most, after which\n   the box scrolls. `panel/autosize.ts` applies it; the line height comes from\n   the font shorthand, and `overflow-y: auto` keeps the message reachable before\n   the first measurement. */\n.dshgg-commitMessage {\n  box-sizing: border-box;\n  width: 100%;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  overflow-y: auto;\n  resize: none;\n  outline: none;\n}\n\n.dshgg-commitMessage::placeholder {\n  color: var(--dsw-alias-label-dimmed);\n}\n\n.dshgg-commitMessage:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-commitMessage:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-commitRow {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.dshgg-commitHint {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* -------------------------------------------------------------- feedback --- */\n\n.dshgg-banner {\n  display: flex;\n  align-items: flex-start;\n  gap: 8px;\n  margin: 0 8px 8px;\n  padding: 8px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-bannerText {\n  flex: 1;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerText > span {\n  font-weight: 500;\n}\n\n.dshgg-bannerDetail {\n  max-height: 96px;\n  margin-top: 4px;\n  overflow: auto;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  margin: -4px -4px -4px 0;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn svg {\n  width: 12px;\n  height: 12px;\n}\n\n.dshgg-notice {\n  margin: 0 8px 8px;\n  padding: 7px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: var(--dsw-alias-state-success-tertiary);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 24%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-state {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 6px;\n  padding: 28px 16px;\n  text-align: center;\n}\n\n.dshgg-stateIcon {\n  display: flex;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-stateTitle {\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-stateDesc {\n  max-width: 280px;\n  margin: 0;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-stateAction {\n  margin-top: 8px;\n}\n\n.dshgg-note {\n  padding: 4px 6px 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-menuNote {\n  padding: 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-clean {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n  padding: 20px 12px;\n  text-align: center;\n}\n\n.dshgg-cleanTitle {\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-cleanDesc {\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* --------------------------------------------------------------- scroll --- */\n\n.dshgg-scroll {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 2px;\n  min-height: 0;\n  padding: 0 6px 10px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n}\n\n/* A scroll frame\'s top padding lies above the sticky view rectangle, so a\n * pinned header can never cover content that slides into that strip. Keep the\n * resting inset on the first section instead. */\n.dshgg-scroll > .dshgg-section:first-child {\n  padding-top: 2px;\n}\n\n/* ---------------------------------------------------------------- split --- */\n\n.dshgg-split {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  min-height: 0;\n}\n\n.dshgg-paneTop {\n  flex: 0 0 auto;\n}\n\n.dshgg-paneBottom {\n  flex: 1 1 0;\n}\n\n.dshgg-splitter {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 9px;\n  cursor: row-resize;\n  touch-action: none;\n}\n\n.dshgg-splitterLine {\n  display: block;\n  width: 100%;\n  height: 0.5px;\n  background: var(--dsw-alias-border-l3);\n}\n\n@media (hover: hover) {\n  .dshgg-splitter:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-splitter[data-dragging="true"],\n.dshgg-splitter:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n/* -------------------------------------------------------------- section --- */\n\n.dshgg-section {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n}\n\n/* The header pins to its own pane\'s top edge while its section still reaches\n * into the pane. Its containing block is that one section, so a header can\n * never outlive it: the next section\'s header takes the top edge as the\n * previous one leaves, and only one header is ever pinned. The header owns the\n * opaque pane surface itself, because a stacking context paints its own\n * background below its negative-z-index children. Square corners keep that\n * surface covering the rows up to the edges. */\n.dshgg-sectionHeader {\n  position: sticky;\n  top: 0;\n  z-index: 1;\n  display: flex;\n  align-items: center;\n  gap: 2px;\n  height: 30px;\n  padding: 0 4px 0 2px;\n  background: var(--dsw-alias-bg-base);\n}\n\n/* A floating tab paints layer-2 behind its content, so the mask follows it. */\n[data-dockkit-float] .dshgg-sectionHeader {\n  background: var(--dsw-alias-bg-layer-2);\n}\n\n/* The host hover highlight: above the header\'s own surface, below the title,\n * count and actions, and inside the rounded header shape. */\n.dshgg-sectionHeader::before {\n  content: "";\n  position: absolute;\n  inset: 0;\n  z-index: -1;\n  border-radius: var(--dsw-radius-md);\n  background: var(--dsw-alias-interactive-bg-hover);\n  opacity: 0;\n}\n\n@media (hover: hover) {\n  .dshgg-sectionHeader:hover::before {\n    opacity: 1;\n  }\n}\n\n.dshgg-sectionToggle {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 26px;\n  padding: 0 4px 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-s-strong-14);\n  font-weight: 600;\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-sectionTitle {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sectionCount {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-sectionActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn svg {\n  width: 13px;\n  height: 13px;\n}\n\n.dshgg-sectionBody {\n  display: flex;\n  flex-direction: column;\n}\n\n/* ----------------------------------------------------------------- rows --- */\n\n.dshgg-row {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n  padding: 0 6px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-fileRow {\n  cursor: pointer;\n  user-select: none;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-fileRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-status {\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n  text-align: center;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-status[data-status="M"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="A"],\n.dshgg-status[data-status="U"] {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-status[data-status="D"] {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-status[data-status="R"],\n.dshgg-status[data-status="C"] {\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-status[data-status="T"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="!"] {\n  color: var(--dsw-alias-state-error-secondary);\n}\n\n.dshgg-fileName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* The dimmed parent directory trails the file name: it disambiguates equally\n   named files without turning the flat list back into a hierarchy. */\n.dshgg-fileDir {\n  flex: 1 1 0;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileName[data-obsolete="true"] {\n  color: var(--dsw-alias-label-secondary);\n  text-decoration: line-through;\n}\n\n.dshgg-fileArrow {\n  flex: none;\n  max-width: 38%;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 0;\n  margin-left: auto;\n  opacity: 0;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover .dshgg-fileActions {\n    opacity: 1;\n  }\n}\n\n.dshgg-fileRow:focus-within .dshgg-fileActions {\n  opacity: 1;\n}\n\n.dshgg-fileActions .dshgg-iconBtn {\n  width: 22px;\n  height: 22px;\n  padding: 4px;\n}\n\n.dshgg-fileActions .dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n/* ---------------------------------------------------------------- graph --- */\n\n/* The commit graph reproduces VS Code\'s Source Control Graph, so its palette\n * is VS Code\'s `scmGraph.*` color set rather than host tokens: five rotation\n * colors shared by light and dark themes, plus the checked-out (`charts.blue`),\n * upstream (`charts.purple`) and base reference colors. Badge text uses the\n * host\'s base background, standing in for VS Code\'s `panel.background`. */\n.dshgg-root {\n  --dshgg-scm-lane1: #ffb000;\n  --dshgg-scm-lane2: #dc267f;\n  --dshgg-scm-lane3: #994f00;\n  --dshgg-scm-lane4: #40b0a6;\n  --dshgg-scm-lane5: #b66dff;\n  --dshgg-scm-ref: #1a85ff;\n  --dshgg-scm-remote: #652d90;\n  --dshgg-scm-base: #ea5c00;\n  --dshgg-scm-label-foreground: var(--dsw-alias-bg-base);\n}\n\nbody[data-ds-dark-theme] .dshgg-root {\n  --dshgg-scm-ref: #3794ff;\n  --dshgg-scm-remote: #b180d7;\n}\n\n/* The rows and the one layer that draws their lines. The layer is positioned so\n * it paints over a row\'s hover surface, and the row\'s cell keeps the node. */\n.dshgg-graphBody {\n  --dshgg-graph-inset: 4px;\n  position: relative;\n}\n\n.dshgg-graphLayer {\n  position: absolute;\n  top: 0;\n  left: var(--dshgg-graph-inset);\n  pointer-events: none;\n}\n\n/* VS Code `.history-item`: 22px rows, the graph cell, the label, the badges. */\n.dshgg-graphRow {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 22px;\n  min-width: 0;\n  padding: 0 6px 0 var(--dshgg-graph-inset);\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n@media (hover: hover) {\n  .dshgg-graphRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-graphRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n/* The row\'s cell is as wide as its graph width and as tall as the row; both come\n * from the element\'s own attributes. */\n.dshgg-graphSvg {\n  display: block;\n  flex: none;\n}\n\n/* VS Code\'s one-pixel strokes. Every segment of one color in the whole graph\n * shares an element, so a lane crossing a row boundary is one continuous\n * stroke and no seam can appear between two rows. */\n.dshgg-graphEdge {\n  fill: none;\n  stroke-width: 1px;\n  stroke-linecap: round;\n}\n\n/* VS Code clears its node strokes on hover: the node\'s outer edge grows by half\n * a stroke. The geometry carries the hover radii; the node gap that also closes\n * is driven by the section\'s hovered row, because the gap belongs to the line\n * layer rather than to the row. */\n@media (hover: hover) {\n  .dshgg-graphRow:hover .dshgg-graphNode {\n    r: var(--dshgg-node-hover-r);\n  }\n\n  .dshgg-graphRow:hover .dshgg-graphNode[data-paint="ring"] {\n    stroke-width: var(--dshgg-node-hover-stroke);\n  }\n}\n\n/* VS Code `.monaco-icon-label`: subject and description ellipsize together. */\n.dshgg-graphLabel {\n  flex: 1 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  line-height: 22px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphSubject {\n  white-space: pre;\n}\n\n.dshgg-graphAuthor {\n  margin-left: 0.5em;\n  font-size: 0.9em;\n  white-space: pre;\n  opacity: 0.7;\n}\n\n.dshgg-graphRow[data-current="true"] .dshgg-graphSubject,\n.dshgg-graphRow[data-current="true"] .dshgg-graphAuthor {\n  font-weight: 600;\n}\n\n/* VS Code `.label-container` and `.label`. */\n.dshgg-graphBadges {\n  display: flex;\n  flex-shrink: 0;\n  gap: 4px;\n  margin-left: 4px;\n}\n\n.dshgg-graphBadge {\n  display: flex;\n  align-items: center;\n  color: var(--dshgg-scm-label-foreground);\n  line-height: 18px;\n  border-radius: 10px;\n}\n\n.dshgg-graphBadgeCount {\n  padding-left: 4px;\n  font-size: 12px;\n}\n\n.dshgg-graphBadgeIcon {\n  display: flex;\n  padding: 1px;\n}\n\n/* The icon element is sized by its own attributes: 16px, or 12px for branches,\n * matching VS Code\'s codicon font sizes inside an 18px badge. */\n\n.dshgg-graphBadge[data-icon="branch"] .dshgg-graphBadgeIcon {\n  padding: 3px;\n}\n\n.dshgg-graphBadgeName {\n  max-width: 100px;\n  padding-right: 4px;\n  overflow: hidden;\n  font-size: 12px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* End-of-graph paging: the load control keeps the section\'s inset instead of a\n * 22-pixel commit row, and a failed page puts its note beside the retry. */\n.dshgg-graphMore {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  margin: 2px 6px 8px;\n}\n\n.dshgg-graphMoreText {\n  min-width: 0;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-graphMoreBtn {\n  margin: 2px 6px 8px;\n}\n\n/* The paging control stays focusable while it loads, so it dims instead of\n * becoming disabled and dropping keyboard focus. */\n.dshgg-graphMoreBtn[data-loading="true"] {\n  opacity: 0.6;\n  cursor: default;\n}\n\n/* --------------------------------------------------------- commit detail --- */\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* ------------------------------------------------------------- confirm --- */\n\n.dshgg-confirm {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 10px;\n  padding: 10px 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-confirmText {\n  flex: 1;\n  min-width: 0;\n}\n\n.dshgg-confirmTitle {\n  font: var(--dsw-font-xs-strong-13);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmDesc {\n  margin-top: 3px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n}\n\n/* ---------------------------------------------------------- branch menu --- */\n\n.dshgg-menu {\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 0;\n  z-index: 20;\n  min-width: 220px;\n  max-width: min(320px, 70vw);\n  max-height: 320px;\n  padding: 4px;\n  overflow-y: auto;\n  background: var(--dsw-specific-menu);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  backdrop-filter: var(--dsw-menu-backdrop-filter);\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-menuItem {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  min-height: 32px;\n  padding: 5px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n.dshgg-menuItem:disabled {\n  color: var(--dsw-alias-label-primary);\n  cursor: default;\n}\n\n@media (hover: hover) {\n  .dshgg-menuItem:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-menuItem:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.dshgg-menuCheck {\n  display: inline-flex;\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-state-business-primary);\n}\n\n/* biome-ignore lint/style/noDescendingSpecificity: Menu SVG sizing is independent of the icon-button spinner animation. */\n.dshgg-menuCheck svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-menuLabel {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* --------------------------------------------------------------- titles --- */\n\n.dshgg-title {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n}\n\n.dshgg-titleText {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* ----------------------------------------------------------------- diff --- */\n\n.dshgg-diffRoot {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n}\n\n.dshgg-diffHeader {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-width: 0;\n  height: 38px;\n  padding: 0 6px 0 10px;\n  /* Include the hairline, like the panel toolbar: 38px + the 38px tab strip. */\n  box-sizing: border-box;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-diffPath {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 1px;\n  min-width: 0;\n}\n\n.dshgg-diffName {\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffFrom {\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffBadge {\n  flex: none;\n  height: 20px;\n  padding: 0 7px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxxs-strong-11);\n  line-height: 20px;\n  white-space: nowrap;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-diffBadge[data-kind="staged"],\n.dshgg-diffBadge[data-kind="untracked"] {\n  color: var(--dsw-alias-state-success-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);\n}\n\n.dshgg-diffBadge[data-kind="commit"] {\n  color: var(--dsw-alias-state-business-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);\n}\n\n.dshgg-diffStats {\n  display: inline-flex;\n  flex: none;\n  gap: 6px;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-diffAdd {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-diffDel {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-diffBody {\n  flex: 1;\n  min-height: 0;\n  padding: 4px 0 16px;\n  overflow: auto;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 20px;\n}\n\n.dshgg-hunkHeader {\n  padding: 4px 10px 2px;\n  margin-top: 4px;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre;\n}\n\n.dshgg-diffLine {\n  display: grid;\n  grid-template-columns: 40px 40px 14px minmax(0, 1fr);\n  min-width: max-content;\n  min-height: 20px;\n}\n\n.dshgg-gutter {\n  padding-right: 6px;\n  color: var(--dsw-alias-label-tertiary);\n  font-variant-numeric: tabular-nums;\n  text-align: right;\n  user-select: none;\n}\n\n.dshgg-marker {\n  color: var(--dsw-alias-label-tertiary);\n  font-weight: 500;\n  text-align: center;\n  user-select: none;\n}\n\n.dshgg-code {\n  min-width: 0;\n  padding: 0 10px;\n  white-space: pre;\n}\n\n.dshgg-diffLine[data-type="+"] {\n  background: var(--dsw-alias-file-diff-added-bg);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-added-gutter);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="-"] {\n  background: var(--dsw-alias-file-diff-deleted-bg);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-deleted-gutter);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffNote {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 8px;\n  padding: 16px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xs-13);\n}\n\n/* --------------------------------------------------------------- motion --- */\n\n@media (prefers-reduced-motion: reduce) {\n  .dshgg-iconBtn[data-spinning="true"] svg {\n    animation: none;\n  }\n\n  .dshgg-chevron {\n    transition: none;\n  }\n}\n';
+var styles_default = '/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host\'s `--dsw-*`\n * theme tokens, and text uses the host\'s `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH\'s\n * own sidebar surfaces. Sizes follow the host\'s sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n * The commit graph is the one exception: it reproduces VS Code\'s Source\n * Control Graph, including its `scmGraph.*` palette and 22px rows.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n\n/* --------------------------------------------------------------- buttons --- */\n\n.dshgg-iconBtn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n  padding: 6px;\n  color: var(--dsw-alias-label-secondary);\n  line-height: 1;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-iconBtn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-iconBtn[data-spinning="true"] svg {\n  animation: dshgg-spin 1s linear infinite;\n}\n\n@keyframes dshgg-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.dshgg-btn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  height: 28px;\n  padding: 0 12px;\n  border: 0.5px solid transparent;\n  border-radius: var(--dsw-radius-sm);\n  font: var(--dsw-font-xxs-strong-12);\n  white-space: nowrap;\n  cursor: pointer;\n}\n\n.dshgg-btn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-btnPrimary {\n  color: var(--dsw-alias-label-primary-foreground);\n  background: var(--dsw-alias-button-primary-fill);\n}\n\n.dshgg-btnPrimary:hover:not(:disabled) {\n  background: var(--dsw-alias-button-primary-hover);\n}\n\n.dshgg-btnGhost {\n  color: var(--dsw-alias-label-primary);\n  background: transparent;\n  border-color: var(--dsw-alias-border-l3);\n  font-weight: 400;\n}\n\n.dshgg-btnGhost:hover:not(:disabled) {\n  background: var(--dsw-alias-interactive-bg-hover-solid);\n}\n\n.dshgg-linkBtn {\n  flex: none;\n  padding: 0;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-strong-12);\n  background: none;\n  border: none;\n  cursor: pointer;\n}\n\n.dshgg-linkBtn:hover {\n  text-decoration: underline;\n}\n\n/* --------------------------------------------------------------- toolbar --- */\n\n.dshgg-toolbar {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  height: 38px;\n  padding: 0 6px;\n  /* Include the hairline: the host\'s 38px tab strip and 38px header meet at 76px. */\n  box-sizing: border-box;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-branchWrap {\n  position: relative;\n  display: flex;\n  flex: 0 1 auto;\n  min-width: 0;\n}\n\n.dshgg-branchChip {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  height: 28px;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-branchChip:disabled {\n  color: var(--dsw-alias-label-tertiary);\n  cursor: default;\n}\n\n.dshgg-branchChip svg:first-child {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-branchName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font-weight: 500;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-upstream {\n  display: inline-flex;\n  flex: 0 1000 auto;\n  align-items: center;\n  min-width: 0;\n  max-width: 140px;\n  padding: 0 2px;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sync {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n@media (hover: hover) {\n  .dshgg-branchChip:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-chevron {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  color: var(--dsw-alias-label-caption);\n  transition: transform 150ms var(--ds-ease-in-out);\n}\n\n/* biome-ignore lint/style/noDescendingSpecificity: Component SVG sizing does not override the spinner animation. */\n.dshgg-chevron svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-chevron[data-open="true"] {\n  transform: rotate(90deg);\n}\n\n/* ------------------------------------------------------------ commit box --- */\n\n.dshgg-commitBox {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  gap: 8px;\n  padding: 10px 8px 8px;\n}\n\n/* The message decides the height: one row at rest and ten at most, after which\n   the box scrolls. `panel/autosize.ts` applies it; the line height comes from\n   the font shorthand, and `overflow-y: auto` keeps the message reachable before\n   the first measurement. */\n.dshgg-commitMessage {\n  box-sizing: border-box;\n  width: 100%;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  overflow-y: auto;\n  resize: none;\n  outline: none;\n}\n\n.dshgg-commitMessage::placeholder {\n  color: var(--dsw-alias-label-dimmed);\n}\n\n.dshgg-commitMessage:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-commitMessage:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-commitRow {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.dshgg-commitHint {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* -------------------------------------------------------------- feedback --- */\n\n.dshgg-banner {\n  display: flex;\n  align-items: flex-start;\n  gap: 8px;\n  margin: 0 8px 8px;\n  padding: 8px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-bannerText {\n  flex: 1;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerText > span {\n  font-weight: 500;\n}\n\n.dshgg-bannerDetail {\n  max-height: 96px;\n  margin-top: 4px;\n  overflow: auto;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  margin: -4px -4px -4px 0;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn svg {\n  width: 12px;\n  height: 12px;\n}\n\n.dshgg-notice {\n  margin: 0 8px 8px;\n  padding: 7px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: var(--dsw-alias-state-success-tertiary);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 24%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-state {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 6px;\n  padding: 28px 16px;\n  text-align: center;\n}\n\n.dshgg-stateIcon {\n  display: flex;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-stateTitle {\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-stateDesc {\n  max-width: 280px;\n  margin: 0;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-stateAction {\n  margin-top: 8px;\n}\n\n.dshgg-note {\n  padding: 4px 6px 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-menuNote {\n  padding: 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-clean {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n  padding: 20px 12px;\n  text-align: center;\n}\n\n.dshgg-cleanTitle {\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-cleanDesc {\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* --------------------------------------------------------------- scroll --- */\n\n.dshgg-scroll {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 2px;\n  min-height: 0;\n  padding: 0 6px 10px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n}\n\n/* A scroll frame\'s top padding lies above the sticky view rectangle, so a\n * pinned header can never cover content that slides into that strip. Keep the\n * resting inset on the first section instead. */\n.dshgg-scroll > .dshgg-section:first-child {\n  padding-top: 2px;\n}\n\n/* ---------------------------------------------------------------- split --- */\n\n.dshgg-split {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  min-height: 0;\n}\n\n.dshgg-paneTop {\n  flex: 0 0 auto;\n}\n\n.dshgg-paneBottom {\n  flex: 1 1 0;\n}\n\n.dshgg-splitter {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 9px;\n  cursor: row-resize;\n  touch-action: none;\n}\n\n.dshgg-splitterLine {\n  display: block;\n  width: 100%;\n  height: 0.5px;\n  background: var(--dsw-alias-border-l3);\n}\n\n@media (hover: hover) {\n  .dshgg-splitter:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-splitter[data-dragging="true"],\n.dshgg-splitter:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n/* -------------------------------------------------------------- section --- */\n\n.dshgg-section {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n}\n\n/* The header pins to its own pane\'s top edge while its section still reaches\n * into the pane. Its containing block is that one section, so a header can\n * never outlive it: the next section\'s header takes the top edge as the\n * previous one leaves, and only one header is ever pinned. The header owns the\n * opaque pane surface itself, because a stacking context paints its own\n * background below its negative-z-index children. Square corners keep that\n * surface covering the rows up to the edges. */\n.dshgg-sectionHeader {\n  position: sticky;\n  top: 0;\n  z-index: 1;\n  display: flex;\n  align-items: center;\n  gap: 2px;\n  height: 30px;\n  padding: 0 4px 0 2px;\n  background: var(--dsw-alias-bg-base);\n}\n\n/* A floating tab paints layer-2 behind its content, so the mask follows it. */\n[data-dockkit-float] .dshgg-sectionHeader {\n  background: var(--dsw-alias-bg-layer-2);\n}\n\n/* The host hover highlight: above the header\'s own surface, below the title,\n * count and actions, and inside the rounded header shape. */\n.dshgg-sectionHeader::before {\n  content: "";\n  position: absolute;\n  inset: 0;\n  z-index: -1;\n  border-radius: var(--dsw-radius-md);\n  background: var(--dsw-alias-interactive-bg-hover);\n  opacity: 0;\n}\n\n@media (hover: hover) {\n  .dshgg-sectionHeader:hover::before {\n    opacity: 1;\n  }\n}\n\n.dshgg-sectionToggle {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 26px;\n  padding: 0 4px 0 6px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-s-strong-14);\n  font-weight: 600;\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-sectionTitle {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-sectionCount {\n  flex: none;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-sectionActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 1px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-sectionActions .dshgg-iconBtn svg {\n  width: 13px;\n  height: 13px;\n}\n\n.dshgg-sectionBody {\n  display: flex;\n  flex-direction: column;\n}\n\n/* ----------------------------------------------------------------- rows --- */\n\n.dshgg-row {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n  padding: 0 6px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-fileRow {\n  cursor: pointer;\n  user-select: none;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-fileRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-status {\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n  text-align: center;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-status[data-status="M"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="A"],\n.dshgg-status[data-status="U"] {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-status[data-status="D"] {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-status[data-status="R"],\n.dshgg-status[data-status="C"] {\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-status[data-status="T"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="!"] {\n  color: var(--dsw-alias-state-error-secondary);\n}\n\n.dshgg-fileName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* The dimmed parent directory trails the file name: it disambiguates equally\n   named files without turning the flat list back into a hierarchy. */\n.dshgg-fileDir {\n  flex: 1 1 0;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileName[data-obsolete="true"] {\n  color: var(--dsw-alias-label-secondary);\n  text-decoration: line-through;\n}\n\n.dshgg-fileArrow {\n  flex: none;\n  max-width: 38%;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 0;\n  margin-left: auto;\n  opacity: 0;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover .dshgg-fileActions {\n    opacity: 1;\n  }\n}\n\n.dshgg-fileRow:focus-within .dshgg-fileActions {\n  opacity: 1;\n}\n\n.dshgg-fileActions .dshgg-iconBtn {\n  width: 22px;\n  height: 22px;\n  padding: 4px;\n}\n\n.dshgg-fileActions .dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n/* ---------------------------------------------------------------- graph --- */\n\n/* The commit graph reproduces VS Code\'s Source Control Graph, so its palette\n * is VS Code\'s `scmGraph.*` color set rather than host tokens: five rotation\n * colors shared by light and dark themes, plus the checked-out (`charts.blue`),\n * upstream (`charts.purple`) and base reference colors. Badge text uses the\n * host\'s base background, standing in for VS Code\'s `panel.background`. */\n.dshgg-root {\n  --dshgg-scm-lane1: #ffb000;\n  --dshgg-scm-lane2: #dc267f;\n  --dshgg-scm-lane3: #994f00;\n  --dshgg-scm-lane4: #40b0a6;\n  --dshgg-scm-lane5: #b66dff;\n  --dshgg-scm-ref: #1a85ff;\n  --dshgg-scm-remote: #652d90;\n  --dshgg-scm-base: #ea5c00;\n  --dshgg-scm-label-foreground: var(--dsw-alias-bg-base);\n}\n\nbody[data-ds-dark-theme] .dshgg-root {\n  --dshgg-scm-ref: #3794ff;\n  --dshgg-scm-remote: #b180d7;\n}\n\n/* The rows and the one layer that draws their lines. The layer is positioned so\n * it paints over a row\'s hover surface, and the row\'s cell keeps the node. */\n.dshgg-graphBody {\n  --dshgg-graph-inset: 4px;\n  position: relative;\n}\n\n.dshgg-graphLayer {\n  position: absolute;\n  top: 0;\n  left: var(--dshgg-graph-inset);\n  pointer-events: none;\n}\n\n/* VS Code `.history-item`: 22px rows, the graph cell, the label, the badges. */\n.dshgg-graphRow {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 22px;\n  min-width: 0;\n  padding: 0 6px 0 var(--dshgg-graph-inset);\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n@media (hover: hover) {\n  .dshgg-graphRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-graphRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n/* The row\'s cell is as wide as its graph width and as tall as the row; both come\n * from the element\'s own attributes. */\n.dshgg-graphSvg {\n  display: block;\n  flex: none;\n}\n\n/* VS Code\'s one-pixel strokes. Every segment of one color in the whole graph\n * shares an element, so a lane crossing a row boundary is one continuous\n * stroke and no seam can appear between two rows. */\n.dshgg-graphEdge {\n  fill: none;\n  stroke-width: 1px;\n  stroke-linecap: round;\n}\n\n/* VS Code clears its node strokes on hover: the node\'s outer edge grows by half\n * a stroke. The geometry carries the hover radii; the node gap that also closes\n * is driven by the section\'s hovered row, because the gap belongs to the line\n * layer rather than to the row. */\n@media (hover: hover) {\n  .dshgg-graphRow:hover .dshgg-graphNode {\n    r: var(--dshgg-node-hover-r);\n  }\n\n  .dshgg-graphRow:hover .dshgg-graphNode[data-paint="ring"] {\n    stroke-width: var(--dshgg-node-hover-stroke);\n  }\n}\n\n/* VS Code `.monaco-icon-label`: subject and description ellipsize together. */\n.dshgg-graphLabel {\n  flex: 1 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  line-height: 22px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphSubject {\n  white-space: pre;\n}\n\n.dshgg-graphAuthor {\n  margin-left: 0.5em;\n  font-size: 0.9em;\n  white-space: pre;\n  opacity: 0.7;\n}\n\n.dshgg-graphRow[data-current="true"] .dshgg-graphSubject,\n.dshgg-graphRow[data-current="true"] .dshgg-graphAuthor {\n  font-weight: 600;\n}\n\n/* VS Code `.label-container` and `.label`. */\n.dshgg-graphBadges {\n  display: flex;\n  flex-shrink: 0;\n  gap: 4px;\n  margin-left: 4px;\n}\n\n.dshgg-graphBadge {\n  display: flex;\n  align-items: center;\n  color: var(--dshgg-scm-label-foreground);\n  line-height: 18px;\n  border-radius: 10px;\n}\n\n.dshgg-graphBadgeCount {\n  padding-left: 4px;\n  font-size: 12px;\n}\n\n.dshgg-graphBadgeIcon {\n  display: flex;\n  padding: 1px;\n}\n\n/* The icon element is sized by its own attributes: 16px, or 12px for branches,\n * matching VS Code\'s codicon font sizes inside an 18px badge. */\n\n.dshgg-graphBadge[data-icon="branch"] .dshgg-graphBadgeIcon {\n  padding: 3px;\n}\n\n.dshgg-graphBadgeName {\n  max-width: 100px;\n  padding-right: 4px;\n  overflow: hidden;\n  font-size: 12px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* End-of-graph paging: the load control keeps the section\'s inset instead of a\n * 22-pixel commit row, and a failed page puts its note beside the retry. */\n.dshgg-graphMore {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  margin: 2px 6px 8px;\n}\n\n.dshgg-graphMoreText {\n  min-width: 0;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-graphMoreBtn {\n  margin: 2px 6px 8px;\n}\n\n/* The paging control stays focusable while it loads, so it dims instead of\n * becoming disabled and dropping keyboard focus. */\n.dshgg-graphMoreBtn[data-loading="true"] {\n  opacity: 0.6;\n  cursor: default;\n}\n\n/* --------------------------------------------------------- commit detail --- */\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n/* ------------------------------------------------------------- confirm --- */\n\n.dshgg-confirm {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 10px;\n  padding: 10px 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-confirmText {\n  flex: 1;\n  min-width: 0;\n}\n\n.dshgg-confirmTitle {\n  font: var(--dsw-font-xs-strong-13);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmDesc {\n  margin-top: 3px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n}\n\n/* -------------------------------------------------------- graph dialogs --- */\n\n.dshgg-dialogField {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  margin-top: 8px;\n}\n\n.dshgg-dialogLabel,\n.dshgg-dialogHint {\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-dialogHint {\n  margin-top: 4px;\n}\n\n.dshgg-dialogInput {\n  box-sizing: border-box;\n  width: 100%;\n  min-width: 0;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  outline: none;\n}\n\n.dshgg-dialogInput:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-dialogInput:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-dialogMessage {\n  min-height: 48px;\n  max-height: 120px;\n  resize: vertical;\n}\n\n/* ---------------------------------------------------------- branch menu --- */\n\n.dshgg-menu {\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 0;\n  z-index: 20;\n  min-width: 220px;\n  max-width: min(320px, 70vw);\n  max-height: 320px;\n  padding: 4px;\n  overflow-y: auto;\n  background: var(--dsw-specific-menu);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  backdrop-filter: var(--dsw-menu-backdrop-filter);\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-menuItem {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  min-height: 32px;\n  padding: 5px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n.dshgg-menuItem:disabled {\n  color: var(--dsw-alias-label-primary);\n  cursor: default;\n}\n\n@media (hover: hover) {\n  .dshgg-menuItem:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-menuItem:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.dshgg-menuCheck {\n  display: inline-flex;\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-state-business-primary);\n}\n\n/* biome-ignore lint/style/noDescendingSpecificity: Menu SVG sizing is independent of the icon-button spinner animation. */\n.dshgg-menuCheck svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-menuLabel {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* --------------------------------------------------------------- titles --- */\n\n.dshgg-title {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n}\n\n.dshgg-titleText {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* ----------------------------------------------------------------- diff --- */\n\n.dshgg-diffRoot {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n}\n\n.dshgg-diffHeader {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-width: 0;\n  height: 38px;\n  padding: 0 6px 0 10px;\n  /* Include the hairline, like the panel toolbar: 38px + the 38px tab strip. */\n  box-sizing: border-box;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-diffPath {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 1px;\n  min-width: 0;\n}\n\n.dshgg-diffName {\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffFrom {\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffBadge {\n  flex: none;\n  height: 20px;\n  padding: 0 7px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxxs-strong-11);\n  line-height: 20px;\n  white-space: nowrap;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-diffBadge[data-kind="staged"],\n.dshgg-diffBadge[data-kind="untracked"] {\n  color: var(--dsw-alias-state-success-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);\n}\n\n.dshgg-diffBadge[data-kind="commit"] {\n  color: var(--dsw-alias-state-business-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);\n}\n\n.dshgg-diffStats {\n  display: inline-flex;\n  flex: none;\n  gap: 6px;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-diffAdd {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-diffDel {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-diffBody {\n  flex: 1;\n  min-height: 0;\n  padding: 4px 0 16px;\n  overflow: auto;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 20px;\n}\n\n.dshgg-hunkHeader {\n  padding: 4px 10px 2px;\n  margin-top: 4px;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre;\n}\n\n.dshgg-diffLine {\n  display: grid;\n  grid-template-columns: 40px 40px 14px minmax(0, 1fr);\n  min-width: max-content;\n  min-height: 20px;\n}\n\n.dshgg-gutter {\n  padding-right: 6px;\n  color: var(--dsw-alias-label-tertiary);\n  font-variant-numeric: tabular-nums;\n  text-align: right;\n  user-select: none;\n}\n\n.dshgg-marker {\n  color: var(--dsw-alias-label-tertiary);\n  font-weight: 500;\n  text-align: center;\n  user-select: none;\n}\n\n.dshgg-code {\n  min-width: 0;\n  padding: 0 10px;\n  white-space: pre;\n}\n\n.dshgg-diffLine[data-type="+"] {\n  background: var(--dsw-alias-file-diff-added-bg);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-added-gutter);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="-"] {\n  background: var(--dsw-alias-file-diff-deleted-bg);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-deleted-gutter);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffNote {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 8px;\n  padding: 16px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xs-13);\n}\n\n/* --------------------------------------------------------------- motion --- */\n\n@media (prefers-reduced-motion: reduce) {\n  .dshgg-iconBtn[data-spinning="true"] svg {\n    animation: none;\n  }\n\n  .dshgg-chevron {\n    transition: none;\n  }\n}\n';
 
 // src/client/styles.ts
 var STYLE_REGISTRY = /* @__PURE__ */ Symbol.for("@local/dsh-git-graph/styles");
@@ -3509,16 +3901,16 @@ function installStyles(target) {
 }
 
 // src/client/titles.ts
-var import_react24 = require("react");
-var h16 = import_react24.createElement;
+var import_react26 = require("react");
+var h17 = import_react26.createElement;
 function GitTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;
-  return h16(
+  return h17(
     "span",
     { className: "dshgg-title" },
-    h16(GitBranchIcon, { size: 14 }),
-    h16("span", { className: "dshgg-titleText" }, title)
+    h17(GitBranchIcon, { size: 14 }),
+    h17("span", { className: "dshgg-titleText" }, title)
   );
 }
 function DiffTabTitle(props) {
@@ -3527,11 +3919,11 @@ function DiffTabTitle(props) {
   const name = typeof params.path === "string" && params.path !== "" ? baseName(params.path) : tabInfo.tab.title;
   const shortOid = typeof params.shortOid === "string" && params.shortOid !== "" ? params.shortOid : typeof params.commit === "string" && params.commit !== "" ? params.commit.slice(0, 7) : "";
   const label = shortOid === "" ? name : `${name} · ${shortOid}`;
-  return h16(
+  return h17(
     "span",
     { className: "dshgg-title" },
-    h16(FileIcon, { size: 14 }),
-    h16("span", { className: "dshgg-titleText" }, label)
+    h17(FileIcon, { size: 14 }),
+    h17("span", { className: "dshgg-titleText" }, label)
   );
 }
 

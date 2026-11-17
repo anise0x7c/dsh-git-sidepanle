@@ -18,6 +18,14 @@ export interface PanelCommand {
   readonly paths?: readonly string[]
   /** A single-entry discard needs one confirmation. */
   readonly single?: boolean
+  /** Full commit id for checkout or reference creation. */
+  readonly oid?: string
+  /** Local branch for a checkout or deletion. */
+  readonly branch?: string
+  /** New branch or tag name. */
+  readonly name?: string
+  /** Optional annotated tag message. */
+  readonly message?: string
 }
 
 /** Dispatch target for menu commands. */

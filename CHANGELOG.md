@@ -3,6 +3,34 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## Unreleased
+
+The context menus now follow VS Code's action structure and continue to use
+DSH's native shared menu presentation, including nested branch submenus:
+
+- Working-change files can be added to the repository-root `.gitignore` with an
+  escaped, root-anchored literal rule, without deleting, staging or duplicating
+  an identical entry.
+- Commit rows offer local-branch checkout, detached checkout, branch creation
+  at the selected commit, confirmed non-current branch deletion, lightweight or
+  annotated tag creation, and the renamed full-hash and subject-line copies.
+- Branch and tag names are entered in host-themed panel dialogs; empty names do
+  not run Git, and failed creations keep the entered text and logical focus.
+  Creation inputs receive focus, deletion starts on Cancel, idle Escape cancels,
+  and closing restores the originating row. Tag annotations accept ordinary
+  Enter for a newline and use the button or Ctrl/Cmd+Enter to submit.
+- Ignore targets must be regular files, so a symbolic-link `.gitignore` is
+  refused rather than allowing its external target to be changed; the append
+  uses one no-follow descriptor for reading and writing. Success distinguishes
+  untracked files from tracked files, which remain tracked. Reference mutations
+  share the panel's busy, failure and refresh paths and refresh the lazy branch
+  list on success.
+- The Host changed for the guarded reference and ignore writes, so a Host
+  restart is needed after installing them.
+- Tests: 363 (was 343), covering escaped ignore rules and unsafe ignore targets,
+  real checkout, branch, tag and deletion behavior with their refusals, the
+  nested native menu resolution, and dialog focus and multiline tag entry.
+
 ## 0.10.0
 
 The panel now notices repository changes made outside DSH within about two

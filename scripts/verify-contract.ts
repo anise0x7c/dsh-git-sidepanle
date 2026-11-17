@@ -20,6 +20,7 @@ interface Registration {
 interface MenuView {
   id: string
   label: string
+  children?: MenuView[]
 }
 interface ContextMenus {
   resolve(target: { kind: string; value: object }): {
@@ -224,7 +225,12 @@ function createPluginContext(contextMenus: ContextMenus, locale: ReturnType<type
 }
 
 /** Targets mirror what rows capture, not what a contribution assumes it receives. */
-function scenarios() {
+function scenarios(): Array<{
+  name: string
+  expected: string[]
+  nested?: Record<string, string[]>
+  value: object
+}> {
   const sessionId = 'session-verify',
     panelId = 'git-panel-verify'
   const cwd = '/home/example/project',
@@ -240,7 +246,7 @@ function scenarios() {
   return [
     {
       name: 'changed file row',
-      expected: ['open', 'stage', 'discard', 'copy-relative', 'copy-path'],
+      expected: ['open', 'stage', 'discard', 'ignore', 'copy-relative', 'copy-path'],
       value: change('file', { section: 'changes', path }),
     },
     {
@@ -254,14 +260,30 @@ function scenarios() {
       value: { sessionId, kind: 'section', section: 'changes', busy: false, panelId },
     },
     {
-      name: 'commit row',
-      expected: ['copy-id', 'copy-message'],
+      name: 'commit row with local heads',
+      expected: [
+        'checkout',
+        'checkout-detached',
+        'create-branch',
+        'delete-branch',
+        'create-tag',
+        'copy-id',
+        'copy-message',
+      ],
+      nested: {
+        checkout: ['main', 'feature/menu'],
+        'delete-branch': ['feature/menu'],
+      },
       value: {
         sessionId,
         kind: 'commit',
-        oid: '7cac4e6b1f9d2a6e0b4c8d7a5f3e1c9b',
+        oid: '7cac4e6b1f9d2a6e0b4c8d7a5f3e1c9b'.padEnd(40, '0'),
         shortOid: '7cac4e6',
         subject: 'Fix empty context menus',
+        branchHeads: [
+          { name: 'main', current: true },
+          { name: 'feature/menu', current: false },
+        ],
       },
     },
     {
@@ -315,12 +337,22 @@ async function main(): Promise<void> {
       const expected = scenario.expected.map((action) => `git-graph.actions/${action}`)
       for (const id of expected)
         if (!ids.includes(id)) failures.push(`${scenario.name}: missing ${id}`)
-      for (const view of views) {
+      const flattened = views.flatMap(function flatten(view): MenuView[] {
+        return [view, ...(view.children ?? []).flatMap(flatten)]
+      })
+      for (const [parent, children] of Object.entries(scenario.nested ?? {})) {
+        for (const child of children) {
+          const nested = `git-graph.actions/${parent}/${encodeURIComponent(child)}`
+          if (!flattened.some((view) => view.id === nested))
+            failures.push(`${scenario.name}: missing nested action ${nested}`)
+        }
+      }
+      for (const view of flattened) {
         if (typeof view.label !== 'string' || !view.label)
           failures.push(`${scenario.name}: ${view.id} has no label`)
       }
-      total += views.length
-      console.log(`${scenario.name}: ${views.length} commands — ${ids.join(', ')}`)
+      total += flattened.length
+      console.log(`${scenario.name}: ${flattened.length} commands — ${ids.join(', ')}`)
     } finally {
       resolution.dispose()
     }

@@ -27,11 +27,13 @@ Status refreshes when the panel opens, after every action, and when the refresh 
 
 Right-click a row, or focus a changed file or commit (or a button inside a group or diff header) and press the context-menu key or `Shift+F10`. Menus use the application's shared context-menu presentation, so position, dismissal, focus return, theme, and language match the rest of DSH.
 
-- **Changed file**: open changes, stage or unstage, discard when the file can be discarded, and copy its relative or full path.
+- **Changed file**: open changes, stage or unstage, discard when the file can be discarded, **Add to .gitignore**, and copy its relative or full path. Ignoring appends a root-anchored literal path rule to the `.gitignore` at the repository root, preserves its existing content and line-ending style, and does not duplicate an identical rule. An untracked file stays on disk but leaves the refreshed change list; a tracked file stays tracked and the success notice says so. A symbolic link or another non-regular `.gitignore` target is rejected without changing its target. A failed write is reported and never shown as a successful ignore.
 - **Group header**: the group-level actions that apply to that group: stage or unstage every file in it, discard every change in it, and refresh.
-- **Commit**: copy the full commit ID or the commit subject.
+- **Commit**: VS Code's action groups, in this order: a **Checkout** submenu of the local branch heads on that commit when present (the current branch is disabled), **Checkout (Detached)**, a separator, **Create branch**, a **Delete branch** submenu of the non-current local heads when present, a separator, **Create tag**, another separator, **Copy Commit Hash**, and **Copy Commit Message**. Remote branches, tags and HEAD markers are not branch submenu entries. The copy commands retain their original payloads: the full commit identifier and the subject line only, without adding the message body.
 - **Diff header**: copy the file's relative or full path.
 - **Commit-details file**: copy its relative or full path. A past commit is history, so staging, unstaging, and discarding are not offered there.
+
+Creating a branch asks for its name, points it at the chosen commit and checks it out. Creating a tag asks for a name and an optional message: no message makes a lightweight tag, while a non-empty message makes an annotated tag. Empty names and cancellations run no Git command, and a failed creation leaves the entered text available for correction. Deleting a branch asks for confirmation and Git refuses to delete the current or an unmerged branch. Name entries receive initial focus; deletion starts on Cancel, and idle Escape cancels. Closing restores the originating commit row's focus while it is still present. Ordinary Enter inserts a newline in a tag annotation; use the button or Ctrl/Cmd+Enter to submit. Pending operations expose their progress and retain text and logical focus on failure. Successful reference operations refresh the branch header, changes and graph.
 
 Full paths are formed from the repository root, which may differ from the Session's working directory when the Session runs in a subdirectory of the repository. The subject is the first line of a commit message, not its body.
 
@@ -44,7 +46,7 @@ Every Git command runs on the Host in the Session's working directory, through a
 ## Limitations
 
 - No network operations: fetch, pull, push, and remote management are not part of this bundle.
-- No stash, tag creation, merge, rebase, amend, or repository initialization.
+- No stash, merge, rebase, amend, or repository initialization. Tag creation is local and lightweight or annotated; there are no remote-tag operations.
 - Conflicts can be staged to mark them resolved, but there is no merge editor.
 - One repository at a time; the one containing the Session's working directory.
 - A commit's changed files and per-file diff compare against its first parent; comparing against a second parent, another arbitrary commit, or the working tree is not offered.

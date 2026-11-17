@@ -9,6 +9,7 @@ import type { MutableRefObject } from 'react'
 import { useEffect, useMemo, useRef } from 'react'
 import { nextPanelId } from '../constants.ts'
 import { createCaller } from '../data/caller.ts'
+import { parseRefs } from '../git/format.ts'
 import type {
   MenuTarget,
   MenuTargetDetail,
@@ -117,7 +118,9 @@ export interface MenuTargetFactories {
   /** Build a group-header target. */
   readonly sectionTarget: (section: string) => MenuTarget
   /** Build a commit-row target. */
-  readonly commitTarget: (commit: Pick<CommitSummary, 'oid' | 'shortOid' | 'subject'>) => MenuTarget
+  readonly commitTarget: (
+    commit: Pick<CommitSummary, 'oid' | 'shortOid' | 'subject' | 'refs'>,
+  ) => MenuTarget
   /** Build a row target for one row family. */
   readonly rowTarget: (kind: MenuTargetKind, detail: MenuTargetDetail) => MenuTarget
 }
@@ -144,6 +147,12 @@ export function createMenuTargets(options: {
         oid: commit.oid,
         shortOid: commit.shortOid,
         subject: commit.subject,
+        branchHeads: parseRefs(commit.refs)
+          .filter((ref) => ref.kind === 'head' || ref.kind === 'branch')
+          .map((ref) => ({ name: ref.name, current: ref.kind === 'head' }))
+          .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0)),
+        panelId,
+        busy: busy !== null,
       }),
     rowTarget: (kind, detail) =>
       menuTarget(sessionId, kind, { ...detail, cwd, busy: busy !== null, panelId }),

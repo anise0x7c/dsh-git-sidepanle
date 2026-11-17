@@ -51,6 +51,7 @@ const fakeReact: HarnessReact = {
   },
   useEffect() {},
   useLayoutEffect() {},
+  useId: () => 'test-react',
   useMemo<T>(factory: () => T) {
     return factory()
   },
@@ -387,6 +388,7 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
     menuActionId('open'),
     menuActionId('stage'),
     menuActionId('discard'),
+    menuActionId('ignore'),
     menuActionId('copy-relative'),
     menuActionId('copy-path'),
   ])
@@ -395,8 +397,9 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
   assert.equal(changes[1].separatorBefore, true)
   assert.equal(changes[2].label, 'actions.discard')
   assert.equal(changes[2].danger, true)
-  assert.equal(changes[3].label, 'menu.copyRelativePath')
-  assert.equal(changes[4].label, 'menu.copyPath')
+  assert.equal(changes[3].label, 'menu.addToGitignore')
+  assert.equal(changes[4].label, 'menu.copyRelativePath')
+  assert.equal(changes[5].label, 'menu.copyPath')
 
   // Staged files offer unstaging instead of staging and discarding.
   assert.deepEqual(
@@ -404,6 +407,7 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
     [
       menuActionId('open'),
       menuActionId('unstage'),
+      menuActionId('ignore'),
       menuActionId('copy-relative'),
       menuActionId('copy-path'),
     ],
@@ -414,6 +418,7 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
     [
       menuActionId('open'),
       menuActionId('stage'),
+      menuActionId('ignore'),
       menuActionId('copy-relative'),
       menuActionId('copy-path'),
     ],
@@ -444,7 +449,7 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
   assert.deepEqual(MENU_IDS(graphSection), [menuActionId('refresh')])
   assert.equal(graphSection[0].label, 'menu.refreshHistory')
 
-  // Commit rows copy the full identifier and the message.
+  // Ordinary commits group checkout and reference creation before the copies.
   const commit = resolve({
     sessionId: 's1',
     kind: 'commit',
@@ -452,9 +457,31 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
     shortOid: 'aaaaaaa',
     subject: 'Fix it',
   })
-  assert.deepEqual(MENU_IDS(commit), [menuActionId('copy-id'), menuActionId('copy-message')])
-  assert.equal(commit[0].label, 'menu.copyCommitId')
-  assert.equal(commit[1].label, 'menu.copyCommitSubject')
+  assert.deepEqual(MENU_IDS(commit), [
+    menuActionId('checkout-detached'),
+    menuActionId('create-branch'),
+    menuActionId('create-tag'),
+    menuActionId('copy-id'),
+    menuActionId('copy-message'),
+  ])
+  assert.equal(commit[0].label, 'menu.checkoutDetached')
+  assert.equal(commit[1].separatorBefore, true)
+  assert.equal(commit[3].label, 'menu.copyCommitId')
+  assert.equal(commit[4].label, 'menu.copyCommitSubject')
+  const branchHead = resolve({
+    sessionId: 's1',
+    kind: 'commit',
+    oid: 'a'.repeat(40),
+    subject: 'Fix it',
+    branchHeads: [
+      { name: 'main', current: true },
+      { name: 'feature', current: false },
+    ],
+  })
+  const checkout = branchHead.find((action) => action.id === menuActionId('checkout'))
+  const remove = branchHead.find((action) => action.id === menuActionId('delete-branch'))
+  assert.equal(checkout?.children?.[0].disabled, true)
+  assert.equal(remove?.children?.[0].id, `${menuActionId('delete-branch')}/feature`)
 
   // The diff header copies the file's paths.
   assert.deepEqual(ids({ sessionId: 's1', kind: 'diff', path: 'src/app.js', cwd: '/repo' }), [
@@ -476,7 +503,7 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
   })
   assert.deepEqual(
     busyFile.filter((action) => action.disabled === true).map((action) => action.id),
-    [menuActionId('open'), menuActionId('stage'), menuActionId('discard')],
+    [menuActionId('open'), menuActionId('stage'), menuActionId('discard'), menuActionId('ignore')],
   )
   const busyCopy = busyFile.find((action) => action.id === menuActionId('copy-relative'))
   assert.ok(busyCopy)

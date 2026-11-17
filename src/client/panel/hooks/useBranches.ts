@@ -35,6 +35,8 @@ export interface BranchesState {
   readonly toggleBranchMenu: () => void
   /** Check out one branch. */
   readonly checkout: (branch: string) => void
+  /** Discard the cached branch list after a reference mutation. */
+  readonly resetBranches: () => void
 }
 
 /**
@@ -89,14 +91,16 @@ export function useBranches(options: UseBranchesOptions): BranchesState {
     if (next && branches === null && branchFailure === null) void loadBranches()
   }
 
+  const resetBranches = useCallback((): void => {
+    setBranches(null)
+    setBranchFailure(null)
+  }, [])
+
   const checkout = (branch: string): void => {
     setBranchMenu(false)
     void perform('checkout', () => call('checkout', { branch }), {
       graph: true,
-      after: () => {
-        setBranches(null)
-        setBranchFailure(null)
-      },
+      after: resetBranches,
     })
   }
 
@@ -108,5 +112,6 @@ export function useBranches(options: UseBranchesOptions): BranchesState {
     loadBranches,
     toggleBranchMenu,
     checkout,
+    resetBranches,
   }
 }

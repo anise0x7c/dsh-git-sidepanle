@@ -120,6 +120,7 @@ export interface TestRect {
 export interface TestEventTarget {
   getBoundingClientRect(): TestRect
   focus?(): void
+  isConnected?: boolean
   setPointerCapture?(pointerId: number): void
   releasePointerCapture?(pointerId: number): void
   hasPointerCapture?(pointerId: number): boolean
@@ -177,6 +178,7 @@ export interface HarnessReact {
   useRef<T>(initial: T): { current: T }
   useMemo<T>(factory: () => T, deps?: readonly unknown[]): T
   useCallback<T extends (...args: never[]) => unknown>(callback: T, deps?: readonly unknown[]): T
+  useId(): string
   useEffect(callback: () => (() => void) | undefined, deps?: readonly unknown[]): void
   useLayoutEffect(callback: () => (() => void) | undefined, deps?: readonly unknown[]): void
 }

@@ -302,8 +302,13 @@ export interface GitGraphRpcValues {
   stage: OkResult
   unstage: OkResult
   discard: OkResult
+  ignore: OkResult
   commit: CommitResult
   checkout: CheckoutResult
+  'checkout-detached': OkResult
+  'create-branch': CheckoutResult
+  'create-tag': OkResult
+  'delete-branch': OkResult
   diff: DiffResult
 }
 
@@ -327,8 +332,13 @@ export interface GitGraphPayloads {
   stage: { paths: string[] }
   unstage: { paths: string[] }
   discard: { path: string; untracked?: boolean }
+  ignore: { path: string }
   commit: { message: string; stageAll?: boolean }
   checkout: { branch: string }
+  'checkout-detached': { oid: string }
+  'create-branch': { oid: string; name: string }
+  'create-tag': { oid: string; name: string; message?: string }
+  'delete-branch': { branch: string }
   diff: { path: string; staged?: boolean; untracked?: boolean; commit?: string; origPath?: string }
 }
 

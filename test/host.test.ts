@@ -711,6 +711,151 @@ test('branches list and checkout switch the worktree', async () => {
   assert.equal(optionShaped.body.error.code, 'bad-request')
 })
 
+test('graph menus check out, create and safely delete references', async () => {
+  const fixture = await mkdtemp(join(tmpRoot, 'graph-actions-'))
+  await git(fixture, 'init', '-q', '-b', 'main')
+  await git(fixture, 'config', 'user.name', 'Graph Actions Test')
+  await git(fixture, 'config', 'user.email', 'graph-actions@example.test')
+  await writeFile(join(fixture, 'base.txt'), 'base\n')
+  await git(fixture, 'add', '-A')
+  await git(fixture, 'commit', '-q', '-m', 'base')
+  const baseCommit = (await git(fixture, 'rev-parse', 'HEAD')).trim()
+  await writeFile(join(fixture, 'main.txt'), 'main\n')
+  await git(fixture, 'add', '-A')
+  await git(fixture, 'commit', '-q', '-m', 'main work')
+  const mainCommit = (await git(fixture, 'rev-parse', 'HEAD')).trim()
+
+  await withSessionServer(fixture, async (baseUrl) => {
+    const detached = await callAt(baseUrl, 'checkout-detached', { oid: baseCommit })
+    assert.equal(detached.body.ok, true)
+    let status = (await callAt(baseUrl, 'status')).body.value
+    assert.equal(requireRepo(status).detached, true)
+    assert.equal(requireRepo(status).headOid, baseCommit)
+    await assert.rejects(readFile(join(fixture, 'main.txt'), 'utf8'))
+    assert.equal(await readFile(join(fixture, 'base.txt'), 'utf8'), 'base\n')
+
+    const created = await callAt(baseUrl, 'create-branch', {
+      oid: baseCommit,
+      name: 'feature/from-graph',
+    })
+    assert.equal(created.body.ok, true)
+    assert.equal(created.body.value.branch, 'feature/from-graph')
+    status = (await callAt(baseUrl, 'status')).body.value
+    assert.equal(requireRepo(status).branch, 'feature/from-graph')
+    assert.equal(requireRepo(status).headOid, baseCommit)
+
+    await writeFile(join(fixture, 'feature.txt'), 'not on main\n')
+    await git(fixture, 'add', '-A')
+    await git(fixture, 'commit', '-q', '-m', 'unmerged work')
+    const switched = await callAt(baseUrl, 'checkout', { branch: 'main' })
+    assert.equal(switched.body.ok, true)
+    assert.equal(requireRepo((await callAt(baseUrl, 'status')).body.value).branch, 'main')
+
+    const lightweight = await callAt(baseUrl, 'create-tag', {
+      oid: baseCommit,
+      name: 'v-light',
+      message: '',
+    })
+    assert.equal(lightweight.body.ok, true)
+    assert.equal((await git(fixture, 'cat-file', '-t', 'refs/tags/v-light')).trim(), 'commit')
+    assert.equal((await git(fixture, 'rev-parse', 'refs/tags/v-light')).trim(), baseCommit)
+    const annotated = await callAt(baseUrl, 'create-tag', {
+      oid: mainCommit,
+      name: 'v-annotated',
+      message: 'release notes\n\nwith details\n',
+    })
+    assert.equal(annotated.body.ok, true)
+    assert.equal((await git(fixture, 'cat-file', '-t', 'refs/tags/v-annotated')).trim(), 'tag')
+    assert.equal(
+      (await git(fixture, 'rev-parse', 'refs/tags/v-annotated^{commit}')).trim(),
+      mainCommit,
+    )
+    assert.match(
+      await git(fixture, 'for-each-ref', '--format=%(contents)', 'refs/tags/v-annotated'),
+      /release notes\n\nwith details/,
+    )
+
+    const duplicate = await callAt(baseUrl, 'create-branch', {
+      oid: mainCommit,
+      name: 'feature/from-graph',
+    })
+    assert.equal(duplicate.body.ok, false)
+    assert.equal(duplicate.body.error.code, 'git-command-failed')
+    assert.equal(requireRepo((await callAt(baseUrl, 'status')).body.value).branch, 'main')
+
+    const unmerged = await callAt(baseUrl, 'delete-branch', { branch: 'feature/from-graph' })
+    assert.equal(unmerged.body.ok, false)
+    assert.equal(unmerged.body.error.code, 'git-command-failed')
+    assert.equal(
+      await git(fixture, 'show-ref', '--verify', '--quiet', 'refs/heads/feature/from-graph').then(
+        () => true,
+        () => false,
+      ),
+      true,
+    )
+
+    await git(fixture, 'merge', '-q', '--no-edit', 'feature/from-graph')
+    const removed = await callAt(baseUrl, 'delete-branch', { branch: 'feature/from-graph' })
+    assert.equal(removed.body.ok, true)
+    assert.equal(
+      await git(fixture, 'show-ref', '--verify', '--quiet', 'refs/heads/feature/from-graph').then(
+        () => true,
+        () => false,
+      ),
+      false,
+    )
+    const current = await callAt(baseUrl, 'delete-branch', { branch: 'main' })
+    assert.equal(current.body.ok, false)
+    assert.equal(requireRepo((await callAt(baseUrl, 'status')).body.value).branch, 'main')
+    await writeFile(join(fixture, 'main.txt'), 'uncommitted local edit\n')
+    const refused = await callAt(baseUrl, 'checkout-detached', { oid: baseCommit })
+    assert.equal(refused.body.ok, false)
+    assert.equal(refused.body.error.code, 'git-command-failed')
+    assert.equal(requireRepo((await callAt(baseUrl, 'status')).body.value).branch, 'main')
+    assert.equal(await readFile(join(fixture, 'main.txt'), 'utf8'), 'uncommitted local edit\n')
+    const shortCommit = await callAt(baseUrl, 'checkout-detached', { oid: 'abc123' })
+    assert.equal(shortCommit.body.error.code, 'bad-request')
+  })
+})
+
+test('ignore writes a literal root rule from a Session subdirectory', async () => {
+  const fixture = await mkdtemp(join(tmpRoot, 'ignore-root-'))
+  await git(fixture, 'init', '-q', '-b', 'main')
+  await git(fixture, 'config', 'user.name', 'Ignore Test')
+  await git(fixture, 'config', 'user.email', 'ignore@example.test')
+  await mkdir(join(fixture, 'logs'), { recursive: true })
+  await writeFile(join(fixture, '.gitignore'), '# local rules')
+  await writeFile(join(fixture, 'base.txt'), 'base\n')
+  await git(fixture, 'add', '-A')
+  await git(fixture, 'commit', '-q', '-m', 'base')
+  await writeFile(join(fixture, 'logs', 'local output.txt'), 'do not delete\n')
+
+  await withSessionServer(join(fixture, 'logs'), async (baseUrl) => {
+    const ignored = await callAt(baseUrl, 'ignore', { path: 'logs/local output.txt' })
+    assert.equal(ignored.body.ok, true)
+    assert.equal(
+      await readFile(join(fixture, '.gitignore'), 'utf8'),
+      '# local rules\n/logs/local\\ output.txt\n',
+    )
+    assert.equal(
+      await readFile(join(fixture, 'logs', 'local output.txt'), 'utf8'),
+      'do not delete\n',
+    )
+    const status = (await callAt(baseUrl, 'status')).body.value
+    assert.deepEqual(
+      status.files.map((entry) => entry.path),
+      ['.gitignore'],
+    )
+    assert.equal((await callAt(baseUrl, 'ignore', { path: 'logs/local output.txt' })).body.ok, true)
+    assert.equal(
+      await readFile(join(fixture, '.gitignore'), 'utf8'),
+      '# local rules\n/logs/local\\ output.txt\n',
+    )
+    const escaped = await callAt(baseUrl, 'ignore', { path: '../outside.txt' })
+    assert.equal(escaped.body.error.code, 'path-outside-repository')
+  })
+})
+
 test('an unborn repository stages, unstages, and takes its first commit', async () => {
   const unborn = await mkdtemp(join(tmpRoot, 'unborn-'))
   await git(unborn, 'init', '-q', '-b', 'main')

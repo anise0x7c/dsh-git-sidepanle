@@ -39,6 +39,18 @@ export interface MenuCommandOptions {
   readonly stage: (entries: readonly ChangeEntry[]) => Promise<unknown>
   /** Unstage entries. */
   readonly unstage: (entries: readonly ChangeEntry[]) => Promise<unknown>
+  /** Add a repository-relative path to .gitignore. */
+  readonly ignore: (path: string, untracked?: boolean) => Promise<unknown>
+  /** Check out one local branch head. */
+  readonly checkout: (branch: string) => void
+  /** Check out a commit without attaching a branch. */
+  readonly checkoutDetached: (oid: string) => void
+  /** Ask for a new branch name at a commit. */
+  readonly createBranch: (oid: string) => void
+  /** Ask for a new tag name at a commit. */
+  readonly createTag: (oid: string) => void
+  /** Open the branch-deletion confirmation. */
+  readonly deleteBranch: (branch: string) => void
   /** Open the confirmation dialog. */
   readonly setConfirm: (confirm: ConfirmState | null) => void
   /** Show a transient notice. */
@@ -77,7 +89,20 @@ export function useMenuCommands(): MutableRefObject<MenuCommandOptions | null> {
 function dispatch(options: MenuCommandOptions, command: PanelCommand): void {
   const { sessionId, panelId, repo, t, busyRef, files, stagedFiles, changedFiles, mergeFiles } =
     options
-  const { refreshAll, stage, unstage, setConfirm, setNotice, openDiff } = options
+  const {
+    refreshAll,
+    stage,
+    unstage,
+    ignore,
+    checkout,
+    checkoutDetached,
+    createBranch,
+    createTag,
+    deleteBranch,
+    setConfirm,
+    setNotice,
+    openDiff,
+  } = options
   if (command === null || typeof command !== 'object') return
   if (typeof command.sessionId === 'string' && command.sessionId !== sessionId) return
   if (typeof command.panelId === 'string' && command.panelId !== panelId) return
@@ -121,6 +146,44 @@ function dispatch(options: MenuCommandOptions, command: PanelCommand): void {
       return
     }
     openDiff(entry, section)
+    return
+  }
+  if (command.type === 'ignore') {
+    const entry = files.find((candidate) => candidate.path === command.path)
+    if (entry === undefined) {
+      reportStale()
+      return
+    }
+    void ignore(entry.path, entry.untracked === true)
+    return
+  }
+  if (command.type === 'checkout' && typeof command.branch === 'string' && command.branch !== '') {
+    checkout(command.branch)
+    return
+  }
+  if (
+    command.type === 'checkoutDetached' &&
+    typeof command.oid === 'string' &&
+    /^[0-9a-f]{40}$/.test(command.oid)
+  ) {
+    checkoutDetached(command.oid)
+    return
+  }
+  if (
+    (command.type === 'createBranch' || command.type === 'createTag') &&
+    typeof command.oid === 'string' &&
+    /^[0-9a-f]{40}$/.test(command.oid)
+  ) {
+    if (command.type === 'createBranch') createBranch(command.oid)
+    else createTag(command.oid)
+    return
+  }
+  if (
+    command.type === 'deleteBranch' &&
+    typeof command.branch === 'string' &&
+    command.branch !== ''
+  ) {
+    deleteBranch(command.branch)
     return
   }
   if (command.type === 'stage' || command.type === 'stageSection') {

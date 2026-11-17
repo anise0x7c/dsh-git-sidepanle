@@ -1676,21 +1676,28 @@ function lastTarget(menu: MenuMock): CapturedTarget {
   return open.target
 }
 
-/** Resolve and run one action id from a captured menu target. */
+/** Resolve and run one root or nested action from a captured menu target. */
 async function runMenuAction(
   components: LoadedComponents,
   target: CapturedTarget,
-  id: string,
+  ...ids: readonly [string, ...string[]]
 ): Promise<void> {
   const resolution = components.contextMenus.resolve(target)
-  const action = resolution.source
-    .getSnapshot()
-    .find((candidate: TestMenuActionView) => candidate.id === menuActionId(id))
-  assert.ok(action, `no context-menu action "${id}"`)
-  resolution.select(action.id)
-  await new Promise<void>((resolve) => {
-    setImmediate(resolve)
-  })
+  let candidates: readonly TestMenuActionView[] = resolution.source.getSnapshot()
+  let published = MENU_ID
+  for (const [index, id] of ids.entries()) {
+    published += `/${encodeURIComponent(id)}`
+    const action = candidates.find((candidate: TestMenuActionView) => candidate.id === published)
+    assert.ok(action, `no context-menu action "${published}"`)
+    if (index === ids.length - 1) {
+      resolution.select(action.id)
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve)
+      })
+      return
+    }
+    candidates = action.children ?? []
+  }
 }
 
 test('right-clicking a change binds its target without calling the Host', async () => {
@@ -1718,6 +1725,7 @@ test('right-clicking a change binds its target without calling the Host', async 
       menuActionId('open'),
       menuActionId('stage'),
       menuActionId('discard'),
+      menuActionId('ignore'),
       menuActionId('copy-relative'),
       menuActionId('copy-path'),
     ],
@@ -1775,6 +1783,205 @@ test('a menu command stages through the panel like the inline control', async ()
     mounted.calls.filter((call) => call.op === 'status').length >= 2,
     'the panel refreshes after a menu command',
   )
+  await mounted.harness.dispose()
+})
+
+test('a changed-file menu ignores its path through the shared action refresh', async () => {
+  const mounted = await mountGit()
+  const rows = mounted.harness.findAll(
+    (element) =>
+      String(element.props?.className ?? '').includes('dshgg-fileRow') &&
+      element.props?.title === 'src/app.js',
+  )
+  mounted.harness.contextmenu(rows[rows.length - 1])
+  await runMenuAction(mounted.components, lastTarget(mounted.menu), 'ignore')
+  await mounted.harness.flush()
+  const ignore = mounted.calls.find((call) => call.op === 'ignore')
+  assert.equal(ignore?.path, 'src/app.js')
+  assert.ok(mounted.calls.filter((call) => call.op === 'status').length >= 2)
+  assert.match(mounted.harness.text(), /menu\.ignoredTracked/)
+  const untracked = mounted.harness.findAll(
+    (element) =>
+      String(element.props?.className ?? '').includes('dshgg-fileRow') &&
+      element.props?.title === 'README.md',
+  )[0]
+  assert.ok(untracked)
+  mounted.harness.contextmenu(untracked)
+  await runMenuAction(mounted.components, lastTarget(mounted.menu), 'ignore')
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'ignore').at(-1)?.path, 'README.md')
+  assert.match(mounted.harness.text(), /menu\.ignored/)
+  await mounted.harness.dispose()
+})
+
+test('commit submenus run checkout, creation and confirmed deletion', async () => {
+  const head = HISTORY.commits[0]
+  assert.ok(head)
+  const history: HistoryResult = {
+    ...HISTORY,
+    commits: [
+      {
+        ...head,
+        refs: 'HEAD -> refs/heads/main, refs/heads/feature/graph, refs/remotes/origin/main, tag: refs/tags/v1',
+      },
+      ...HISTORY.commits.slice(1),
+    ],
+  }
+  const mounted = await mountGit({ history })
+  let focusRestores = 0
+  const invoker: TestEventTarget = {
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 80, height: 22, bottom: 22 }),
+    isConnected: true,
+    focus: () => {
+      focusRestores += 1
+    },
+  }
+  const openMenu = async (): Promise<CapturedTarget> => {
+    const row = mounted.harness.findAll((element) =>
+      String(element.props?.className ?? '').includes('dshgg-graphRow'),
+    )[0]
+    assert.ok(row, 'no graph row rendered')
+    mounted.harness.contextmenu(row, { clientX: 1, clientY: 2, currentTarget: invoker })
+    await mounted.harness.flush()
+    return lastTarget(mounted.menu)
+  }
+  const target = await openMenu()
+  assert.deepEqual(target.value.branchHeads, [
+    { name: 'feature/graph', current: false },
+    { name: 'main', current: true },
+  ])
+  await runMenuAction(mounted.components, target, 'checkout', 'feature/graph')
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.find((call) => call.op === 'checkout')?.branch, 'feature/graph')
+
+  await runMenuAction(mounted.components, await openMenu(), 'checkout-detached')
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.find((call) => call.op === 'checkout-detached')?.oid, 'a'.repeat(40))
+
+  await runMenuAction(mounted.components, await openMenu(), 'create-branch')
+  await mounted.harness.flush()
+  let nameInput = mounted.harness.findAll(
+    (element) => element.type === 'input' && element.props['aria-label'] === 'menu.referenceName',
+  )[0]
+  assert.ok(nameInput)
+  assert.equal(buttonContaining(mounted.harness, 'menu.createBranch').props.disabled, true)
+  mounted.harness.change(nameInput, 'feature/from-menu')
+  await mounted.harness.flush()
+  mounted.harness.click(buttonContaining(mounted.harness, 'menu.createBranch'))
+  await mounted.harness.flush()
+  const branch = mounted.calls.find((call) => call.op === 'create-branch')
+  assert.equal(branch?.oid, 'a'.repeat(40))
+  assert.equal(branch?.name, 'feature/from-menu')
+  assert.equal(mounted.harness.text().includes('menu.createBranchAt'), false)
+
+  await runMenuAction(mounted.components, await openMenu(), 'create-tag')
+  await mounted.harness.flush()
+  nameInput = mounted.harness.findAll(
+    (element) => element.type === 'input' && element.props['aria-label'] === 'menu.referenceName',
+  )[0]
+  const messageInput = mounted.harness.findAll(
+    (element) => element.type === 'textarea' && element.props['aria-label'] === 'menu.tagMessage',
+  )[0]
+  assert.ok(nameInput)
+  assert.ok(messageInput)
+  mounted.harness.change(nameInput, 'v2.0')
+  mounted.harness.change(messageInput, 'release\n\nnotes')
+  await mounted.harness.flush()
+  mounted.harness.click(buttonContaining(mounted.harness, 'menu.createTag'))
+  await mounted.harness.flush()
+  const tag = mounted.calls.find((call) => call.op === 'create-tag')
+  assert.equal(tag?.oid, 'a'.repeat(40))
+  assert.equal(tag?.name, 'v2.0')
+  assert.equal(tag?.message, 'release\n\nnotes')
+  assert.equal(focusRestores, 2, 'successful creation restores its triggering row')
+
+  await runMenuAction(mounted.components, await openMenu(), 'delete-branch', 'feature/graph')
+  await mounted.harness.flush()
+  assert.match(mounted.harness.text(), /menu\.deleteBranchConfirm/)
+  assert.equal(
+    mounted.calls.some((call) => call.op === 'delete-branch'),
+    false,
+  )
+  const cancel = buttonByText(mounted.harness, 'action.cancel')
+  assert.equal(cancel.props.autoFocus, true)
+  const dialog = mounted.harness.findAll((element) => element.props.role === 'alertdialog')[0]
+  assert.ok(dialog)
+  const describedBy = dialog.props['aria-describedby']
+  assert.equal(typeof describedBy, 'string')
+  assert.equal(mounted.harness.findAll((element) => element.props.id === describedBy).length, 1)
+  const focusBeforeEscape = focusRestores
+  mounted.harness.keydown(dialog, { key: 'Escape' })
+  await mounted.harness.flush()
+  assert.equal(mounted.harness.text().includes('menu.deleteBranchConfirm'), false)
+  assert.equal(focusRestores, focusBeforeEscape + 1)
+  assert.equal(
+    mounted.calls.some((call) => call.op === 'delete-branch'),
+    false,
+  )
+
+  await runMenuAction(mounted.components, await openMenu(), 'delete-branch', 'feature/graph')
+  await mounted.harness.flush()
+  const focusBeforeCancel = focusRestores
+  mounted.harness.click(buttonByText(mounted.harness, 'action.cancel'))
+  await mounted.harness.flush()
+  assert.equal(focusRestores, focusBeforeCancel + 1)
+  await runMenuAction(mounted.components, await openMenu(), 'delete-branch', 'feature/graph')
+  await mounted.harness.flush()
+  mounted.harness.click(buttonContaining(mounted.harness, 'menu.deleteBranch'))
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.find((call) => call.op === 'delete-branch')?.branch, 'feature/graph')
+  assert.ok(mounted.calls.filter((call) => call.op === 'history').length >= 6)
+  await mounted.harness.dispose()
+})
+
+test('a failed tag creation keeps the dialog text and displays the failure', async () => {
+  const mounted = await mountGit({ failOp: 'create-tag' })
+  const row = mounted.harness.findAll((element) =>
+    String(element.props?.className ?? '').includes('dshgg-graphRow'),
+  )[0]
+  assert.ok(row)
+  mounted.harness.contextmenu(row)
+  await runMenuAction(mounted.components, lastTarget(mounted.menu), 'create-tag')
+  await mounted.harness.flush()
+  const name = mounted.harness.findAll(
+    (element) => element.type === 'input' && element.props['aria-label'] === 'menu.referenceName',
+  )[0]
+  const message = mounted.harness.findAll(
+    (element) => element.type === 'textarea' && element.props['aria-label'] === 'menu.tagMessage',
+  )[0]
+  assert.ok(name)
+  assert.ok(message)
+  mounted.harness.change(name, 'existing-tag')
+  mounted.harness.change(message, 'keep this text')
+  await mounted.harness.flush()
+  mounted.harness.keydown(message, { key: 'Enter' })
+  await mounted.harness.flush()
+  assert.equal(
+    mounted.calls.some((call) => call.op === 'create-tag'),
+    false,
+  )
+  mounted.harness.change(message, 'keep this text\non two lines')
+  await mounted.harness.flush()
+  const currentMessage = mounted.harness.findAll(
+    (element) => element.type === 'textarea' && element.props['aria-label'] === 'menu.tagMessage',
+  )[0]
+  assert.ok(currentMessage)
+  mounted.harness.keydown(currentMessage, { key: 'Enter', ctrlKey: true })
+  await mounted.harness.flush()
+  assert.match(mounted.harness.text(), /git said no/)
+  assert.equal(
+    mounted.harness.findAll(
+      (element) => element.type === 'input' && element.props['aria-label'] === 'menu.referenceName',
+    )[0]?.props.value,
+    'existing-tag',
+  )
+  assert.equal(
+    mounted.harness.findAll(
+      (element) => element.type === 'textarea' && element.props['aria-label'] === 'menu.tagMessage',
+    )[0]?.props.value,
+    'keep this text\non two lines',
+  )
+  assert.match(mounted.harness.text(), /menu\.createTagAt/)
   await mounted.harness.dispose()
 })
 
@@ -1865,9 +2072,17 @@ test('commit rows and the diff header bind their copy targets', async () => {
   assert.equal(commitTarget.value.kind, 'commit')
   assert.equal(commitTarget.value.oid, 'a'.repeat(40))
   assert.equal(commitTarget.value.subject, 'Fix the sidebar')
+  assert.deepEqual(commitTarget.value.branchHeads, [{ name: 'main', current: true }])
   assert.deepEqual(
     menuActions(mounted.components, commitTarget).map((action) => action.id),
-    [menuActionId('copy-id'), menuActionId('copy-message')],
+    [
+      menuActionId('checkout'),
+      menuActionId('checkout-detached'),
+      menuActionId('create-branch'),
+      menuActionId('create-tag'),
+      menuActionId('copy-id'),
+      menuActionId('copy-message'),
+    ],
   )
   await mounted.harness.dispose()
 

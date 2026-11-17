@@ -129,6 +129,7 @@ export function createHarness(options: HarnessOptions): TestHarness {
   let scheduled = false
   let effectQueue: PendingEffect[] = []
   let lastTree: TestNode = null
+  let nextId = 0
 
   function activeRender(): RenderCursor {
     if (current === null) throw new Error('a hook was called outside a component render')
@@ -185,6 +186,10 @@ export function createHarness(options: HarnessOptions): TestHarness {
         cell.deps = deps
       }
       return cell.value as T
+    },
+    useId() {
+      const index = activeRender().index++
+      return hookCell(index, () => `test-react-${++nextId}`)
     },
     useEffect(callback, deps) {
       scheduleEffect(callback, deps)

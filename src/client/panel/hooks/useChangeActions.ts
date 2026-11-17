@@ -79,6 +79,8 @@ export interface ChangeActionsState {
   readonly stage: (entries: readonly ChangeEntry[]) => Promise<OkResult | undefined>
   /** Unstage entries. */
   readonly unstage: (entries: readonly ChangeEntry[]) => Promise<OkResult | undefined>
+  /** Add one working-change path to the repository-root ignore file. */
+  readonly ignore: (path: string, untracked?: boolean) => Promise<OkResult | undefined>
   /** Commit the typed message. */
   readonly requestCommit: () => void
   /** Run the open confirmation. */
@@ -139,6 +141,10 @@ export function useChangeActions(options: UseChangeActionsOptions): ChangeAction
     perform('stage', () => call('stage', { paths: entries.map((entry) => entry.path) }))
   const unstage = (entries: readonly ChangeEntry[]): Promise<OkResult | undefined> =>
     perform('unstage', () => call('unstage', { paths: entries.map((entry) => entry.path) }))
+  const ignore = (path: string, untracked = false): Promise<OkResult | undefined> =>
+    perform('ignore', () => call('ignore', { path }), {
+      notice: t(untracked ? 'menu.ignored' : 'menu.ignoredTracked', { path }),
+    })
 
   const requestCommit = (): void => {
     if (message.trim() === '' || refs.busy.current !== null) return
@@ -201,6 +207,7 @@ export function useChangeActions(options: UseChangeActionsOptions): ChangeAction
     perform,
     stage,
     unstage,
+    ignore,
     requestCommit,
     confirmAction,
   }

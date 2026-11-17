@@ -38,6 +38,16 @@ export interface MenuTargetValue {
   readonly shortOid?: string
   /** Commit subject. */
   readonly subject?: string
+  /** Local branch heads at this commit, used by checkout and deletion submenus. */
+  readonly branchHeads?: readonly MenuBranchHead[]
+}
+
+/** One local branch head captured on a commit row. */
+export interface MenuBranchHead {
+  /** Local branch name, without `refs/heads/`. */
+  readonly name: string
+  /** Whether this is the current local branch. */
+  readonly current: boolean
 }
 
 /** Fields one row family merges into its captured value. */
