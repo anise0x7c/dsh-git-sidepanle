@@ -3,6 +3,39 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## 0.10.0
+
+The panel now notices repository changes made outside DSH within about two
+seconds, instead of waiting for a manual refresh or the old fixed poll:
+
+- The Host watches every repository a panel uses — the working tree, the index,
+  `HEAD`, loose and packed refs, tags, remote-tracking refs and the branch
+  configuration — and coalesces a burst of filesystem events into one update.
+  Panels of the same repository share the watchers. A repository stops being
+  watched when its last panel closes, its Session moves to another repository,
+  or the plugin unloads; a panel that stops polling also lapses, so a closed tab
+  cannot keep the Host watching.
+- A working-tree or index change refreshes the repository summary and change
+  list only. The loaded graph pages, its scroll position and the selected commit
+  stay as they were.
+- A `HEAD` or reference change also re-reads the checked-out, upstream and base
+  references. The already loaded rows re-color and their badges move to the
+  current targets in place, without returning the graph to its first page; a
+  detached `HEAD` demotes the previous checked-out badge back to an ordinary
+  branch. The newest page is reloaded only when the checked-out commit is not
+  among the loaded rows.
+- The periodic status check remains as the fallback where the Host cannot watch
+  the files, and a watcher failure is not shown as an error.
+- This changes when existing reads run, not what they read: no staging, commit,
+  checkout, diff, paging or graph-drawing rule changed, and there are no Git
+  hooks, no shell, no new route and no trust-fence change.
+- Tests: 343 (was 293), covering watch-event classification, real filesystem
+  updates for edits, staging, commits, fetches, branch switches and detached
+  checkouts, the subscription lifetime and burst coalescing, reference-only
+  graph re-coloring, scoped refreshes, the fallback poll, and the artifact
+  contract.
+- The Host half changed, so a Host restart is needed after installing.
+
 ## 0.9.1
 
 Commit graph lines no longer break where two rows meet:
