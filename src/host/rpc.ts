@@ -24,6 +24,7 @@ import { readCommitDetails, readHistory } from './git/history.ts'
 import { readGraphReferences } from './git/references.ts'
 import { readStatus } from './git/status.ts'
 import { resolveSessionDirectory } from './session.ts'
+import type { RepositoryWatchRegistry } from './watch/registry.ts'
 
 /** Route paths of the guarded family. */
 export const RPC_PATH = '/api/dsh-git-graph/rpc'
@@ -31,17 +32,40 @@ export const HEALTH_PATH = '/api/dsh-git-graph/health'
 
 const COMMIT_TIMEOUT_MS = 120_000
 const FULL_OID = /^[0-9a-f]{40}$/
+const PANEL_ID = /^[A-Za-z0-9._:-]{1,80}$/
+
+/**
+ * Read the panel identity of a `watch` request.
+ * @param payload - request.
+ * @returns the validated panel identity.
+ */
+function panelOf(payload: Record<string, unknown>): string {
+  const panel = payload.panel
+  if (typeof panel !== 'string' || !PANEL_ID.test(panel)) {
+    throw new GitGraphError('bad-request', 'A panel identity is required.', 400)
+  }
+  return panel
+}
 
 /**
  * Dispatch one operation inside the repository containing a Session's directory.
  * @param ctx - Host context.
  * @param payload - validated request.
+ * @param registry - repository watch registry owned by the route setup.
  * @returns operation value.
  */
 export async function dispatch(
   ctx: HostContext,
   payload: Record<string, unknown>,
+  registry: RepositoryWatchRegistry,
 ): Promise<GitGraphRpcValue> {
+  const op = payload.op
+  // Unsubscribing must work even when the Session or its directory is gone:
+  // the watcher is keyed by the panel, not by the Session.
+  if (op === 'unwatch') {
+    registry.unwatch(panelOf(payload))
+    return { ok: true }
+  }
   const cwd = await resolveSessionDirectory(ctx, payload.sessionId)
   if (!existsSync(cwd))
     throw new GitGraphError(
@@ -49,8 +73,8 @@ export async function dispatch(
       `The working directory "${cwd}" does not exist.`,
       404,
     )
-  const op = payload.op
   if (op === 'status') return readStatus(cwd)
+  if (op === 'watch') return registry.watch(cwd, panelOf(payload))
 
   const root = await findRepositoryRoot(cwd)
   if (root === null)
@@ -61,6 +85,8 @@ export async function dispatch(
     )
 
   switch (op) {
+    case 'references':
+      return readGraphReferences(root)
     case 'history': {
       const offset = payload.offset
       if (

@@ -21,6 +21,7 @@ import type {
   WebServerRoute,
   WorkingDirectoryService,
 } from '../src/host/context.ts'
+import { createRepositoryWatchRegistry } from '../src/host/watch/registry.ts'
 import { apply } from '../src/host-entry.ts'
 import type {
   ChangeEntry,
@@ -28,6 +29,7 @@ import type {
   GitGraphRpcValues,
   RepositoryStatus,
   StatusResult,
+  WatchState,
 } from '../src/shared/git.ts'
 import type { RpcReply } from './support/types.ts'
 
@@ -186,6 +188,41 @@ async function callUnknown(
   payload: Record<string, unknown> = {},
 ): Promise<CallResult<unknown>> {
   return request(`${base}/api/dsh-git-graph/rpc`, { sessionId: 'session-1', op, ...payload })
+}
+
+/**
+ * Wait for a real interval; the watch debounce and idle timers are real too.
+ * @param ms - milliseconds to wait.
+ */
+async function sleep(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Poll a panel's watch counters until they satisfy a predicate.
+ * @param baseUrl - test server URL.
+ * @param panel - panel identity.
+ * @param predicate - condition to reach.
+ * @param timeoutMs - how long to keep polling.
+ * @returns the state that satisfied the predicate.
+ */
+async function waitForWatch(
+  baseUrl: string,
+  panel: string,
+  predicate: (state: WatchState) => boolean,
+  timeoutMs = 8000,
+): Promise<WatchState> {
+  const deadline = Date.now() + timeoutMs
+  let last: WatchState = { watching: false, worktree: 0, references: 0 }
+  while (Date.now() < deadline) {
+    const { body } = await callAt(baseUrl, 'watch', { panel })
+    if (body.ok) {
+      last = body.value
+      if (predicate(last)) return last
+    }
+    await sleep(80)
+  }
+  assert.fail(`the watch counters did not reach the expected state: ${JSON.stringify(last)}`)
 }
 
 before(async () => {
@@ -756,5 +793,151 @@ test('a directory outside a repository reports no repository', async () => {
     await new Promise<void>((resolve) => {
       other.close(() => resolve())
     })
+  }
+})
+
+test('watching reports external edits, staging, commits, fetches, switches and detached checkouts', async () => {
+  const watched = await mkdtemp(join(tmpRoot, 'watch-repo-'))
+  const remote = await mkdtemp(join(tmpRoot, 'watch-remote-'))
+  await git(watched, 'init', '-b', 'main')
+  await git(watched, 'config', 'user.name', 'Watch Test')
+  await git(watched, 'config', 'user.email', 'watch@example.test')
+  await writeFile(join(watched, 'file.txt'), 'one\n')
+  await git(watched, 'add', '-A')
+  await git(watched, 'commit', '-m', 'initial commit')
+  await git(remote, 'init', '--bare', '-b', 'main')
+  await git(watched, 'remote', 'add', 'origin', remote)
+  await git(watched, 'push', '-q', '-u', 'origin', 'main')
+  // Advance the remote from another clone so a later fetch moves origin/main.
+  const peer = await mkdtemp(join(tmpRoot, 'watch-peer-'))
+  await git(peer, 'clone', '-q', remote, '.')
+  await git(peer, 'config', 'user.name', 'Peer')
+  await git(peer, 'config', 'user.email', 'peer@example.test')
+  await writeFile(join(peer, 'remote.txt'), 'remote\n')
+  await git(peer, 'add', '-A')
+  await git(peer, 'commit', '-m', 'remote commit')
+  await git(peer, 'push', '-q', 'origin', 'main')
+
+  await withSessionServer(watched, async (baseUrl) => {
+    const panel = 'watch-panel'
+    const initial = await callAt(baseUrl, 'watch', { panel })
+    assert.equal(initial.body.ok, true)
+    assert.deepEqual(initial.body.value, { watching: true, worktree: 0, references: 0 })
+
+    await writeFile(join(watched, 'file.txt'), 'two\n')
+    const edited = await waitForWatch(
+      baseUrl,
+      panel,
+      (state) => state.worktree > initial.body.value.worktree,
+    )
+
+    await git(watched, 'add', 'file.txt')
+    const staged = await waitForWatch(baseUrl, panel, (state) => state.worktree > edited.worktree)
+
+    await git(watched, 'commit', '-m', 'second commit')
+    const committed = await waitForWatch(
+      baseUrl,
+      panel,
+      (state) => state.references > staged.references,
+    )
+
+    await git(watched, 'fetch', '-q', 'origin')
+    const fetched = await waitForWatch(
+      baseUrl,
+      panel,
+      (state) => state.references > committed.references,
+    )
+
+    await git(watched, 'switch', '-q', '-c', 'side')
+    const switched = await waitForWatch(
+      baseUrl,
+      panel,
+      (state) => state.references > fetched.references,
+    )
+    const side = await callAt(baseUrl, 'references')
+    assert.equal(side.body.value.current?.id, 'refs/heads/side')
+
+    const head = (await git(watched, 'rev-parse', 'HEAD')).trim()
+    await git(watched, 'checkout', '-q', '--detach', head)
+    await waitForWatch(baseUrl, panel, (state) => state.references > switched.references)
+    const detached = await callAt(baseUrl, 'references')
+    assert.equal(detached.body.value.current?.id, head)
+    assert.equal(detached.body.value.current?.name, head)
+  })
+})
+
+test('unwatch releases the repository and a stale subscription expires', async () => {
+  const released = await mkdtemp(join(tmpRoot, 'watch-release-'))
+  await git(released, 'init', '-b', 'main')
+  await git(released, 'config', 'user.name', 'Release Test')
+  await git(released, 'config', 'user.email', 'release@example.test')
+  await writeFile(join(released, 'file.txt'), 'one\n')
+  await git(released, 'add', '-A')
+  await git(released, 'commit', '-m', 'initial commit')
+
+  await withSessionServer(released, async (baseUrl) => {
+    const initial = await callAt(baseUrl, 'watch', { panel: 'release-panel' })
+    assert.equal(initial.body.value.watching, true)
+    const removed = await callAt(baseUrl, 'unwatch', { panel: 'release-panel' })
+    assert.deepEqual(removed.body.value, { ok: true })
+    await writeFile(join(released, 'file.txt'), 'changed\n')
+    await sleep(900)
+    const fresh = await callAt(baseUrl, 'watch', { panel: 'release-panel-2' })
+    assert.deepEqual(fresh.body.value, { watching: true, worktree: 0, references: 0 })
+    await callAt(baseUrl, 'unwatch', { panel: 'release-panel-2' })
+  })
+
+  // A panel that stops polling (a closed tab) must not keep the Host watching.
+  const registry = createRepositoryWatchRegistry({ debounceMs: 40, idleMs: 300 })
+  try {
+    const started = await registry.watch(released, 'idle-panel')
+    assert.equal(started.watching, true)
+    await writeFile(join(released, 'other.txt'), 'x')
+    await sleep(150)
+    // No poll: the subscription lapses and the repository is released.
+    await sleep(400)
+    await writeFile(join(released, 'late.txt'), 'y')
+    await sleep(200)
+    const reconnected = await registry.watch(released, 'idle-panel')
+    assert.deepEqual(reconnected, { watching: true, worktree: 0, references: 0 })
+  } finally {
+    registry.dispose()
+  }
+})
+
+test('watch reports that a directory outside a repository is not watched', async () => {
+  const outside = join(tmpRoot, 'plain-watch')
+  await mkdir(outside, { recursive: true })
+  await withSessionServer(outside, async (baseUrl) => {
+    const state = await callAt(baseUrl, 'watch', { panel: 'plain-panel' })
+    assert.equal(state.body.ok, true)
+    assert.deepEqual(state.body.value, { watching: false, worktree: 0, references: 0 })
+    const removed = await callAt(baseUrl, 'unwatch', { panel: 'plain-panel' })
+    assert.deepEqual(removed.body.value, { ok: true })
+  })
+})
+
+test('a burst of working-tree changes becomes one watch update', async () => {
+  const burst = await mkdtemp(join(tmpRoot, 'watch-burst-'))
+  await git(burst, 'init', '-b', 'main')
+  await git(burst, 'config', 'user.name', 'Burst Test')
+  await git(burst, 'config', 'user.email', 'burst@example.test')
+  await writeFile(join(burst, 'first.txt'), 'one\n')
+  await git(burst, 'add', '-A')
+  await git(burst, 'commit', '-m', 'initial commit')
+
+  const registry = createRepositoryWatchRegistry({ debounceMs: 80, idleMs: 5000 })
+  try {
+    const initial = await registry.watch(burst, 'burst-panel')
+    assert.equal(initial.watching, true)
+    for (let index = 0; index < 8; index += 1) {
+      await writeFile(join(burst, `burst-${index}.txt`), `${index}\n`)
+    }
+    await sleep(300)
+    const settled = await registry.watch(burst, 'burst-panel')
+    assert.equal(settled.worktree, 1, 'the burst coalesces into one update')
+    assert.equal(settled.references, 0, 'a working-tree burst does not move references')
+  } finally {
+    registry.dispose()
   }
 })

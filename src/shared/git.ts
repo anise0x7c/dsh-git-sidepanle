@@ -184,6 +184,22 @@ export interface BranchesResult {
   branches: BranchInfo[]
 }
 
+/**
+ * Value of the `watch` operation.
+ *
+ * The counters are per repository and only ever increase. The panel remembers
+ * the last two values and compares them on its next poll, so a change of either
+ * counter is the entire change signal.
+ */
+export interface WatchState {
+  /** Whether the Host is watching this panel's repository. */
+  watching: boolean
+  /** Counter incremented when the working tree or the index changed. */
+  worktree: number
+  /** Counter incremented when `HEAD` or a reference changed. */
+  references: number
+}
+
 /** One line of a unified-diff hunk. */
 export interface DiffLine {
   /** `' '` context, `'-'` deletion, `'+'` addition. */
@@ -278,6 +294,9 @@ export interface CheckoutResult {
 export interface GitGraphRpcValues {
   status: StatusResult
   history: HistoryResult
+  references: GraphReferences
+  watch: WatchState
+  unwatch: OkResult
   'commit-details': CommitDetails
   branches: BranchesResult
   stage: OkResult
@@ -299,6 +318,10 @@ export interface GitGraphPayloads {
   status: Record<never, never>
   /** `offset` skips that many of the newest commits; the first page omits it. */
   history: { offset?: number }
+  references: Record<never, never>
+  /** `panel` identifies the subscribing panel for as long as it polls. */
+  watch: { panel: string }
+  unwatch: { panel: string }
   'commit-details': { oid: string }
   branches: Record<never, never>
   stage: { paths: string[] }

@@ -15,6 +15,7 @@ import { normalizeFailure } from './host/errors.ts'
 import { readJsonBody, sendJson } from './host/http/respond.ts'
 import { isTrustedRequest } from './host/http/trust.ts'
 import { dispatch, HEALTH_PATH, RPC_PATH } from './host/rpc.ts'
+import { createRepositoryWatchRegistry } from './host/watch/registry.ts'
 
 /** Host services this bundle cannot run without. */
 export const inject = ['webServer'] as const
@@ -33,6 +34,11 @@ function refuseUntrusted(response: ServerResponse): void {
  * @returns disposer removing both routes.
  */
 export function apply(ctx: HostContext): () => void {
+  // One registry per plugin instance: every panel of every Session shares the
+  // watchers of a repository, and unloading the plugin closes all of them.
+  const registry = createRepositoryWatchRegistry()
+  const disposeWatch = ctx.effect(() => () => registry.dispose(), 'git-graph: repository watch')
+
   const disposeHealth = ctx.effect(
     () =>
       ctx.webServer.register({
@@ -72,7 +78,7 @@ export function apply(ctx: HostContext): () => void {
             return
           }
           try {
-            const value = await dispatch(ctx, payload)
+            const value = await dispatch(ctx, payload, registry)
             sendJson(response, 200, { ok: true, value })
           } catch (error) {
             const failure = normalizeFailure(error)
@@ -89,5 +95,6 @@ export function apply(ctx: HostContext): () => void {
   return () => {
     disposeRpc()
     disposeHealth()
+    disposeWatch()
   }
 }

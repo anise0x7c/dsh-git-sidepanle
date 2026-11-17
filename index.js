@@ -157,6 +157,12 @@ async function findRepositoryRoot(cwd) {
     throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
   return null;
 }
+async function readGitDirectory(root) {
+  const result = await runGit(root, ["rev-parse", "--absolute-git-dir"]);
+  if (!result.ok) return null;
+  const directory = result.stdout.trim();
+  return directory === "" ? null : directory;
+}
 function resolveRepositoryPath(root, input) {
   if (typeof input !== "string" || input === "" || input.includes("\0")) {
     throw new GitGraphError("bad-request", "A file path is required.", 400);
@@ -775,7 +781,20 @@ var RPC_PATH = "/api/dsh-git-graph/rpc";
 var HEALTH_PATH = "/api/dsh-git-graph/health";
 var COMMIT_TIMEOUT_MS = 12e4;
 var FULL_OID4 = /^[0-9a-f]{40}$/;
-async function dispatch(ctx, payload) {
+var PANEL_ID = /^[A-Za-z0-9._:-]{1,80}$/;
+function panelOf(payload) {
+  const panel = payload.panel;
+  if (typeof panel !== "string" || !PANEL_ID.test(panel)) {
+    throw new GitGraphError("bad-request", "A panel identity is required.", 400);
+  }
+  return panel;
+}
+async function dispatch(ctx, payload, registry) {
+  const op = payload.op;
+  if (op === "unwatch") {
+    registry.unwatch(panelOf(payload));
+    return { ok: true };
+  }
   const cwd = await resolveSessionDirectory(ctx, payload.sessionId);
   if (!existsSync(cwd))
     throw new GitGraphError(
@@ -783,8 +802,8 @@ async function dispatch(ctx, payload) {
       `The working directory "${cwd}" does not exist.`,
       404
     );
-  const op = payload.op;
   if (op === "status") return readStatus(cwd);
+  if (op === "watch") return registry.watch(cwd, panelOf(payload));
   const root = await findRepositoryRoot(cwd);
   if (root === null)
     throw new GitGraphError(
@@ -793,6 +812,8 @@ async function dispatch(ctx, payload) {
       409
     );
   switch (op) {
+    case "references":
+      return readGraphReferences(root);
     case "history": {
       const offset = payload.offset;
       if (offset !== void 0 && (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0)) {
@@ -957,12 +978,266 @@ ${switched.stderr}`.trim() || "git switch failed",
   }
 }
 
+// src/host/watch/registry.ts
+import { watch } from "node:fs";
+import { join } from "node:path";
+
+// src/host/watch/classify.ts
+var INDEX_FILES = /* @__PURE__ */ new Set(["index"]);
+var REFERENCE_FILES = /* @__PURE__ */ new Set([
+  "HEAD",
+  "packed-refs",
+  "config",
+  "FETCH_HEAD",
+  "ORIG_HEAD",
+  "MERGE_HEAD",
+  "CHERRY_PICK_HEAD",
+  "REVERT_HEAD",
+  "AUTO_MERGE",
+  "COMMIT_EDITMSG"
+]);
+var IDLE_DIRECTORIES = /* @__PURE__ */ new Set(["objects", "info", "hooks", "lfs", "logs", "worktrees"]);
+function segmentsOf(filename) {
+  if (typeof filename !== "string" || filename === "") return [];
+  return filename.split(/[\\/]/).filter((segment) => segment !== "");
+}
+function classifyWorktreeEntry(filename) {
+  const segments = segmentsOf(filename);
+  if (segments.length === 0) return "worktree";
+  return segments[0] === ".git" ? "ignore" : "worktree";
+}
+function classifyGitDirectoryEntry(filename) {
+  const segments = segmentsOf(filename);
+  if (segments.length === 0) return "references";
+  const first = segments[0] ?? "";
+  const name = segments.at(-1) ?? "";
+  if (name.endsWith(".lock")) return "ignore";
+  if (first === "refs") return "references";
+  if (IDLE_DIRECTORIES.has(first)) return "ignore";
+  if (INDEX_FILES.has(name)) return "worktree";
+  if (REFERENCE_FILES.has(name)) return "references";
+  return "references";
+}
+
+// src/host/watch/registry.ts
+var WATCH_DEBOUNCE_MS = 600;
+var WATCH_IDLE_MS = 15e3;
+function idleState() {
+  return { watching: false, worktree: 0, references: 0 };
+}
+function createRepositoryWatchRegistry(timings = {}) {
+  const debounceMs = timings.debounceMs ?? WATCH_DEBOUNCE_MS;
+  const idleMs = timings.idleMs ?? WATCH_IDLE_MS;
+  const repositories = /* @__PURE__ */ new Map();
+  const subscriptions = /* @__PURE__ */ new Map();
+  const now = () => Date.now();
+  function open2(repo, gitDirectory) {
+    const fail = () => {
+      closeRepository(repo);
+    };
+    const rootWatcher = openWatcher(
+      repo.root,
+      true,
+      (filename) => {
+        onEntry(repo, classifyWorktreeEntry(filename));
+      },
+      fail
+    );
+    if (rootWatcher === null) return false;
+    const metadataWatcher = openWatcher(
+      gitDirectory,
+      false,
+      (filename) => {
+        onEntry(repo, classifyGitDirectoryEntry(filename));
+      },
+      fail
+    );
+    if (metadataWatcher === null) {
+      closeWatchers([rootWatcher]);
+      return false;
+    }
+    const refsRoot = join(gitDirectory, "refs");
+    const refsWatcher = openWatcher(
+      refsRoot,
+      true,
+      () => {
+        onEntry(repo, "references");
+      },
+      fail
+    );
+    repo.watchers = [rootWatcher, metadataWatcher, ...refsWatcher === null ? [] : [refsWatcher]];
+    return true;
+  }
+  function openWatcher(path, recursive, onEvent, onFailure) {
+    try {
+      const watcher = watch(path, { recursive, persistent: false }, (_event, filename) => {
+        onEvent(filename);
+      });
+      watcher.on("error", onFailure);
+      return watcher;
+    } catch {
+      return null;
+    }
+  }
+  function closeWatchers(watchers) {
+    for (const watcher of watchers) {
+      try {
+        watcher.close();
+      } catch {
+      }
+    }
+  }
+  function onEntry(repo, change) {
+    if (repo.closed || change === "ignore") return;
+    if (change === "worktree") repo.pendingWorktree = true;
+    else repo.pendingReferences = true;
+    if (repo.flushTimer !== null) clearTimeout(repo.flushTimer);
+    repo.flushTimer = setTimeout(() => {
+      repo.flushTimer = null;
+      if (repo.closed) return;
+      if (repo.pendingWorktree) repo.worktree += 1;
+      if (repo.pendingReferences) repo.references += 1;
+      repo.pendingWorktree = false;
+      repo.pendingReferences = false;
+    }, debounceMs);
+    repo.flushTimer.unref?.();
+  }
+  function stateOf(repo) {
+    return {
+      watching: !repo.closed,
+      worktree: repo.worktree,
+      references: repo.references
+    };
+  }
+  function closeRepository(repo) {
+    if (repo.closed) return;
+    repo.closed = true;
+    if (repo.flushTimer !== null) clearTimeout(repo.flushTimer);
+    if (repo.expiryTimer !== null) clearTimeout(repo.expiryTimer);
+    repo.flushTimer = null;
+    repo.expiryTimer = null;
+    closeWatchers(repo.watchers);
+    repo.watchers = [];
+    for (const panel of repo.panels) subscriptions.delete(panel);
+    repo.panels.clear();
+    if (repositories.get(repo.root) === repo) repositories.delete(repo.root);
+  }
+  function scheduleExpiry(repo) {
+    if (repo.closed) return;
+    if (repo.expiryTimer !== null) clearTimeout(repo.expiryTimer);
+    repo.expiryTimer = null;
+    if (repo.panels.size === 0) {
+      closeRepository(repo);
+      return;
+    }
+    let earliest = Number.POSITIVE_INFINITY;
+    for (const panel of repo.panels) {
+      const subscription = subscriptions.get(panel);
+      if (subscription !== void 0) {
+        earliest = Math.min(earliest, subscription.seenAt + idleMs);
+      }
+    }
+    if (!Number.isFinite(earliest)) {
+      closeRepository(repo);
+      return;
+    }
+    repo.expiryTimer = setTimeout(
+      () => {
+        repo.expiryTimer = null;
+        expire(repo);
+      },
+      Math.max(0, earliest - now())
+    );
+    repo.expiryTimer.unref?.();
+  }
+  function expire(repo) {
+    if (repo.closed) return;
+    const deadline = now() - idleMs;
+    for (const panel of [...repo.panels]) {
+      const subscription = subscriptions.get(panel);
+      if (subscription === void 0 || subscription.seenAt <= deadline) {
+        subscriptions.delete(panel);
+        repo.panels.delete(panel);
+      }
+    }
+    if (repo.panels.size === 0) closeRepository(repo);
+    else scheduleExpiry(repo);
+  }
+  function detach(panel) {
+    const subscription = subscriptions.get(panel);
+    if (subscription === void 0) return;
+    subscriptions.delete(panel);
+    const repo = repositories.get(subscription.root);
+    if (repo === void 0) return;
+    repo.panels.delete(panel);
+    if (repo.panels.size === 0) closeRepository(repo);
+    else scheduleExpiry(repo);
+  }
+  function obtain(root, gitDirectory) {
+    const existing = repositories.get(root);
+    if (existing !== void 0 && !existing.closed) return existing;
+    if (gitDirectory === null) return null;
+    const repo = {
+      root,
+      watchers: [],
+      panels: /* @__PURE__ */ new Set(),
+      worktree: 0,
+      references: 0,
+      pendingWorktree: false,
+      pendingReferences: false,
+      flushTimer: null,
+      expiryTimer: null,
+      closed: false
+    };
+    if (!open2(repo, gitDirectory)) {
+      repo.closed = true;
+      closeWatchers(repo.watchers);
+      return null;
+    }
+    repositories.set(root, repo);
+    return repo;
+  }
+  return {
+    async watch(cwd, panel) {
+      const known = subscriptions.get(panel);
+      if (known !== void 0 && known.cwd === cwd) {
+        const repo2 = repositories.get(known.root);
+        if (repo2 !== void 0 && !repo2.closed) {
+          known.seenAt = now();
+          repo2.panels.add(panel);
+          scheduleExpiry(repo2);
+          return stateOf(repo2);
+        }
+      }
+      detach(panel);
+      const root = await findRepositoryRoot(cwd);
+      if (root === null) return idleState();
+      const gitDirectory = await readGitDirectory(root);
+      const repo = obtain(root, gitDirectory);
+      if (repo === null) return idleState();
+      repo.panels.add(panel);
+      subscriptions.set(panel, { cwd, root, seenAt: now() });
+      scheduleExpiry(repo);
+      return stateOf(repo);
+    },
+    unwatch(panel) {
+      detach(panel);
+    },
+    dispose() {
+      for (const repo of [...repositories.values()]) closeRepository(repo);
+      subscriptions.clear();
+    }
+  };
+}
+
 // src/host-entry.ts
 var inject = ["webServer"];
 function refuseUntrusted(response) {
   sendJson(response, 403, { ok: false, error: { code: "forbidden", message: "Request refused." } });
 }
 function apply(ctx) {
+  const registry = createRepositoryWatchRegistry();
+  const disposeWatch = ctx.effect(() => () => registry.dispose(), "git-graph: repository watch");
   const disposeHealth = ctx.effect(
     () => ctx.webServer.register({
       kind: "exact",
@@ -999,7 +1274,7 @@ function apply(ctx) {
           return;
         }
         try {
-          const value = await dispatch(ctx, payload);
+          const value = await dispatch(ctx, payload, registry);
           sendJson(response, 200, { ok: true, value });
         } catch (error) {
           const failure = normalizeFailure(error);
@@ -1015,6 +1290,7 @@ function apply(ctx) {
   return () => {
     disposeRpc();
     disposeHealth();
+    disposeWatch();
   };
 }
 export {

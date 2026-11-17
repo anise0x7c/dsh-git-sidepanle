@@ -114,6 +114,18 @@ export async function findRepositoryRoot(cwd: string): Promise<string | null> {
 }
 
 /**
+ * The absolute Git metadata directory of a repository.
+ * @param root - repository root.
+ * @returns absolute git directory, or null when Git cannot report one.
+ */
+export async function readGitDirectory(root: string): Promise<string | null> {
+  const result = await runGit(root, ['rev-parse', '--absolute-git-dir'])
+  if (!result.ok) return null
+  const directory = result.stdout.trim()
+  return directory === '' ? null : directory
+}
+
+/**
  * Resolve one repository-relative path, refusing escapes and option-shaped paths.
  * @param root - repository root.
  * @param input - wire path.
