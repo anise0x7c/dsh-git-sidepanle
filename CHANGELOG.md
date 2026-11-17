@@ -5,6 +5,9 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+- Adapted source, contract tooling and test fixtures to the existing strict
+  TypeScript checks, including unchecked indexed access and exact optional
+  properties, without relaxing compiler settings or changing plugin behavior.
 - File actions use literal Git paths, protect direct previews and untracked
   deletion from linked targets, and recheck untracked classification before
   accessing the filesystem. Valid double-dot-prefixed names remain usable;
