@@ -233,6 +233,16 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     'sidebar.right.pane.tab.title:@local/dsh-git-graph/diff',
   ])
   for (const { options } of records.slots) assert.equal(options.locale, 'gitGraph')
+  const gitBody = records.slots.find(
+    ({ options }) =>
+      options.name === 'sidebar.right.pane.tab' && options.key === '@local/dsh-git-graph/git',
+  )
+  assert.ok(gitBody, 'the Git pane body was not registered')
+  assert.equal(typeof gitBody.options.inject, 'function', 'the Git pane injects its Toast face')
+  assert.equal(typeof gitBody.options.inject?.().notify, 'function')
+  for (const slot of records.slots) {
+    if (slot !== gitBody) assert.equal(slot.options.inject, undefined, 'other seats stay plain')
+  }
 
   assert.equal(records.shortcuts.length, 1)
   const shortcut = records.shortcuts[0]
@@ -275,11 +285,14 @@ test('components render without a browser and expose stable markup entry points'
   const module = bundleModule(registration)
   const fake = createFakeContext()
   module.apply(fake.ctx)
+  // Mirror the host's Slot composition: merge each registration's inject face
+  // into the props the component receives.
   const bySeat = new Map(
-    fake.records.slots.map(({ options, component }) => [
-      `${options.name}:${options.key}`,
-      component,
-    ]),
+    fake.records.slots.map(({ options, component }) => {
+      const face = options.inject?.() ?? {}
+      const injected: TestComponent = (props) => component({ ...props, ...face })
+      return [`${options.name}:${options.key}`, injected]
+    }),
   )
   const gitPanel = slotComponent(bySeat, 'sidebar.right.pane.tab:@local/dsh-git-graph/git')
   const diffPanel = slotComponent(bySeat, 'sidebar.right.pane.tab:@local/dsh-git-graph/diff')

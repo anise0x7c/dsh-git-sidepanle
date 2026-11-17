@@ -1107,7 +1107,7 @@ The panel SHALL present discard confirmations, stage-all-and-commit confirmation
 
 ### Requirement: Adaptive operation-panel content
 
-The floating surface SHALL separate its copy and optional form fields from its action footer. Long text and translated action labels SHALL wrap within the available width. Content exceeding the available panel height SHALL scroll while the actions remain reachable, and reference-operation failures SHALL remain visible with the retained form values.
+The floating surface SHALL separate its copy and optional form fields from its action footer. Long text and translated action labels SHALL wrap within the available width. Content exceeding the available panel height SHALL scroll while the actions remain reachable, and reference-operation failures SHALL remain visible with the retained form values. The surface SHALL dynamically span the Git pane's width with equal 4px left, right and bottom gutters, without a fixed maximum width, overlaying the underlying content rather than resizing it. Its content and footer SHALL retain 8px horizontal insets without reducing vertical content spacing or button hit areas.
 
 #### Scenario: Long text in a narrow sidebar
 
@@ -1123,6 +1123,12 @@ The floating surface SHALL separate its copy and optional form fields from its a
 
 - **WHEN** Git rejects a submitted branch or tag name
 - **THEN** the floating form displays the failure and retains the name and annotation for correction or cancellation
+
+#### Scenario: Full-width floating surface with equal gutters
+
+- **WHEN** an operation prompt opens in a narrow or wide Git pane, or the pane is resized while the prompt is open
+- **THEN** the card fills the pane width except for equal 4px left and right gutters, sits 4px above the pane bottom, and overlays the underlying graph without changing its geometry
+- **THEN** its content and footer retain 8px horizontal insets, with unchanged vertical content spacing and button hit areas
 
 ### Requirement: Safe floating-panel interaction
 
@@ -1142,3 +1148,47 @@ The floating surface SHALL expose a named dialog and associate a non-empty descr
 
 - **WHEN** a reference operation is pending and the user presses Escape or activates a submit or cancel control again
 - **THEN** the original request remains the only operation and the prompt stays visible with its progress feedback
+
+### Requirement: Shared transient feedback
+
+The panel SHALL present its existing transient commit, ignore, reference-operation and menu-guard feedback through DSH's shared Toast when available, using the user's language and the host's placement, replacement and dismissal behavior instead of a private inline notice. Successful operations SHALL use success feedback; stale-target and busy refusals SHALL NOT be styled as successes. Unavailable or failing host notifications SHALL NOT prevent repository operations, message clearing, confirmation handling or refreshes. Git operation failures SHALL retain their existing inline or open-form feedback rather than reporting success.
+
+#### Scenario: Commit staged changes
+
+- **WHEN** a commit of staged changes succeeds
+- **THEN** one shared success Toast confirms the commit with its returned short identifier, the message clears and the changes and graph refresh without inserting a notice into the panel layout
+
+#### Scenario: Stage all and commit
+
+- **WHEN** the user confirms staging all changes and the commit succeeds
+- **THEN** one shared success Toast confirms the commit and the normal confirmation, message clearing and refresh behavior is preserved
+
+#### Scenario: Ignore tracked and untracked files
+
+- **WHEN** adding a working-change path to the repository's ignore rules succeeds
+- **THEN** one shared success Toast confirms the action, still explaining when the file remains tracked, and the change list refreshes without an inline notice
+
+#### Scenario: Reference operation succeeds
+
+- **WHEN** detached checkout, branch creation or deletion, or tag creation succeeds
+- **THEN** its existing localized confirmation appears once as a shared success Toast, the existing refresh and form-closing behavior is preserved and no private notice is inserted
+
+#### Scenario: Stale menu target
+
+- **WHEN** a selected menu action refers to a change that no longer exists
+- **THEN** shared non-success feedback explains that the target is stale and no repository write runs
+
+#### Scenario: Busy menu command
+
+- **WHEN** a mutating menu command reaches a panel already running a repository operation
+- **THEN** shared non-success feedback explains that the panel is busy and no second operation runs
+
+#### Scenario: Failed repository operation
+
+- **WHEN** a commit or ignore operation fails
+- **THEN** no success Toast is emitted, the existing failure surface reports the error and a failed commit keeps its message
+
+#### Scenario: Host notifications unavailable
+
+- **WHEN** the host notification facility is absent or cannot deliver feedback and the user completes an otherwise valid inline commit
+- **THEN** the commit still clears its message and refreshes changes and history without recreating a private notice or showing a notification failure as a Git error

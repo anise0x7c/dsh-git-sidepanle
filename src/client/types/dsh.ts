@@ -46,6 +46,8 @@ export interface SlotRegisterOptions {
   readonly key: string
   /** Locale namespace the component reads. */
   readonly locale: string
+  /** Extra props the Slot merges into the registered component's own props. */
+  readonly inject?: () => Readonly<Record<string, unknown>>
 }
 
 /** Slot service members used by the plugin. */

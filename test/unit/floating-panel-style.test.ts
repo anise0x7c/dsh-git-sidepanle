@@ -59,7 +59,8 @@ test('floating CSS anchors an isolated nonmodal layer without changing split geo
     'the nonmodal layer does not block list controls',
   )
   assert.match(card, /\bpointer-events:\s*auto\s*;/, 'the card itself remains interactive')
-  assert.match(card, /\bmax-width:\s*[^;]+;/)
+  assert.match(card, /\bwidth:\s*100%\s*;/)
+  assert.doesNotMatch(card, /\bmax-width\s*:/, 'wide panes must not retain a centered width cap')
   assert.match(card, /\bmax-height:\s*(?:100%|calc\([^;]+\))\s*;/)
   assert.match(card, /\bbox-sizing:\s*border-box\s*;/)
   assert.doesNotMatch(layer + card, /\bposition:\s*fixed\s*;/)
@@ -68,6 +69,19 @@ test('floating CSS anchors an isolated nonmodal layer without changing split geo
       assert.match(selector, /^\.dshgg-root\s/, `floating styles stay plugin-scoped: ${selector}`)
     }
   }
+})
+
+test('floating CSS fills the pane with equal gutters while preserving content and button spacing', () => {
+  const layer = declarations('.dshgg-root .dshgg-floating-panel-layer')
+  const body = declarations('.dshgg-root .dshgg-floating-panel-body')
+  const footer = declarations('.dshgg-root .dshgg-floating-panel-footer')
+  const actions = declarations('.dshgg-root .dshgg-floating-panel-footer .dshgg-btn')
+  assert.match(layer, /\binset:\s*4px\s*;/, 'left, right and bottom gutters stay equal')
+  assert.match(layer, /\bjustify-content:\s*flex-end\s*;/)
+  assert.match(body, /\bpadding:\s*12px\s+8px\s*;/)
+  assert.match(footer, /\bpadding:\s*10px\s+8px\s*;/)
+  assert.match(actions, /\bpadding:\s*6px\s+12px\s*;/)
+  assert.match(actions, /\bmin-height:\s*28px\s*;/)
 })
 
 test('floating CSS has native frosted enhancement and a solid theme fallback', () => {

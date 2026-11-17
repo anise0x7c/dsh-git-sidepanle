@@ -12,7 +12,12 @@ import { errorText, isStaged, isUnstaged, statusLetter } from '../git/format.ts'
 import { sortChangeEntries } from '../git/list.ts'
 import { AlertIcon, GitBranchIcon } from '../icons.ts'
 import type { ChangeEntry, ChangeRow, CommitFileRow } from '../types/domain.ts'
-import type { LocaleBinder, TabInfoHook, UseContextMenu } from '../types/dsh.ts'
+import type {
+  ContextMenusService,
+  LocaleBinder,
+  TabInfoHook,
+  UseContextMenu,
+} from '../types/dsh.ts'
 import type { ConfirmState } from './confirm.ts'
 import { confirmActionLabel, confirmDescription, confirmTitle } from './confirm.ts'
 import { FloatingPanel } from './FloatingPanel.ts'
@@ -48,12 +53,14 @@ export interface GitPanelProps {
   readonly useTabInfo: TabInfoHook
   /** Host context-menu trigger hook from the slot's root props. */
   readonly useContextMenu?: UseContextMenu
+  /** Host Toast callback injected by this registration's Slot face. */
+  readonly notify: ContextMenusService['notify']
 }
 
 /**
  * Render the source-control tab body for one Session.
- * @param props - slot props; `sessionId`, `t` and `useTabInfo` are required,
- *   `useContextMenu` is the optional host trigger hook.
+ * @param props - slot props; `sessionId`, `t`, `useTabInfo` and `notify` are
+ *   required, `useContextMenu` is the optional host trigger hook.
  * @returns the panel element.
  */
 export function GitPanel(props: GitPanelProps): React.ReactElement {
@@ -158,13 +165,12 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     stagedFiles,
     loadStatus,
     loadGraph: reloadHistory,
+    notify: props.notify,
   })
   const {
     busy,
     message,
     setMessage,
-    notice,
-    setNotice,
     actionFailure,
     setActionFailure,
     confirm,
@@ -325,7 +331,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     createTag: (oid) => requestReference(() => commitMenuActions.createTag(oid)),
     deleteBranch: (branch) => requestReference(() => commitMenuActions.deleteBranch(branch)),
     setConfirm: requestConfirmation,
-    setNotice,
+    notify: props.notify,
     openDiff,
   }
 
@@ -519,7 +525,6 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
         })
       : null,
     commitMenuActions.dialog === null && confirm === null ? actionFeedback : null,
-    notice !== null ? h('div', { className: 'dshgg-notice', role: 'status' }, notice) : null,
     body,
     commitMenuActions.dialog === null
       ? null

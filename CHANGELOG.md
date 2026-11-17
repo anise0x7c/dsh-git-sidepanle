@@ -5,6 +5,13 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+- Existing commit, ignore and reference-operation success notices now use DSH's
+  shared Toast instead of a private green strip. Stale-target and busy menu
+  feedback uses the same host notification surface without success styling.
+  The host owns placement and
+  dismissal; notices no longer shift the change list or graph. Git errors and
+  confirmations are unchanged, and missing or failing host notifications do not
+  interrupt repository operations or refreshes.
 - Discard, stage-all-and-commit and reference-operation prompts now share a
   rounded native-themed frosted floating panel instead of shrinking the change
   list and graph. Long text and action labels wrap, taller forms scroll above a

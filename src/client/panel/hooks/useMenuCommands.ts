@@ -1,7 +1,7 @@
 /**
  * Menu commands emitted by the host overlay: the shared command-bus
- * subscription, the per-panel ownership guards, the stale/busy notices and the
- * dispatch into the same change actions the inline controls use.
+ * subscription, the per-panel ownership guards, the stale/busy host feedback
+ * and the dispatch into the same change actions the inline controls use.
  */
 
 import type { MutableRefObject } from 'react'
@@ -10,7 +10,7 @@ import { isStaged, isUnstaged } from '../../git/format.ts'
 import type { PanelCommand } from '../../menu/bus.ts'
 import { panelCommands } from '../../menu/bus.ts'
 import type { ChangeEntry, RepositoryStatus } from '../../types/domain.ts'
-import type { LocaleBinder } from '../../types/dsh.ts'
+import type { ContextMenusService, LocaleBinder } from '../../types/dsh.ts'
 import type { ConfirmState } from '../confirm.ts'
 
 /** Command options the panel refreshes at the end of every render. */
@@ -53,8 +53,8 @@ export interface MenuCommandOptions {
   readonly deleteBranch: (branch: string) => void
   /** Open the confirmation dialog. */
   readonly setConfirm: (confirm: ConfirmState | null) => void
-  /** Show a transient notice. */
-  readonly setNotice: (notice: string | null) => void
+  /** Report a stale or busy command through the host's shared feedback. */
+  readonly notify: ContextMenusService['notify']
   /** Open one file's diff. */
   readonly openDiff: (entry: ChangeEntry, mode: 'staged' | 'changes') => void
 }
@@ -100,7 +100,7 @@ function dispatch(options: MenuCommandOptions, command: PanelCommand): void {
     createTag,
     deleteBranch,
     setConfirm,
-    setNotice,
+    notify,
     openDiff,
   } = options
   if (command === null || typeof command !== 'object') return
@@ -111,13 +111,13 @@ function dispatch(options: MenuCommandOptions, command: PanelCommand): void {
     ? command.paths.filter((path): path is string => typeof path === 'string')
     : []
   const matches = (entry: ChangeEntry): boolean => paths.includes(entry.path)
-  const reportStale = (): void => setNotice(t('menu.stale'))
+  const reportStale = (): void => notify(t('menu.stale'), false)
   if (command.type === 'refresh') {
     refreshAll()
     return
   }
   if (busyRef.current !== null) {
-    setNotice(t('menu.busy'))
+    notify(t('menu.busy'), false)
     return
   }
   if (command.type === 'open') {

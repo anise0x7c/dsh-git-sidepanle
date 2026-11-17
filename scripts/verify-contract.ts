@@ -32,6 +32,14 @@ interface ContextMenus {
 interface ReactRuntime {
   Fragment: unknown
 }
+interface ToastNotice {
+  id: number
+  text: string
+  success: boolean
+}
+interface PaneInjected {
+  notify?: (text: string, success?: boolean) => void
+}
 
 /** Print a concise diagnostic and preserve a failing exit status. */
 function fail(message: string): never {
@@ -108,6 +116,7 @@ function inertReact() {
 
 /** Only these browser shell capabilities are touched while registering contributions. */
 function shellStubs() {
+  const notices: ToastNotice[] = []
   const store = {
     createSnapshotStore(initial: unknown) {
       let value = initial
@@ -134,7 +143,14 @@ function shellStubs() {
             actions: Object.fromEntries(
               Object.entries(actions).map(([name, action]) => [
                 name,
-                (...args: unknown[]) => action(state, ...args),
+                (...args: unknown[]) => {
+                  const result = action(state, ...args)
+                  if (name === 'notify' && args[0] !== null) {
+                    // The installed registry publishes this payload to its real Toast store.
+                    notices.push({ ...(args[0] as ToastNotice) })
+                  }
+                  return result
+                },
               ]),
             ),
           }
@@ -148,7 +164,7 @@ function shellStubs() {
     },
     { get: (target, key: string) => target[key] ?? (() => null) },
   )
-  return { store, primitives }
+  return { store, primitives, notices }
 }
 
 /** Resolve the actual dictionaries registered by the plugin. */
@@ -209,16 +225,25 @@ function createRegistry(
 
 /** Cover the services used by our plugin's apply without rendering the panel. */
 function createPluginContext(contextMenus: ContextMenus, locale: ReturnType<typeof createLocale>) {
+  const slotInjections = new Map<string, () => PaneInjected>()
   const base = {
     effect: (callback: () => unknown) => callback(),
     locale,
     contextMenus,
     sidebarRight: {},
     sidebarRightTabs: { register: inert },
-    slots: { inject: (_name: string, callback: () => void) => callback(), register: inert },
+    slots: {
+      inject: (_name: string, callback: () => void) => callback(),
+      register: (options: { name: string; key: string; inject?: () => PaneInjected }) => {
+        if (options.inject !== undefined)
+          slotInjections.set(`${options.name}:${options.key}`, options.inject)
+        return inert
+      },
+    },
   }
   return {
     ...base,
+    slotInjections,
     inject: (required: string[], callback: (context: object) => unknown) =>
       callback(required.includes('shortcuts') ? { ...base, shortcuts: { register: inert } } : base),
   }
@@ -320,10 +345,11 @@ async function main(): Promise<void> {
     '@deepseek-ai/dsh-client-ui-primitives': stubs.primitives,
   }
   const contextMenus = createRegistry(root, dependencies, locale)
+  const pluginContext = createPluginContext(contextMenus, locale)
   loadArtifact(PLUGIN_CLIENT, (specifier) => {
     if (specifier === 'react') return react
     throw new Error(`undeclared plugin external: ${specifier}`)
-  }).apply(createPluginContext(contextMenus, locale))
+  }).apply(pluginContext)
   console.log(`verify-contract: ${REGISTRY_PACKAGE} — ${join(root, REGISTRY_CLIENT)}`)
   console.log(`  React: ${installed ? 'installed' : 'inert stand-in (Web shell seeds React)'}`)
   let total = 0
@@ -357,9 +383,35 @@ async function main(): Promise<void> {
       resolution.dispose()
     }
   }
+  const face = pluginContext.slotInjections.get(
+    'sidebar.right.pane.tab:@local/dsh-git-graph/git',
+  )?.()
+  if (typeof face?.notify !== 'function') {
+    failures.push('Git pane has no injected host notification callback')
+  } else {
+    face.notify('Commit completed', true)
+    face.notify('Commit completed', true)
+    face.notify('Repository is busy')
+    const [first, repeated, guard] = stubs.notices
+    if (
+      stubs.notices.length !== 3 ||
+      first?.text !== 'Commit completed' ||
+      first.success !== true ||
+      repeated?.text !== first.text ||
+      repeated.success !== true ||
+      repeated.id <= first.id ||
+      guard?.text !== 'Repository is busy' ||
+      guard.success !== false ||
+      guard.id <= repeated.id
+    ) {
+      failures.push(
+        'Git pane feedback did not reach the real host Toast store with fresh ids and correct success styling',
+      )
+    }
+  }
   if (failures.length) fail(failures.join('\n'))
   console.log(
-    `verify-contract: OK — 5 targets, ${total} commands resolved through the real registry`,
+    `verify-contract: OK — 5 targets, ${total} commands and shared Toast feedback verified through the real registry`,
   )
 }
 
