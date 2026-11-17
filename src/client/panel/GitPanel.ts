@@ -8,16 +8,17 @@
 import type React from 'react'
 import { createElement, useCallback, useMemo, useRef, useState } from 'react'
 import { DIFF_KIND } from '../constants.ts'
-import { errorText, isStaged, isUnstaged, statusLetter } from '../git/format.ts'
+import { errorText } from '../git/format.ts'
 import { sortChangeEntries } from '../git/list.ts'
 import { AlertIcon, GitBranchIcon } from '../icons.ts'
-import type { ChangeEntry, ChangeRow, CommitFileRow } from '../types/domain.ts'
+import type { ChangeEntry, CommitFileRow } from '../types/domain.ts'
 import type {
   ContextMenusService,
   LocaleBinder,
   TabInfoHook,
   UseContextMenu,
 } from '../types/dsh.ts'
+import { changeRowLetter, groupChangeEntries } from './change-groups.ts'
 import type { ConfirmState } from './confirm.ts'
 import { confirmActionLabel, confirmDescription, confirmTitle } from './confirm.ts'
 import { FloatingPanel } from './FloatingPanel.ts'
@@ -103,34 +104,10 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd
   const repoRoot = repo?.root ?? sessionDirectory
   const files = status?.files ?? []
-  const mergeFiles = useMemo(() => files.filter((entry) => entry.conflict === true), [files])
-  const stagedFiles = useMemo(() => files.filter((entry) => isStaged(entry)), [files])
-  const changedFiles = useMemo(() => files.filter((entry) => isUnstaged(entry)), [files])
-  // Each group is one flat list in path order. The display letter depends on
-  // the group (an unstaged row takes its worktree half, a conflicted row is
-  // always `!`), so the rows the views receive are copies with that letter.
-  const mergeRows = useMemo<ChangeRow[]>(
-    () => sortChangeEntries(mergeFiles).map((entry) => ({ ...entry, letter: '!' })),
-    [mergeFiles],
-  )
-  const stagedRows = useMemo<ChangeRow[]>(
-    () =>
-      sortChangeEntries(stagedFiles).map((entry) => ({ ...entry, letter: statusLetter(entry.x) })),
-    [stagedFiles],
-  )
-  const changedRows = useMemo<ChangeRow[]>(
-    () =>
-      sortChangeEntries(changedFiles).map((entry) => ({
-        ...entry,
-        letter: entry.untracked === true ? 'U' : statusLetter(entry.y),
-      })),
-    [changedFiles],
-  )
+  const groups = useMemo(() => groupChangeEntries(files), [files])
+  const { mergeRows, stagedRows, changedRows } = groups
   const clean =
-    repo !== null &&
-    mergeFiles.length === 0 &&
-    stagedFiles.length === 0 &&
-    changedFiles.length === 0
+    repo !== null && mergeRows.length === 0 && stagedRows.length === 0 && changedRows.length === 0
 
   // Watched repository updates are scoped: a working-tree or index change only
   // needs the status, while a reference move re-reads the fixed-color
@@ -162,7 +139,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     t,
     refs,
     files,
-    stagedFiles,
+    stagedFiles: stagedRows,
     loadStatus,
     loadGraph: reloadHistory,
     notify: props.notify,
@@ -240,12 +217,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           path: entry.path,
           staged: mode === 'staged',
           untracked: entry.untracked === true,
-          status:
-            mode === 'staged'
-              ? statusLetter(entry.x)
-              : entry.untracked === true
-                ? 'U'
-                : statusLetter(entry.y),
+          status: changeRowLetter(entry, mode),
           origPath: entry.origPath,
           cwd: repoRoot ?? undefined,
         },
@@ -302,7 +274,12 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   const behind = repo?.behind ?? 0
   const canAct = repo !== null && busy === null
 
-  const targets = createMenuTargets({ sessionId: props.sessionId, panelId, busy, cwd: repoRoot })
+  const targets = createMenuTargets({
+    sessionId: props.sessionId,
+    panelId,
+    busy,
+    ...(repoRoot === undefined ? {} : { cwd: repoRoot }),
+  })
   const graphMenu = {
     trigger: menuTrigger,
     sectionTarget: targets.sectionTarget,
@@ -318,9 +295,9 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     busyRef: refs.busy,
     t,
     files,
-    stagedFiles,
-    changedFiles,
-    mergeFiles,
+    stagedFiles: stagedRows,
+    changedFiles: changedRows,
+    mergeFiles: mergeRows,
     refreshAll,
     stage,
     unstage,
@@ -463,7 +440,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           }),
         })
 
-  const commitHint = stagedFiles.length > 0 ? t('commit.hint') : t('commit.hintNone')
+  const commitHint = stagedRows.length > 0 ? t('commit.hint') : t('commit.hintNone')
   const placeholder =
     repo === null
       ? t('commit.placeholder', { branch: '' })

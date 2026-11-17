@@ -102,18 +102,17 @@ function isTrustedRequest(request) {
 
 // src/host/rpc.ts
 import { existsSync } from "node:fs";
-import { lstat as lstat2, unlink } from "node:fs/promises";
 
 // src/host/git/exec.ts
 import { execFile } from "node:child_process";
-import { isAbsolute, relative, resolve, sep } from "node:path";
 var DEFAULT_TIMEOUT_MS = 2e4;
 var MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
+var LITERAL_PATHSPECS = "--literal-pathspecs";
 function runGit(cwd, args, options = {}) {
   return new Promise((resolveRun) => {
     execFile(
       "git",
-      [...args],
+      [LITERAL_PATHSPECS, ...args],
       {
         cwd,
         timeout: options.timeout ?? DEFAULT_TIMEOUT_MS,
@@ -163,50 +162,6 @@ async function readGitDirectory(root) {
   const directory = result.stdout.trim();
   return directory === "" ? null : directory;
 }
-function resolveRepositoryPath(root, input) {
-  if (typeof input !== "string" || input === "" || input.includes("\0")) {
-    throw new GitGraphError("bad-request", "A file path is required.", 400);
-  }
-  if (isAbsolute(input))
-    throw new GitGraphError("bad-request", "A repository-relative path is required.", 400);
-  const absolute = resolve(root, input);
-  const rel = relative(root, absolute);
-  if (rel === "" || rel.startsWith("..") || rel.includes("\0")) {
-    throw new GitGraphError("path-outside-repository", `"${input}" is outside the repository.`, 400);
-  }
-  if (rel.split(sep).some((part) => part === "..")) {
-    throw new GitGraphError("path-outside-repository", `"${input}" is outside the repository.`, 400);
-  }
-  return absolute;
-}
-function resolveRepositoryPaths(root, input) {
-  if (!Array.isArray(input) || input.length === 0) {
-    throw new GitGraphError("bad-request", "At least one path is required.", 400);
-  }
-  if (input.length > 2e3)
-    throw new GitGraphError("bad-request", "Too many paths in one request.", 400);
-  const items = input;
-  const paths = [];
-  for (const item of items) {
-    resolveRepositoryPath(root, item);
-    if (typeof item !== "string" || item.startsWith("-")) {
-      throw new GitGraphError("bad-request", `Invalid path "${String(item)}".`, 400);
-    }
-    paths.push(item);
-  }
-  return paths;
-}
-function changeEntry(kind, x, y, path, origPath) {
-  return {
-    kind,
-    x,
-    y,
-    path,
-    ...origPath === void 0 ? {} : { origPath },
-    conflict: kind === "unmerged",
-    untracked: kind === "untracked"
-  };
-}
 
 // src/host/git/branches.ts
 async function readBranches(root) {
@@ -231,10 +186,292 @@ async function branchExists(root, name) {
   return result.ok;
 }
 
-// src/host/git/diff.ts
-import { open, stat } from "node:fs/promises";
-var MAX_DIFF_BYTES = 2 * 1024 * 1024;
+// src/host/git/files.ts
+import { constants } from "node:fs";
+import { lstat, open, unlink } from "node:fs/promises";
+import { join, relative as relative2, sep as sep2 } from "node:path";
+
+// src/host/git/paths.ts
+import { isAbsolute, relative, resolve, sep } from "node:path";
+var NATIVE_PATH = { isAbsolute, relative, sep };
+function isOutsideRoot(root, absolute, flavor = NATIVE_PATH) {
+  const rel = flavor.relative(root, absolute);
+  if (rel === "" || flavor.isAbsolute(rel) || rel.includes("\0")) return true;
+  return rel.split(flavor.sep).includes("..");
+}
+function resolveRepositoryPath(root, input) {
+  if (typeof input !== "string" || input === "" || input.includes("\0")) {
+    throw new GitGraphError("bad-request", "A file path is required.", 400);
+  }
+  if (isAbsolute(input))
+    throw new GitGraphError("bad-request", "A repository-relative path is required.", 400);
+  const absolute = resolve(root, input);
+  if (isOutsideRoot(root, absolute)) {
+    throw new GitGraphError("path-outside-repository", `"${input}" is outside the repository.`, 400);
+  }
+  return absolute;
+}
+function resolveRepositoryPaths(root, input) {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new GitGraphError("bad-request", "At least one path is required.", 400);
+  }
+  if (input.length > 2e3)
+    throw new GitGraphError("bad-request", "Too many paths in one request.", 400);
+  const items = input;
+  const paths = [];
+  for (const item of items) {
+    resolveRepositoryPath(root, item);
+    if (typeof item !== "string" || item.startsWith("-")) {
+      throw new GitGraphError("bad-request", `Invalid path "${String(item)}".`, 400);
+    }
+    paths.push(item);
+  }
+  return paths;
+}
+
+// src/host/git/files.ts
 var MAX_UNTRACKED_BYTES = 512 * 1024;
+var DIRECT_OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+function isMissing(error) {
+  const code = error.code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+async function hasOrdinaryParents(root, absolute, label) {
+  const parts = relative2(root, absolute).split(sep2);
+  let current = root;
+  for (const part of parts.slice(0, -1)) {
+    current = join(current, part);
+    let info;
+    try {
+      info = await lstat(current);
+    } catch (error) {
+      if (isMissing(error)) return false;
+      throw error;
+    }
+    if (info.isSymbolicLink()) {
+      throw new GitGraphError(
+        "path-outside-repository",
+        `"${label}" passes through a symbolic link.`,
+        400
+      );
+    }
+    if (!info.isDirectory()) return false;
+  }
+  return true;
+}
+async function directTarget(root, path) {
+  const absolute = resolveRepositoryPath(root, path);
+  if (!await hasOrdinaryParents(root, absolute, path)) return void 0;
+  try {
+    return { absolute, info: await lstat(absolute) };
+  } catch (error) {
+    if (isMissing(error)) return void 0;
+    throw error;
+  }
+}
+function unreadable(path) {
+  return new GitGraphError("not-found", `"${path}" is not a readable file.`, 404);
+}
+function notAFile(path) {
+  return new GitGraphError("not-a-file", `"${path}" is not a file.`, 409);
+}
+function notUntracked(path) {
+  return new GitGraphError("not-untracked", `"${path}" is not an untracked, non-ignored file.`, 409);
+}
+async function isUntrackedPath(root, path) {
+  const cached = await runGit(root, ["ls-files", "--error-unmatch", "--", path]);
+  if (cached.ok) return false;
+  if (cached.code === "ENOENT")
+    throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
+  if (cached.code !== 1) {
+    throw new GitGraphError(
+      "git-command-failed",
+      cached.stderr.trim() || "git ls-files failed",
+      409
+    );
+  }
+  const others = await runGit(root, [
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+    "-z",
+    "--",
+    path
+  ]);
+  if (!others.ok) {
+    if (others.code === "ENOENT")
+      throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
+    throw new GitGraphError(
+      "git-command-failed",
+      others.stderr.trim() || "git ls-files --others failed",
+      409
+    );
+  }
+  return others.stdout.split("\0").includes(path);
+}
+async function readUntrackedPreview(root, path) {
+  const target = await directTarget(root, path);
+  if (target === void 0 || !target.info.isFile()) throw unreadable(path);
+  if (!await isUntrackedPath(root, path)) throw notUntracked(path);
+  let descriptor;
+  try {
+    descriptor = await open(target.absolute, DIRECT_OPEN_FLAGS);
+    const info = await descriptor.stat();
+    if (!info.isFile()) throw unreadable(path);
+    const wanted = Math.min(info.size, MAX_UNTRACKED_BYTES);
+    const buffer = Buffer.alloc(wanted);
+    let bytesRead = 0;
+    while (bytesRead < wanted) {
+      const read = await descriptor.read(buffer, bytesRead, wanted - bytesRead, bytesRead);
+      if (read.bytesRead === 0) break;
+      bytesRead += read.bytesRead;
+    }
+    return { contents: buffer.subarray(0, bytesRead), truncated: info.size > bytesRead };
+  } catch (error) {
+    if (error instanceof GitGraphError) throw error;
+    throw unreadable(path);
+  } finally {
+    await descriptor?.close();
+  }
+}
+async function removeUntrackedPath(root, path) {
+  const target = await directTarget(root, path);
+  if (target === void 0) return false;
+  if (!target.info.isFile() && !target.info.isSymbolicLink()) throw notAFile(path);
+  if (!await isUntrackedPath(root, path)) throw notUntracked(path);
+  await unlink(target.absolute);
+  return true;
+}
+
+// src/host/git/ignore.ts
+import { constants as constants2 } from "node:fs";
+import { lstat as lstat2, open as open2 } from "node:fs/promises";
+import { join as join2 } from "node:path";
+function notAFile2() {
+  return new GitGraphError(
+    "ignore-not-a-file",
+    "The .gitignore path must be a regular file, not a symbolic link or another file type.",
+    409
+  );
+}
+function gitignoreRule(path) {
+  if (/[\r\n]/.test(path)) {
+    throw new GitGraphError(
+      "bad-request",
+      "Paths containing newlines cannot be added to .gitignore.",
+      400
+    );
+  }
+  return `/${path.replace(/[\\#!*?[\] ]/g, (character) => `\\${character}`)}`;
+}
+async function appendGitignoreRule(root, path) {
+  const rule = gitignoreRule(path);
+  const filename = join2(root, ".gitignore");
+  try {
+    if (!(await lstat2(filename)).isFile()) throw notAFile2();
+  } catch (error) {
+    if (error instanceof GitGraphError) throw error;
+    if (error.code !== "ENOENT") throw error;
+  }
+  let descriptor;
+  try {
+    descriptor = await open2(
+      filename,
+      constants2.O_RDWR | constants2.O_APPEND | constants2.O_CREAT | constants2.O_NOFOLLOW
+    );
+    if (!(await descriptor.stat()).isFile()) throw notAFile2();
+    const existing = await descriptor.readFile("utf8");
+    if (existing.split(/\r\n|[\r\n]/).includes(rule)) return false;
+    const newline = existing.includes("\r\n") ? "\r\n" : "\n";
+    const separator = existing !== "" && !/[\r\n]$/.test(existing) ? newline : "";
+    await descriptor.writeFile(`${separator}${rule}${newline}`, { encoding: "utf8" });
+    return true;
+  } catch (error) {
+    if (error.code === "ELOOP") throw notAFile2();
+    throw error;
+  } finally {
+    await descriptor?.close();
+  }
+}
+
+// src/host/git/changes.ts
+async function stagePaths(root, input) {
+  const paths = resolveRepositoryPaths(root, input);
+  await gitOrThrow(root, ["add", "-A", "--", ...paths]);
+}
+async function unstagePaths(root, input) {
+  const paths = resolveRepositoryPaths(root, input);
+  const restored = await runGit(root, ["restore", "--staged", "--", ...paths]);
+  if (!restored.ok) {
+    const removed = await runGit(root, [
+      "rm",
+      "--cached",
+      "-r",
+      "--quiet",
+      "--ignore-unmatch",
+      "--",
+      ...paths
+    ]);
+    if (!removed.ok) {
+      throw new GitGraphError(
+        "git-command-failed",
+        removed.stderr.trim() || restored.stderr.trim() || "git restore failed",
+        409
+      );
+    }
+  }
+}
+async function discardTracked(root, input) {
+  const paths = resolveRepositoryPaths(root, [input]);
+  const restored = await runGit(root, [
+    "restore",
+    "--source=HEAD",
+    "--staged",
+    "--worktree",
+    "--",
+    ...paths
+  ]);
+  if (!restored.ok) {
+    if (/could not resolve HEAD|unknown revision|bad revision/i.test(restored.stderr)) {
+      throw new GitGraphError(
+        "discard-unborn",
+        "Changes cannot be discarded before the first commit.",
+        409
+      );
+    }
+    throw new GitGraphError(
+      "git-command-failed",
+      restored.stderr.trim() || "git restore failed",
+      409
+    );
+  }
+}
+async function discardPath(root, rawPath, untracked) {
+  const [path] = resolveRepositoryPaths(root, [rawPath]);
+  if (path === void 0) {
+    throw new GitGraphError("bad-request", "A file path is required.", 400);
+  }
+  if (untracked) {
+    await removeUntrackedPath(root, path);
+    return;
+  }
+  await discardTracked(root, path);
+}
+async function ignorePath(root, rawPath) {
+  resolveRepositoryPath(root, rawPath);
+  const path = rawPath;
+  if (path.includes("\n") || path.includes("\r")) {
+    throw new GitGraphError(
+      "bad-request",
+      "The file path cannot be represented in .gitignore.",
+      400
+    );
+  }
+  await appendGitignoreRule(root, path);
+}
+
+// src/host/git/diff.ts
+var MAX_DIFF_BYTES = 2 * 1024 * 1024;
 var FULL_OID = /^[0-9a-f]{40}$/;
 async function runDiff(root, args) {
   const result = await runGit(root, args);
@@ -248,25 +485,10 @@ async function runDiff(root, args) {
   return { truncated, ...parseUnifiedDiff(text) };
 }
 async function readDiff(root, path, staged, untracked) {
-  const absolute = resolveRepositoryPath(root, path);
+  resolveRepositoryPath(root, path);
   if (untracked) {
-    const info = await stat(absolute).catch(() => void 0);
-    if (info === void 0 || !info.isFile()) {
-      throw new GitGraphError("not-found", `"${path}" is not a readable file.`, 404);
-    }
-    const wanted = Math.min(info.size, MAX_UNTRACKED_BYTES);
-    const buffer = Buffer.alloc(wanted);
-    const handle = await open(absolute, "r");
-    let bytesRead = 0;
-    try {
-      const read = await handle.read(buffer, 0, wanted, 0);
-      bytesRead = read.bytesRead;
-    } finally {
-      await handle.close();
-    }
-    const slice = buffer.subarray(0, bytesRead);
-    const truncated = info.size > bytesRead;
-    if (slice.includes(0)) {
+    const { contents, truncated } = await readUntrackedPreview(root, path);
+    if (contents.includes(0)) {
       return {
         path,
         staged: false,
@@ -278,7 +500,7 @@ async function readDiff(root, path, staged, untracked) {
         hunks: []
       };
     }
-    const text = slice.toString("utf8");
+    const text = contents.toString("utf8");
     const lines = text.split("\n");
     if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
     return {
@@ -574,55 +796,68 @@ async function readCommitDetails(root, oid) {
   };
 }
 
-// src/host/git/ignore.ts
-import { constants } from "node:fs";
-import { lstat, open as open2 } from "node:fs/promises";
-import { join } from "node:path";
-function notAFile() {
-  return new GitGraphError(
-    "ignore-not-a-file",
-    "The .gitignore path must be a regular file, not a symbolic link or another file type.",
-    409
-  );
-}
-function gitignoreRule(path) {
-  if (/[\r\n]/.test(path)) {
+// src/host/git/mutations.ts
+var COMMIT_TIMEOUT_MS = 12e4;
+async function commitChanges(root, message, stageAll) {
+  if (stageAll) await gitOrThrow(root, ["add", "-A"]);
+  const staged = await runGit(root, ["diff", "--cached", "--quiet"]);
+  if (staged.ok)
+    throw new GitGraphError("nothing-staged", "There are no staged changes to commit.", 409);
+  if (staged.code !== 1) {
+    if (staged.code === "ENOENT")
+      throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
     throw new GitGraphError(
-      "bad-request",
-      "Paths containing newlines cannot be added to .gitignore.",
-      400
+      "git-command-failed",
+      staged.stderr.trim() || "git diff --cached failed",
+      409
     );
   }
-  return `/${path.replace(/[\\#!*?[\] ]/g, (character) => `\\${character}`)}`;
+  const committed = await runGit(root, ["commit", "-m", message], {
+    timeout: COMMIT_TIMEOUT_MS
+  });
+  if (!committed.ok) {
+    if (committed.code === "ENOENT")
+      throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
+    const detail = `${committed.stdout}
+${committed.stderr}`.trim() || "git commit failed";
+    if (/nothing to commit|no changes added to commit/i.test(detail)) {
+      throw new GitGraphError("nothing-staged", "There are no staged changes to commit.", 409);
+    }
+    throw new GitGraphError("git-command-failed", detail, 409);
+  }
+  const head = await runGit(root, ["rev-parse", "--short", "HEAD"]);
+  return head.ok ? head.stdout.trim() : null;
 }
-async function appendGitignoreRule(root, path) {
-  const rule = gitignoreRule(path);
-  const filename = join(root, ".gitignore");
-  try {
-    if (!(await lstat(filename)).isFile()) throw notAFile();
-  } catch (error) {
-    if (error instanceof GitGraphError) throw error;
-    if (error.code !== "ENOENT") throw error;
+async function checkoutBranch(root, branch) {
+  if (!await branchExists(root, branch)) {
+    throw new GitGraphError("unknown-branch", `No local branch named "${branch}" exists.`, 404);
   }
-  let descriptor;
-  try {
-    descriptor = await open2(
-      filename,
-      constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW
+  const switched = await runGit(root, ["switch", branch]);
+  if (!switched.ok) {
+    if (switched.code === "ENOENT")
+      throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
+    throw new GitGraphError(
+      "git-command-failed",
+      `${switched.stdout}
+${switched.stderr}`.trim() || "git switch failed",
+      409
     );
-    if (!(await descriptor.stat()).isFile()) throw notAFile();
-    const existing = await descriptor.readFile("utf8");
-    if (existing.split(/\r\n|[\r\n]/).includes(rule)) return false;
-    const newline = existing.includes("\r\n") ? "\r\n" : "\n";
-    const separator = existing !== "" && !/[\r\n]$/.test(existing) ? newline : "";
-    await descriptor.writeFile(`${separator}${rule}${newline}`, { encoding: "utf8" });
-    return true;
-  } catch (error) {
-    if (error.code === "ELOOP") throw notAFile();
-    throw error;
-  } finally {
-    await descriptor?.close();
   }
+}
+async function checkoutDetached(root, oid) {
+  await gitOrThrow(root, ["switch", "--detach", "--", oid]);
+}
+async function createBranch(root, oid, name) {
+  await gitOrThrow(root, ["switch", "-c", name, "--", oid]);
+}
+async function createTag(root, oid, name, message) {
+  await gitOrThrow(root, ["tag", ...message === "" ? [] : ["-a", "-m", message], "--", name, oid]);
+}
+async function deleteBranch(root, branch) {
+  if (!await branchExists(root, branch)) {
+    throw new GitGraphError("unknown-branch", `No local branch named "${branch}" exists.`, 404);
+  }
+  await gitOrThrow(root, ["branch", "-d", "--", branch]);
 }
 
 // src/host/git/references.ts
@@ -709,6 +944,17 @@ async function readGraphReferences(root) {
 }
 
 // src/host/git/status.ts
+function changeEntry(kind, x, y, path, origPath) {
+  return {
+    kind,
+    x,
+    y,
+    path,
+    ...origPath === void 0 ? {} : { origPath },
+    conflict: kind === "unmerged",
+    untracked: kind === "untracked"
+  };
+}
 function parseStatus(output) {
   const tokens = output.split("\0");
   const files = [];
@@ -827,10 +1073,7 @@ async function resolveSessionDirectory(ctx, sessionId) {
   );
 }
 
-// src/host/rpc.ts
-var RPC_PATH = "/api/dsh-git-graph/rpc";
-var HEALTH_PATH = "/api/dsh-git-graph/health";
-var COMMIT_TIMEOUT_MS = 12e4;
+// src/host/validation.ts
 var FULL_OID4 = /^[0-9a-f]{40}$/;
 var PANEL_ID = /^[A-Za-z0-9._:-]{1,80}$/;
 function commitOf(value) {
@@ -839,12 +1082,53 @@ function commitOf(value) {
   }
   return value;
 }
+function historyOffsetOf(value) {
+  if (value === void 0) return 0;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new GitGraphError(
+      "bad-request",
+      "The history offset must be a non-negative integer.",
+      400
+    );
+  }
+  return value;
+}
+function commitMessageOf(value) {
+  const message = typeof value === "string" ? value.trim() : "";
+  if (message === "") throw new GitGraphError("empty-message", "A commit message is required.", 400);
+  if (message.length > 2e4)
+    throw new GitGraphError("message-too-long", "The commit message is too long.", 400);
+  return message;
+}
+function tagMessageOf(value) {
+  if (value !== void 0 && (typeof value !== "string" || value.length > 2e4)) {
+    throw new GitGraphError("bad-request", "A tag message is too long or not text.", 400);
+  }
+  return typeof value === "string" ? value.trim() : "";
+}
+function panelOf(payload) {
+  const panel = payload.panel;
+  if (typeof panel !== "string" || !PANEL_ID.test(panel)) {
+    throw new GitGraphError("bad-request", "A panel identity is required.", 400);
+  }
+  return panel;
+}
 async function branchNameOf(root, value) {
   if (typeof value !== "string" || value.length === 0 || value.length > 200 || value.startsWith("-"))
     throw new GitGraphError("bad-request", "A local branch name is required.", 400);
   const formatted = await runGit(root, ["check-ref-format", "--branch", value]);
   if (!formatted.ok)
     throw new GitGraphError("bad-request", `"${value}" is not a valid branch name.`, 400);
+  return value;
+}
+async function checkoutBranchNameOf(root, value) {
+  if (typeof value !== "string" || value === "" || value.startsWith("-")) {
+    throw new GitGraphError("bad-request", "A local branch name is required.", 400);
+  }
+  const formatted = await runGit(root, ["check-ref-format", "--branch", value]);
+  if (!formatted.ok) {
+    throw new GitGraphError("unknown-branch", `No local branch named "${value}" exists.`, 404);
+  }
   return value;
 }
 async function tagNameOf(root, value) {
@@ -855,13 +1139,19 @@ async function tagNameOf(root, value) {
     throw new GitGraphError("bad-request", `"${value}" is not a valid tag name.`, 400);
   return value;
 }
-function panelOf(payload) {
-  const panel = payload.panel;
-  if (typeof panel !== "string" || !PANEL_ID.test(panel)) {
-    throw new GitGraphError("bad-request", "A panel identity is required.", 400);
+function filePathOf(value) {
+  if (typeof value !== "string") {
+    throw new GitGraphError("bad-request", "A file path is required.", 400);
   }
-  return panel;
+  return value;
 }
+function optionalFilePathOf(value) {
+  return typeof value === "string" && value !== "" ? value : void 0;
+}
+
+// src/host/rpc.ts
+var RPC_PATH = "/api/dsh-git-graph/rpc";
+var HEALTH_PATH = "/api/dsh-git-graph/health";
 async function dispatch(ctx, payload, registry) {
   const op = payload.op;
   if (op === "unwatch") {
@@ -888,210 +1178,72 @@ async function dispatch(ctx, payload, registry) {
     case "references":
       return readGraphReferences(root);
     case "history": {
-      const offset = payload.offset;
-      if (offset !== void 0 && (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0)) {
-        throw new GitGraphError(
-          "bad-request",
-          "The history offset must be a non-negative integer.",
-          400
-        );
-      }
+      const offset = historyOffsetOf(payload.offset);
       const [page, references] = await Promise.all([
-        readHistory(root, offset ?? 0),
+        readHistory(root, offset),
         readGraphReferences(root)
       ]);
       return { commits: page.commits, hasMore: page.hasMore, references };
     }
-    case "commit-details": {
-      const oid = payload.oid;
-      if (typeof oid !== "string" || !FULL_OID4.test(oid)) {
-        throw new GitGraphError("bad-request", "A full commit identifier is required.", 400);
-      }
-      return readCommitDetails(root, oid);
-    }
+    case "commit-details":
+      return readCommitDetails(root, commitOf(payload.oid));
     case "branches":
       return { branches: await readBranches(root) };
-    case "stage": {
-      const paths = resolveRepositoryPaths(root, payload.paths);
-      await gitOrThrow(root, ["add", "-A", "--", ...paths]);
+    case "stage":
+      await stagePaths(root, payload.paths);
       return { ok: true };
-    }
-    case "unstage": {
-      const paths = resolveRepositoryPaths(root, payload.paths);
-      const restored = await runGit(root, ["restore", "--staged", "--", ...paths]);
-      if (!restored.ok) {
-        const removed = await runGit(root, [
-          "rm",
-          "--cached",
-          "-r",
-          "--quiet",
-          "--ignore-unmatch",
-          "--",
-          ...paths
-        ]);
-        if (!removed.ok) {
-          throw new GitGraphError(
-            "git-command-failed",
-            removed.stderr.trim() || restored.stderr.trim() || "git restore failed",
-            409
-          );
-        }
-      }
+    case "unstage":
+      await unstagePaths(root, payload.paths);
       return { ok: true };
-    }
-    case "discard": {
-      const paths = resolveRepositoryPaths(root, [payload.path]);
-      const absolute = resolveRepositoryPath(root, payload.path);
-      if (payload.untracked === true) {
-        const info = await lstat2(absolute).catch(() => void 0);
-        if (info === void 0) return { ok: true };
-        if (!info.isFile() && !info.isSymbolicLink()) {
-          throw new GitGraphError("not-a-file", `"${String(payload.path)}" is not a file.`, 409);
-        }
-        await unlink(absolute);
-        return { ok: true };
-      }
-      const restored = await runGit(root, [
-        "restore",
-        "--source=HEAD",
-        "--staged",
-        "--worktree",
-        "--",
-        ...paths
-      ]);
-      if (!restored.ok) {
-        if (/could not resolve HEAD|unknown revision|bad revision/i.test(restored.stderr)) {
-          throw new GitGraphError(
-            "discard-unborn",
-            "Changes cannot be discarded before the first commit.",
-            409
-          );
-        }
-        throw new GitGraphError(
-          "git-command-failed",
-          restored.stderr.trim() || "git restore failed",
-          409
-        );
-      }
+    case "discard":
+      await discardPath(root, payload.path, payload.untracked === true);
       return { ok: true };
-    }
-    case "ignore": {
-      resolveRepositoryPath(root, payload.path);
-      const path = payload.path;
-      if (typeof path !== "string" || path.includes("\n") || path.includes("\r")) {
-        throw new GitGraphError(
-          "bad-request",
-          "The file path cannot be represented in .gitignore.",
-          400
-        );
-      }
-      await appendGitignoreRule(root, path);
+    case "ignore":
+      await ignorePath(root, payload.path);
       return { ok: true };
-    }
-    case "commit": {
-      const message = typeof payload.message === "string" ? payload.message.trim() : "";
-      if (message === "")
-        throw new GitGraphError("empty-message", "A commit message is required.", 400);
-      if (message.length > 2e4)
-        throw new GitGraphError("message-too-long", "The commit message is too long.", 400);
-      if (payload.stageAll === true) await gitOrThrow(root, ["add", "-A"]);
-      const staged = await runGit(root, ["diff", "--cached", "--quiet"]);
-      if (staged.ok)
-        throw new GitGraphError("nothing-staged", "There are no staged changes to commit.", 409);
-      if (staged.code !== 1) {
-        if (staged.code === "ENOENT")
-          throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
-        throw new GitGraphError(
-          "git-command-failed",
-          staged.stderr.trim() || "git diff --cached failed",
-          409
-        );
-      }
-      const committed = await runGit(root, ["commit", "-m", message], {
-        timeout: COMMIT_TIMEOUT_MS
-      });
-      if (!committed.ok) {
-        if (committed.code === "ENOENT")
-          throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
-        const detail = `${committed.stdout}
-${committed.stderr}`.trim() || "git commit failed";
-        if (/nothing to commit|no changes added to commit/i.test(detail)) {
-          throw new GitGraphError("nothing-staged", "There are no staged changes to commit.", 409);
-        }
-        throw new GitGraphError("git-command-failed", detail, 409);
-      }
-      const head = await runGit(root, ["rev-parse", "--short", "HEAD"]);
-      return { ok: true, commit: head.ok ? head.stdout.trim() : null };
-    }
+    case "commit":
+      return {
+        ok: true,
+        commit: await commitChanges(
+          root,
+          commitMessageOf(payload.message),
+          payload.stageAll === true
+        )
+      };
     case "checkout": {
-      const branch = payload.branch;
-      if (typeof branch !== "string" || branch === "" || branch.startsWith("-")) {
-        throw new GitGraphError("bad-request", "A local branch name is required.", 400);
-      }
-      const formatted = await runGit(root, ["check-ref-format", "--branch", branch]);
-      if (!formatted.ok || !await branchExists(root, branch)) {
-        throw new GitGraphError("unknown-branch", `No local branch named "${branch}" exists.`, 404);
-      }
-      const switched = await runGit(root, ["switch", branch]);
-      if (!switched.ok) {
-        if (switched.code === "ENOENT")
-          throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
-        throw new GitGraphError(
-          "git-command-failed",
-          `${switched.stdout}
-${switched.stderr}`.trim() || "git switch failed",
-          409
-        );
-      }
+      const branch = await checkoutBranchNameOf(root, payload.branch);
+      await checkoutBranch(root, branch);
       return { ok: true, branch };
     }
-    case "checkout-detached": {
-      const oid = commitOf(payload.oid);
-      await gitOrThrow(root, ["switch", "--detach", "--", oid]);
+    case "checkout-detached":
+      await checkoutDetached(root, commitOf(payload.oid));
       return { ok: true };
-    }
     case "create-branch": {
       const oid = commitOf(payload.oid);
       const name = await branchNameOf(root, payload.name);
-      await gitOrThrow(root, ["switch", "-c", name, "--", oid]);
+      await createBranch(root, oid, name);
       return { ok: true, branch: name };
     }
     case "create-tag": {
       const oid = commitOf(payload.oid);
       const name = await tagNameOf(root, payload.name);
-      const supplied = payload.message;
-      if (supplied !== void 0 && (typeof supplied !== "string" || supplied.length > 2e4)) {
-        throw new GitGraphError("bad-request", "A tag message is too long or not text.", 400);
-      }
-      const message = supplied?.trim() ?? "";
-      await gitOrThrow(root, [
-        "tag",
-        ...message === "" ? [] : ["-a", "-m", message],
-        "--",
-        name,
-        oid
-      ]);
+      await createTag(root, oid, name, tagMessageOf(payload.message));
       return { ok: true };
     }
     case "delete-branch": {
       const branch = await branchNameOf(root, payload.branch);
-      if (!await branchExists(root, branch)) {
-        throw new GitGraphError("unknown-branch", `No local branch named "${branch}" exists.`, 404);
-      }
-      await gitOrThrow(root, ["branch", "-d", "--", branch]);
+      await deleteBranch(root, branch);
       return { ok: true };
     }
     case "diff": {
-      const path = payload.path;
-      if (typeof path !== "string")
-        throw new GitGraphError("bad-request", "A file path is required.", 400);
+      const path = filePathOf(payload.path);
       if (payload.commit !== void 0) {
-        const commit = payload.commit;
-        if (typeof commit !== "string" || !FULL_OID4.test(commit)) {
-          throw new GitGraphError("bad-request", "A full commit identifier is required.", 400);
-        }
-        const origPath = typeof payload.origPath === "string" && payload.origPath !== "" ? payload.origPath : void 0;
-        return readCommitDiff(root, path, commit, origPath);
+        return readCommitDiff(
+          root,
+          path,
+          commitOf(payload.commit),
+          optionalFilePathOf(payload.origPath)
+        );
       }
       return readDiff(root, path, payload.staged === true, payload.untracked === true);
     }
@@ -1101,8 +1253,8 @@ ${switched.stderr}`.trim() || "git switch failed",
 }
 
 // src/host/watch/registry.ts
-import { watch } from "node:fs";
-import { join as join2 } from "node:path";
+import { watch as fsWatch } from "node:fs";
+import { join as join3 } from "node:path";
 
 // src/host/watch/classify.ts
 var INDEX_FILES = /* @__PURE__ */ new Set(["index"]);
@@ -1147,11 +1299,26 @@ var WATCH_IDLE_MS = 15e3;
 function idleState() {
   return { watching: false, worktree: 0, references: 0 };
 }
-function createRepositoryWatchRegistry(timings = {}) {
+function createRepositoryWatchRegistry(timings = {}, deps = {}) {
   const debounceMs = timings.debounceMs ?? WATCH_DEBOUNCE_MS;
   const idleMs = timings.idleMs ?? WATCH_IDLE_MS;
+  const discover = deps.findRepositoryRoot ?? findRepositoryRoot;
+  const readGitDir = deps.readGitDirectory ?? readGitDirectory;
+  const startWatch = deps.watch ?? ((path, options, listener) => {
+    const watcher = fsWatch(
+      path,
+      options,
+      (event, filename) => listener(event, typeof filename === "string" ? filename : null)
+    );
+    return {
+      close: () => watcher.close(),
+      on: (event, onError) => watcher.on(event, onError)
+    };
+  });
   const repositories = /* @__PURE__ */ new Map();
   const subscriptions = /* @__PURE__ */ new Map();
+  const panelTokens = /* @__PURE__ */ new Map();
+  let disposed = false;
   const now = () => Date.now();
   function open3(repo, gitDirectory) {
     const fail = () => {
@@ -1178,7 +1345,7 @@ function createRepositoryWatchRegistry(timings = {}) {
       closeWatchers([rootWatcher]);
       return false;
     }
-    const refsRoot = join2(gitDirectory, "refs");
+    const refsRoot = join3(gitDirectory, "refs");
     const refsWatcher = openWatcher(
       refsRoot,
       true,
@@ -1192,7 +1359,7 @@ function createRepositoryWatchRegistry(timings = {}) {
   }
   function openWatcher(path, recursive, onEvent, onFailure) {
     try {
-      const watcher = watch(path, { recursive, persistent: false }, (_event, filename) => {
+      const watcher = startWatch(path, { recursive, persistent: false }, (_event, filename) => {
         onEvent(filename);
       });
       watcher.on("error", onFailure);
@@ -1321,31 +1488,59 @@ function createRepositoryWatchRegistry(timings = {}) {
   }
   return {
     async watch(cwd, panel) {
-      const known = subscriptions.get(panel);
-      if (known !== void 0 && known.cwd === cwd) {
-        const repo2 = repositories.get(known.root);
-        if (repo2 !== void 0 && !repo2.closed) {
-          known.seenAt = now();
-          repo2.panels.add(panel);
-          scheduleExpiry(repo2);
-          return stateOf(repo2);
+      if (disposed) return idleState();
+      const token = {};
+      panelTokens.set(panel, token);
+      try {
+        const known = subscriptions.get(panel);
+        if (known !== void 0 && known.cwd === cwd) {
+          const repo2 = repositories.get(known.root);
+          if (repo2 !== void 0 && !repo2.closed) {
+            known.seenAt = now();
+            repo2.panels.add(panel);
+            scheduleExpiry(repo2);
+            return stateOf(repo2);
+          }
         }
+        const root = await discover(cwd);
+        if (disposed || panelTokens.get(panel) !== token) return idleState();
+        if (root === null) {
+          detach(panel);
+          return idleState();
+        }
+        const gitDirectory = await readGitDir(root);
+        if (disposed || panelTokens.get(panel) !== token) return idleState();
+        const existing = subscriptions.get(panel);
+        if (existing !== void 0 && existing.root === root) {
+          const repo2 = repositories.get(root);
+          if (repo2 !== void 0 && !repo2.closed) {
+            existing.cwd = cwd;
+            existing.seenAt = now();
+            repo2.panels.add(panel);
+            scheduleExpiry(repo2);
+            return stateOf(repo2);
+          }
+        }
+        detach(panel);
+        const repo = obtain(root, gitDirectory);
+        if (repo === null) return idleState();
+        repo.panels.add(panel);
+        subscriptions.set(panel, { cwd, root, seenAt: now() });
+        scheduleExpiry(repo);
+        return stateOf(repo);
+      } finally {
+        if (panelTokens.get(panel) === token) panelTokens.delete(panel);
       }
-      detach(panel);
-      const root = await findRepositoryRoot(cwd);
-      if (root === null) return idleState();
-      const gitDirectory = await readGitDirectory(root);
-      const repo = obtain(root, gitDirectory);
-      if (repo === null) return idleState();
-      repo.panels.add(panel);
-      subscriptions.set(panel, { cwd, root, seenAt: now() });
-      scheduleExpiry(repo);
-      return stateOf(repo);
     },
     unwatch(panel) {
+      if (disposed) return;
+      panelTokens.delete(panel);
       detach(panel);
     },
     dispose() {
+      if (disposed) return;
+      disposed = true;
+      panelTokens.clear();
       for (const repo of [...repositories.values()]) closeRepository(repo);
       subscriptions.clear();
     }

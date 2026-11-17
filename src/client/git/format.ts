@@ -204,5 +204,6 @@ export function errorText(t: LocaleBinder, failure: Failure | null | undefined):
   if (code === 'not-a-repository') return t('noRepo.title')
   if (code === 'discard-unborn') return t('error.discardUnborn')
   if (code === 'unknown-commit') return t('error.unknownCommit')
+  if (code === 'not-untracked') return t('error.notUntracked')
   return failure.message || t('error.unknown')
 }

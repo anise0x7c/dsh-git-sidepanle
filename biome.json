@@ -23,6 +23,21 @@
       "trailingCommas": "all"
     }
   },
-  "linter": { "enabled": true, "rules": { "preset": "recommended" } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error"
+      },
+      "suspicious": {
+        "noExplicitAny": "error"
+      },
+      "style": {
+        "noNonNullAssertion": "error"
+      }
+    }
+  },
   "assist": { "actions": { "source": { "organizeImports": "on" } } }
 }

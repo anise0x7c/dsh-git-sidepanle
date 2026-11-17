@@ -1,0 +1,118 @@
+/* -------------------------------------------------------------- feedback --- */
+
+.dshgg-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 8px 8px;
+  padding: 8px 10px;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xxs-12);
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent);
+  border-radius: var(--dsw-radius-md);
+}
+
+.dshgg-bannerText {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.dshgg-bannerText > span {
+  font-weight: 500;
+}
+
+.dshgg-bannerDetail {
+  max-height: 96px;
+  margin-top: 4px;
+  overflow: auto;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: pre-wrap;
+}
+
+.dshgg-bannerActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin: -4px -4px -4px 0;
+}
+
+.dshgg-bannerActions .dshgg-iconBtn {
+  width: 24px;
+  height: 24px;
+  padding: 5px;
+}
+
+.dshgg-bannerActions .dshgg-iconBtn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.dshgg-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 16px;
+  text-align: center;
+}
+
+.dshgg-stateIcon {
+  display: flex;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dshgg-stateTitle {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-strong-13);
+}
+
+.dshgg-stateDesc {
+  max-width: 280px;
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+  overflow-wrap: anywhere;
+}
+
+.dshgg-stateAction {
+  margin-top: 8px;
+}
+
+.dshgg-note {
+  padding: 4px 6px 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.dshgg-menuNote {
+  padding: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.dshgg-clean {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 20px 12px;
+  text-align: center;
+}
+
+.dshgg-cleanTitle {
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-strong-13);
+}
+
+.dshgg-cleanDesc {
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}

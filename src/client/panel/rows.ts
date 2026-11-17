@@ -200,8 +200,9 @@ export function renderFileRows<Entry extends FileRowEntry>(
   entries: readonly Entry[],
   context: FileRowsContext<Entry>,
 ): React.ReactElement[] {
-  return entries.map((entry) =>
-    h(FileRow<Entry>, {
+  return entries.map((entry) => {
+    const target = context.menuTarget === undefined ? undefined : context.menuTarget(entry)
+    return h(FileRow<Entry>, {
       key: `file:${entry.kind}:${entry.path}:${entry.x}:${entry.y}:${entry.letter ?? ''}`,
       entry,
       letter: entry.letter ?? '',
@@ -213,7 +214,7 @@ export function renderFileRows<Entry extends FileRowEntry>(
       onUnstage: context.onUnstage,
       onDiscard: context.onDiscard,
       menuTrigger: context.menuTrigger,
-      menuTarget: context.menuTarget === undefined ? undefined : context.menuTarget(entry),
-    }),
-  )
+      ...(target === undefined ? {} : { menuTarget: target }),
+    })
+  })
 }

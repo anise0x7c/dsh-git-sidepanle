@@ -7,7 +7,7 @@
  */
 
 import { PACKAGE_ID } from './constants.ts'
-import CSS from './styles.css'
+import { CSS } from './styles/index.ts'
 
 /** One document's style tag and how many plugin lifetimes currently hold it. */
 interface StyleLease {

@@ -1,0 +1,43 @@
+/* ---------------------------------------------------------------- split --- */
+
+.dshgg-split {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dshgg-paneTop {
+  flex: 0 0 auto;
+}
+
+.dshgg-paneBottom {
+  flex: 1 1 0;
+}
+
+.dshgg-splitter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 9px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.dshgg-splitterLine {
+  display: block;
+  width: 100%;
+  height: 0.5px;
+  background: var(--dsw-alias-border-l3);
+}
+
+@media (hover: hover) {
+  .dshgg-splitter:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dshgg-splitter[data-dragging="true"],
+.dshgg-splitter:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+}

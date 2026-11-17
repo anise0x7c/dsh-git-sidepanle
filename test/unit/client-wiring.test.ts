@@ -83,11 +83,15 @@ describe('nextPanelId', () => {
     const ids = Array.from({ length: 5 }, () => nextPanelId())
     assert.equal(new Set(ids).size, ids.length)
     for (let index = 0; index < ids.length; index += 1) {
-      assert.match(ids[index], /^git-panel-\d+$/)
+      const id = ids[index]
+      assert.ok(id, `no panel id at index ${index}`)
+      assert.match(id, /^git-panel-\d+$/)
       if (index > 0) {
+        const previous = ids[index - 1]
+        assert.ok(previous, `no panel id at index ${index - 1}`)
         assert.equal(
-          Number(ids[index].slice('git-panel-'.length)),
-          Number(ids[index - 1].slice('git-panel-'.length)) + 1,
+          Number(id.slice('git-panel-'.length)),
+          Number(previous.slice('git-panel-'.length)) + 1,
         )
       }
     }
@@ -183,7 +187,9 @@ describe('bindMenuTrigger', () => {
       console.warn = originalWarn
     }
     assert.equal(warnings.length, 1)
-    assert.equal(warnings[0][0], '[git-graph] context menus are unavailable')
+    const firstWarning = warnings[0]
+    assert.ok(firstWarning, 'the unavailable menu hook should warn once')
+    assert.equal(firstWarning[0], '[git-graph] context menus are unavailable')
   })
 
   test('calls the hook once and passes the target and handlers through', () => {
@@ -208,9 +214,13 @@ describe('bindMenuTrigger', () => {
     const first = factory(target, handlers)
     const second = factory(target, props)
     assert.equal(calls.length, 2, 'the factory should call the host binding per invocation')
-    assert.equal(calls[0].target, target)
-    assert.equal(calls[0].handlers, handlers)
-    assert.equal(calls[1].handlers, props)
+    const firstCall = calls[0]
+    const secondCall = calls[1]
+    assert.ok(firstCall, 'the first invocation should be recorded')
+    assert.ok(secondCall, 'the second invocation should be recorded')
+    assert.equal(firstCall.target, target)
+    assert.equal(firstCall.handlers, handlers)
+    assert.equal(secondCall.handlers, props)
     assert.equal(first.target, target)
     assert.equal(first.handlers, handlers)
     assert.deepEqual(second, { target, handlers: props, ...props })

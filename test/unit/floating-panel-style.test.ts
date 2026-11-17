@@ -1,22 +1,53 @@
 /** Structural CSS regressions; these do not pretend to measure browser layout. */
 
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
-const css = readFileSync(new URL('../../src/client/styles.css', import.meta.url), 'utf8').replace(
-  /\/\*[\s\S]*?\*\//g,
-  '',
-)
+const styleDirectory = new URL('../../src/client/styles/', import.meta.url)
+const assembly = readFileSync(new URL('index.ts', styleDirectory), 'utf8')
+
+/**
+ * The sheet is split by area and assembled in `styles/index.ts`. These checks
+ * are structural, so the files are read in name order; the runtime cascade
+ * order lives in the assembly module, whose equivalence with the former single
+ * sheet was verified when it was split.
+ */
+const sections = readdirSync(styleDirectory)
+  .filter((name) => name.endsWith('.css'))
+  .sort()
+for (const name of sections) {
+  assert.match(
+    assembly,
+    new RegExp(`from '\\./${name.replaceAll('.', '\\.')}'`),
+    `styles/index.ts must import ${name}`,
+  )
+}
+const css = sections
+  .map((name) => readFileSync(new URL(name, styleDirectory), 'utf8'))
+  .join('\n')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+
+/**
+ * Read one capture group of a match known to contain it.
+ * @param match - regex match.
+ * @param group - capture group index.
+ * @returns the captured text.
+ */
+function capture(match: RegExpMatchArray, group: number): string {
+  const captured = match[group]
+  assert.ok(captured !== undefined, `the pattern must capture group ${group}`)
+  return captured
+}
 
 /** Leaf rules suffice for declarations, including rules nested in @supports. */
 function leafRules(source: string) {
   return [...source.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
-    selectors: match[1]
+    selectors: capture(match, 1)
       .trim()
       .split(',')
       .map((selector) => selector.trim()),
-    declarations: match[2],
+    declarations: capture(match, 2),
   }))
 }
 

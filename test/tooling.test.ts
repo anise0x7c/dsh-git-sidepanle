@@ -14,6 +14,23 @@ const manifest: {
   files: string[]
   scripts: Record<string, string>
 } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+const tsconfig: {
+  compilerOptions?: Record<string, unknown>
+  include?: string[]
+} = JSON.parse(await readFile(new URL('../tsconfig.json', import.meta.url), 'utf8'))
+
+test('the typecheck gate keeps the strict rules the tests rely on', () => {
+  assert.equal(tsconfig.compilerOptions?.strict, true)
+  assert.equal(tsconfig.compilerOptions?.exactOptionalPropertyTypes, true)
+  assert.equal(tsconfig.compilerOptions?.noUncheckedIndexedAccess, true)
+  const included = tsconfig.include ?? []
+  for (const directory of ['src', 'scripts', 'test']) {
+    assert.ok(
+      included.some((pattern) => pattern.startsWith(`${directory}/`)),
+      `tsconfig.json must typecheck ${directory}`,
+    )
+  }
+})
 
 test('the maintenance gate checks without rebuilding or rewriting sources', () => {
   assert.match(manifest.packageManager, /^pnpm@\d+\.\d+\.\d+$/)
@@ -21,8 +38,12 @@ test('the maintenance gate checks without rebuilding or rewriting sources', () =
     manifest.scripts.check,
     'pnpm typecheck && pnpm lint && pnpm test:run && pnpm check:build',
   )
-  assert.doesNotMatch(manifest.scripts['test:run'], /(?:^|&&\s*)pnpm build/)
-  assert.match(manifest.scripts['check:build'], /--check/)
+  const testRun = manifest.scripts['test:run']
+  assert.ok(testRun !== undefined, 'the maintenance gate defines test:run')
+  assert.doesNotMatch(testRun, /(?:^|&&\s*)pnpm build/)
+  const checkBuild = manifest.scripts['check:build']
+  assert.ok(checkBuild !== undefined, 'the maintenance gate defines check:build')
+  assert.match(checkBuild, /--check/)
   assert.equal(manifest.scripts.precheck, undefined)
   assert.equal(manifest.scripts['pretest:run'], undefined)
   assert.deepEqual(manifest.dependencies ?? {}, {})

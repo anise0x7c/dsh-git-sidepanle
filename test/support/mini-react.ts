@@ -130,6 +130,7 @@ export function createHarness(options: HarnessOptions): TestHarness {
   let effectQueue: PendingEffect[] = []
   let lastTree: TestNode = null
   let nextId = 0
+  let disposed = false
 
   function activeRender(): RenderCursor {
     if (current === null) throw new Error('a hook was called outside a component render')
@@ -269,7 +270,9 @@ export function createHarness(options: HarnessOptions): TestHarness {
       const previous = effectStore.get(key)
       if (typeof previous?.cleanup === 'function') previous.cleanup()
       const cleanup = next.callback()
-      effectStore.set(key, { cleanup: typeof cleanup === 'function' ? cleanup : undefined })
+      // An effect that returns no teardown has no `cleanup` property at all,
+      // matching the optional field of the stored record.
+      effectStore.set(key, typeof cleanup === 'function' ? { cleanup } : {})
     }
   }
 
@@ -401,17 +404,35 @@ export function createHarness(options: HarnessOptions): TestHarness {
   }
 
   async function dispose(): Promise<void> {
-    for (const entry of effectStore.values()) {
-      if (typeof entry.cleanup === 'function') entry.cleanup()
+    // Tests may dispose a lifetime explicitly and still rely on the file-level
+    // safety net; a repeated call must not restore globals a later harness owns.
+    if (disposed) return
+    disposed = true
+    const errors: unknown[] = []
+    try {
+      // One broken cleanup must not strand the remaining effects or the
+      // globals: collect every failure, then restore unconditionally.
+      for (const entry of effectStore.values()) {
+        if (typeof entry.cleanup !== 'function') continue
+        try {
+          entry.cleanup()
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+    } finally {
+      effectStore.clear()
+      intervals.clear()
+      timeouts.clear()
+      timerGlobals.setInterval = originalGlobals.setInterval
+      timerGlobals.clearInterval = originalGlobals.clearInterval
+      timerGlobals.setTimeout = originalGlobals.setTimeout
+      timerGlobals.clearTimeout = originalGlobals.clearTimeout
+      timerGlobals.fetch = originalGlobals.fetch
     }
-    effectStore.clear()
-    intervals.clear()
-    timeouts.clear()
-    timerGlobals.setInterval = originalGlobals.setInterval
-    timerGlobals.clearInterval = originalGlobals.clearInterval
-    timerGlobals.setTimeout = originalGlobals.setTimeout
-    timerGlobals.clearTimeout = originalGlobals.clearTimeout
-    timerGlobals.fetch = originalGlobals.fetch
+    if (errors.length > 0) {
+      throw new AggregateError(errors, 'harness effect cleanup failed')
+    }
   }
 
   /**

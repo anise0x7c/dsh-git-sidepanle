@@ -55,9 +55,10 @@ function asTextArea(area: FakeArea): HTMLTextAreaElement {
   return area as unknown as HTMLTextAreaElement
 }
 
+/** Browser globals the pass reads, each restorable to an explicit `undefined`. */
 interface StubbedGlobals {
-  getComputedStyle?: (element: Element) => CSSStyleDeclaration
-  ResizeObserver?: typeof ResizeObserver
+  getComputedStyle?: ((element: Element) => CSSStyleDeclaration) | undefined
+  ResizeObserver?: typeof ResizeObserver | undefined
 }
 
 const globals = globalThis as unknown as StubbedGlobals

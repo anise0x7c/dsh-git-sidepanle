@@ -121,7 +121,7 @@ async function captureFailure(operation: Promise<unknown>): Promise<GitGraphErro
 
 /** Services a Session lookup may see, each optional like the real context. */
 interface SessionServices {
-  sessions?: SessionsService
+  sessions?: SessionsService | undefined
   workingDirectory?: WorkingDirectoryService
   sessionPersistence?: SessionPersistenceService
 }

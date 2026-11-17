@@ -1,7 +1,6 @@
 /**
  * File-level diffs: reading from Git or the filesystem, and unified-diff parsing.
  */
-import { open, stat } from 'node:fs/promises'
 import type {
   CommitDiff,
   DiffHunk,
@@ -10,10 +9,11 @@ import type {
   WorkingTreeDiff,
 } from '../../shared/git.ts'
 import { GitGraphError } from '../errors.ts'
-import { resolveRepositoryPath, runGit } from './exec.ts'
+import { runGit } from './exec.ts'
+import { readUntrackedPreview } from './files.ts'
+import { resolveRepositoryPath } from './paths.ts'
 
 const MAX_DIFF_BYTES = 2 * 1024 * 1024
-const MAX_UNTRACKED_BYTES = 512 * 1024
 const FULL_OID = /^[0-9a-f]{40}$/
 
 /** Parsed diff fields plus the Host's truncation flag. */
@@ -54,25 +54,13 @@ export async function readDiff(
   staged: boolean,
   untracked: boolean,
 ): Promise<WorkingTreeDiff> {
-  const absolute = resolveRepositoryPath(root, path)
+  resolveRepositoryPath(root, path)
+  // The browser's flag is a request. A path Git still reports as untracked is
+  // read directly; a tracked path is refused with `not-untracked` rather than
+  // silently rendered as another diff, so the mismatch is never hidden.
   if (untracked) {
-    const info = await stat(absolute).catch(() => undefined)
-    if (info === undefined || !info.isFile()) {
-      throw new GitGraphError('not-found', `"${path}" is not a readable file.`, 404)
-    }
-    const wanted = Math.min(info.size, MAX_UNTRACKED_BYTES)
-    const buffer = Buffer.alloc(wanted)
-    const handle = await open(absolute, 'r')
-    let bytesRead = 0
-    try {
-      const read = await handle.read(buffer, 0, wanted, 0)
-      bytesRead = read.bytesRead
-    } finally {
-      await handle.close()
-    }
-    const slice = buffer.subarray(0, bytesRead)
-    const truncated = info.size > bytesRead
-    if (slice.includes(0)) {
+    const { contents, truncated } = await readUntrackedPreview(root, path)
+    if (contents.includes(0)) {
       return {
         path,
         staged: false,
@@ -84,7 +72,7 @@ export async function readDiff(
         hunks: [],
       }
     }
-    const text = slice.toString('utf8')
+    const text = contents.toString('utf8')
     const lines = text.split('\n')
     if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
     return {

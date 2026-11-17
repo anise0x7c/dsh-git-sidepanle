@@ -1,0 +1,55 @@
+/* ------------------------------------------------------------ commit box --- */
+
+.dshgg-commitBox {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 8px 8px;
+}
+
+/* The message decides the height: one row at rest and ten at most, after which
+   the box scrolls. `panel/autosize.ts` applies it; the line height comes from
+   the font shorthand, and `overflow-y: auto` keeps the message reachable before
+   the first measurement. */
+.dshgg-commitMessage {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+  background: var(--dsw-specific-input-major);
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  overflow-y: auto;
+  resize: none;
+  outline: none;
+}
+
+.dshgg-commitMessage::placeholder {
+  color: var(--dsw-alias-label-dimmed);
+}
+
+.dshgg-commitMessage:focus {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.dshgg-commitMessage:disabled {
+  opacity: 0.5;
+}
+
+.dshgg-commitRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dshgg-commitHint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxxs-11);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

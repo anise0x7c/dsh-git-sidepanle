@@ -4,30 +4,16 @@
  */
 
 import type { LocaleBinder, MenuActionView } from '../types/dsh.ts'
+import type { PanelCommand } from './bus.ts'
 import { panelCommands } from './bus.ts'
 import { absolutePath, copyAndReport } from './clipboard.ts'
 import type { MenuTargetValue } from './trigger.ts'
 
 /**
- * Payload one action emits on the panel command bus; `type` names the panel
- * operation and the remaining fields address it.
+ * Payload one action emits on the panel command bus: the command without the
+ * addressing the resolver adds from the captured target.
  */
-export interface MenuCommandPayload {
-  /** Panel operation (`open`, `stage`, `discard`, `refresh`, ...). */
-  readonly type: string
-  /** Change group the operation applies to. */
-  readonly section?: string
-  /** One repository-relative path. */
-  readonly path?: string
-  /** Repository-relative paths. */
-  readonly paths?: readonly string[]
-  /** A single-entry discard needs one confirmation. */
-  readonly single?: boolean
-  /** Full commit id for checkout or reference creation. */
-  readonly oid?: string
-  /** Local branch for a checkout or deletion. */
-  readonly branch?: string
-}
+export type MenuCommandPayload = Omit<PanelCommand, 'sessionId' | 'panelId'>
 
 /** Presentation flags one action may carry. */
 export interface MenuActionFlags {
@@ -107,6 +93,37 @@ export function resolveMenuActions(
     (text: string, successKey: string): (() => Promise<void>) =>
     () =>
       copyAndReport(t, notify, text, successKey)
+  /**
+   * Build the path-copy actions shared by file, commit-file and diff rows.
+   * @param path - repository-relative path.
+   * @param cwd - repository root used for the absolute copy, when known.
+   * @param separatorBefore - draw a divider above the first copy action.
+   * @returns the copy-relative action and, with a root, copy-path.
+   */
+  const copyPathActions = (
+    path: string,
+    cwd: string | undefined,
+    separatorBefore = false,
+  ): MenuAction[] => {
+    const actions = [
+      menuAction(
+        'copy-relative',
+        t('menu.copyRelativePath'),
+        copy(path, 'menu.copiedRelativePath'),
+        separatorBefore ? { separatorBefore: true } : {},
+      ),
+    ]
+    if (typeof cwd === 'string' && cwd !== '') {
+      actions.push(
+        menuAction(
+          'copy-path',
+          t('menu.copyPath'),
+          copy(absolutePath(cwd, path), 'menu.copiedPath'),
+        ),
+      )
+    }
+    return actions
+  }
   const blocked: MenuActionFlags = target.busy === true ? { disabled: true } : {}
 
   if (target.kind === 'file') {
@@ -144,23 +161,7 @@ export function resolveMenuActions(
     actions.push(
       menuAction('ignore', t('menu.addToGitignore'), command({ type: 'ignore', path }), blocked),
     )
-    actions.push(
-      menuAction(
-        'copy-relative',
-        t('menu.copyRelativePath'),
-        copy(path, 'menu.copiedRelativePath'),
-        { separatorBefore: true },
-      ),
-    )
-    if (typeof target.cwd === 'string' && target.cwd !== '') {
-      actions.push(
-        menuAction(
-          'copy-path',
-          t('menu.copyPath'),
-          copy(absolutePath(target.cwd, path), 'menu.copiedPath'),
-        ),
-      )
-    }
+    actions.push(...copyPathActions(path, target.cwd, true))
     return actions
   }
 
@@ -307,48 +308,10 @@ export function resolveMenuActions(
     return actions
   }
 
-  if (target.kind === 'commitFile') {
+  if (target.kind === 'commitFile' || target.kind === 'diff') {
     const path = target.path
     if (typeof path !== 'string' || path === '') return []
-    const actions = [
-      menuAction(
-        'copy-relative',
-        t('menu.copyRelativePath'),
-        copy(path, 'menu.copiedRelativePath'),
-      ),
-    ]
-    if (typeof target.cwd === 'string' && target.cwd !== '') {
-      actions.push(
-        menuAction(
-          'copy-path',
-          t('menu.copyPath'),
-          copy(absolutePath(target.cwd, path), 'menu.copiedPath'),
-        ),
-      )
-    }
-    return actions
-  }
-
-  if (target.kind === 'diff') {
-    const path = target.path
-    if (typeof path !== 'string' || path === '') return []
-    const actions = [
-      menuAction(
-        'copy-relative',
-        t('menu.copyRelativePath'),
-        copy(path, 'menu.copiedRelativePath'),
-      ),
-    ]
-    if (typeof target.cwd === 'string' && target.cwd !== '') {
-      actions.push(
-        menuAction(
-          'copy-path',
-          t('menu.copyPath'),
-          copy(absolutePath(target.cwd, path), 'menu.copiedPath'),
-        ),
-      )
-    }
-    return actions
+    return copyPathActions(path, target.cwd)
   }
 
   return []

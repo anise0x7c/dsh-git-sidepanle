@@ -47,7 +47,7 @@ export interface PanelWiring {
  */
 export function usePanelWiring(options: {
   readonly sessionId: string
-  readonly useContextMenu?: UseContextMenu
+  readonly useContextMenu?: UseContextMenu | undefined
 }): PanelWiring {
   const { sessionId, useContextMenu } = options
   const call = useMemo(() => createCaller(sessionId), [sessionId])
@@ -66,7 +66,7 @@ export function usePanelWiring(options: {
  */
 export function usePanelMenu(options: {
   readonly sessionId: string
-  readonly useContextMenu?: UseContextMenu
+  readonly useContextMenu?: UseContextMenu | undefined
 }): PanelMenu {
   const wiring = usePanelWiring(options)
   const panelId = useMemo(() => nextPanelId(), [])
@@ -118,9 +118,7 @@ export interface MenuTargetFactories {
   /** Build a group-header target. */
   readonly sectionTarget: (section: string) => MenuTarget
   /** Build a commit-row target. */
-  readonly commitTarget: (
-    commit: Pick<CommitSummary, 'oid' | 'shortOid' | 'subject' | 'refs'>,
-  ) => MenuTarget
+  readonly commitTarget: (commit: Pick<CommitSummary, 'oid' | 'subject' | 'refs'>) => MenuTarget
   /** Build a row target for one row family. */
   readonly rowTarget: (kind: MenuTargetKind, detail: MenuTargetDetail) => MenuTarget
 }
@@ -145,7 +143,6 @@ export function createMenuTargets(options: {
     commitTarget: (commit) =>
       menuTarget(sessionId, 'commit', {
         oid: commit.oid,
-        shortOid: commit.shortOid,
         subject: commit.subject,
         branchHeads: parseRefs(commit.refs)
           .filter((ref) => ref.kind === 'head' || ref.kind === 'branch')
@@ -154,7 +151,17 @@ export function createMenuTargets(options: {
         panelId,
         busy: busy !== null,
       }),
-    rowTarget: (kind, detail) =>
-      menuTarget(sessionId, kind, { ...detail, cwd, busy: busy !== null, panelId }),
+    rowTarget: (kind, detail) => {
+      // The builder replaces any `cwd` carried by the detail, even with none:
+      // the panel's repository root is the copy-path base for every row.
+      const fields = { ...detail }
+      delete fields.cwd
+      return menuTarget(sessionId, kind, {
+        ...fields,
+        ...(cwd === undefined ? {} : { cwd }),
+        busy: busy !== null,
+        panelId,
+      })
+    },
   }
 }

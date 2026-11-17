@@ -3,102 +3,47 @@
  *
  * One operation per request: the payload names a Session and an operation, and
  * the repository is always resolved from the Session's working directory, so
- * the browser never sends a repository path of its own. Operations reuse the
- * validated path helpers from `git/exec.ts`; none of them run through a shell.
+ * the browser never sends a repository path of its own. This module only
+ * validates non-path fields and dispatches; file paths and mutations live under
+ * `git/`, and none of them run through a shell.
  */
 import { existsSync } from 'node:fs'
-import { lstat, unlink } from 'node:fs/promises'
 import type { GitGraphRpcValue } from '../shared/git.ts'
 import type { HostContext } from './context.ts'
 import { GitGraphError } from './errors.ts'
-import { branchExists, readBranches } from './git/branches.ts'
+import { readBranches } from './git/branches.ts'
+import { discardPath, ignorePath, stagePaths, unstagePaths } from './git/changes.ts'
 import { readCommitDiff, readDiff } from './git/diff.ts'
-import {
-  findRepositoryRoot,
-  gitOrThrow,
-  resolveRepositoryPath,
-  resolveRepositoryPaths,
-  runGit,
-} from './git/exec.ts'
+import { findRepositoryRoot } from './git/exec.ts'
 import { readCommitDetails, readHistory } from './git/history.ts'
-import { appendGitignoreRule } from './git/ignore.ts'
+import {
+  checkoutBranch,
+  checkoutDetached,
+  commitChanges,
+  createBranch,
+  createTag,
+  deleteBranch,
+} from './git/mutations.ts'
 import { readGraphReferences } from './git/references.ts'
 import { readStatus } from './git/status.ts'
 import { resolveSessionDirectory } from './session.ts'
+import {
+  branchNameOf,
+  checkoutBranchNameOf,
+  commitMessageOf,
+  commitOf,
+  filePathOf,
+  historyOffsetOf,
+  optionalFilePathOf,
+  panelOf,
+  tagMessageOf,
+  tagNameOf,
+} from './validation.ts'
 import type { RepositoryWatchRegistry } from './watch/registry.ts'
 
 /** Route paths of the guarded family. */
 export const RPC_PATH = '/api/dsh-git-graph/rpc'
 export const HEALTH_PATH = '/api/dsh-git-graph/health'
-
-const COMMIT_TIMEOUT_MS = 120_000
-const FULL_OID = /^[0-9a-f]{40}$/
-const PANEL_ID = /^[A-Za-z0-9._:-]{1,80}$/
-
-/**
- * Read a full commit identity from a mutation request.
- * @param value - untrusted wire value.
- * @returns full commit identifier.
- */
-function commitOf(value: unknown): string {
-  if (typeof value !== 'string' || !FULL_OID.test(value)) {
-    throw new GitGraphError('bad-request', 'A full commit identifier is required.', 400)
-  }
-  return value
-}
-
-/**
- * Validate a local branch supplied by the browser.
- * @param root - resolved repository root.
- * @param value - untrusted name.
- * @returns the existing branch spelling, without resolving it as user input.
- */
-async function branchNameOf(root: string, value: unknown): Promise<string> {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value.length > 200 ||
-    value.startsWith('-')
-  )
-    throw new GitGraphError('bad-request', 'A local branch name is required.', 400)
-  const formatted = await runGit(root, ['check-ref-format', '--branch', value])
-  if (!formatted.ok)
-    throw new GitGraphError('bad-request', `"${value}" is not a valid branch name.`, 400)
-  return value
-}
-
-/**
- * Validate a tag name and keep it distinguishable from option arguments.
- * @param root - resolved repository root.
- * @param value - untrusted name.
- * @returns the valid tag name.
- */
-async function tagNameOf(root: string, value: unknown): Promise<string> {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value.length > 200 ||
-    value.startsWith('-')
-  )
-    throw new GitGraphError('bad-request', 'A tag name is required.', 400)
-  const formatted = await runGit(root, ['check-ref-format', `refs/tags/${value}`])
-  if (!formatted.ok)
-    throw new GitGraphError('bad-request', `"${value}" is not a valid tag name.`, 400)
-  return value
-}
-
-/**
- * Read the panel identity of a `watch` request.
- * @param payload - request.
- * @returns the validated panel identity.
- */
-function panelOf(payload: Record<string, unknown>): string {
-  const panel = payload.panel
-  if (typeof panel !== 'string' || !PANEL_ID.test(panel)) {
-    throw new GitGraphError('bad-request', 'A panel identity is required.', 400)
-  }
-  return panel
-}
 
 /**
  * Dispatch one operation inside the repository containing a Session's directory.
@@ -141,216 +86,72 @@ export async function dispatch(
     case 'references':
       return readGraphReferences(root)
     case 'history': {
-      const offset = payload.offset
-      if (
-        offset !== undefined &&
-        (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0)
-      ) {
-        throw new GitGraphError(
-          'bad-request',
-          'The history offset must be a non-negative integer.',
-          400,
-        )
-      }
+      const offset = historyOffsetOf(payload.offset)
       const [page, references] = await Promise.all([
-        readHistory(root, offset ?? 0),
+        readHistory(root, offset),
         readGraphReferences(root),
       ])
       return { commits: page.commits, hasMore: page.hasMore, references }
     }
-    case 'commit-details': {
-      const oid = payload.oid
-      if (typeof oid !== 'string' || !FULL_OID.test(oid)) {
-        throw new GitGraphError('bad-request', 'A full commit identifier is required.', 400)
-      }
-      return readCommitDetails(root, oid)
-    }
+    case 'commit-details':
+      return readCommitDetails(root, commitOf(payload.oid))
     case 'branches':
       return { branches: await readBranches(root) }
-    case 'stage': {
-      const paths = resolveRepositoryPaths(root, payload.paths)
-      await gitOrThrow(root, ['add', '-A', '--', ...paths])
+    case 'stage':
+      await stagePaths(root, payload.paths)
       return { ok: true }
-    }
-    case 'unstage': {
-      const paths = resolveRepositoryPaths(root, payload.paths)
-      const restored = await runGit(root, ['restore', '--staged', '--', ...paths])
-      if (!restored.ok) {
-        // An unborn branch has no HEAD to restore from; remove the entries instead.
-        const removed = await runGit(root, [
-          'rm',
-          '--cached',
-          '-r',
-          '--quiet',
-          '--ignore-unmatch',
-          '--',
-          ...paths,
-        ])
-        if (!removed.ok) {
-          throw new GitGraphError(
-            'git-command-failed',
-            removed.stderr.trim() || restored.stderr.trim() || 'git restore failed',
-            409,
-          )
-        }
-      }
+    case 'unstage':
+      await unstagePaths(root, payload.paths)
       return { ok: true }
-    }
-    case 'discard': {
-      const paths = resolveRepositoryPaths(root, [payload.path])
-      const absolute = resolveRepositoryPath(root, payload.path)
-      if (payload.untracked === true) {
-        const info = await lstat(absolute).catch(() => undefined)
-        if (info === undefined) return { ok: true }
-        if (!info.isFile() && !info.isSymbolicLink()) {
-          throw new GitGraphError('not-a-file', `"${String(payload.path)}" is not a file.`, 409)
-        }
-        await unlink(absolute)
-        return { ok: true }
-      }
-      const restored = await runGit(root, [
-        'restore',
-        '--source=HEAD',
-        '--staged',
-        '--worktree',
-        '--',
-        ...paths,
-      ])
-      if (!restored.ok) {
-        if (/could not resolve HEAD|unknown revision|bad revision/i.test(restored.stderr)) {
-          throw new GitGraphError(
-            'discard-unborn',
-            'Changes cannot be discarded before the first commit.',
-            409,
-          )
-        }
-        throw new GitGraphError(
-          'git-command-failed',
-          restored.stderr.trim() || 'git restore failed',
-          409,
-        )
-      }
+    case 'discard':
+      await discardPath(root, payload.path, payload.untracked === true)
       return { ok: true }
-    }
-    case 'ignore': {
-      resolveRepositoryPath(root, payload.path)
-      const path = payload.path
-      if (typeof path !== 'string' || path.includes('\n') || path.includes('\r')) {
-        throw new GitGraphError(
-          'bad-request',
-          'The file path cannot be represented in .gitignore.',
-          400,
-        )
-      }
-      await appendGitignoreRule(root, path)
+    case 'ignore':
+      await ignorePath(root, payload.path)
       return { ok: true }
-    }
-    case 'commit': {
-      const message = typeof payload.message === 'string' ? payload.message.trim() : ''
-      if (message === '')
-        throw new GitGraphError('empty-message', 'A commit message is required.', 400)
-      if (message.length > 20_000)
-        throw new GitGraphError('message-too-long', 'The commit message is too long.', 400)
-      if (payload.stageAll === true) await gitOrThrow(root, ['add', '-A'])
-      const staged = await runGit(root, ['diff', '--cached', '--quiet'])
-      // Exit code 1 means staged differences exist; anything else is a real failure.
-      if (staged.ok)
-        throw new GitGraphError('nothing-staged', 'There are no staged changes to commit.', 409)
-      if (staged.code !== 1) {
-        if (staged.code === 'ENOENT')
-          throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
-        throw new GitGraphError(
-          'git-command-failed',
-          staged.stderr.trim() || 'git diff --cached failed',
-          409,
-        )
+    case 'commit':
+      return {
+        ok: true,
+        commit: await commitChanges(
+          root,
+          commitMessageOf(payload.message),
+          payload.stageAll === true,
+        ),
       }
-      const committed = await runGit(root, ['commit', '-m', message], {
-        timeout: COMMIT_TIMEOUT_MS,
-      })
-      if (!committed.ok) {
-        if (committed.code === 'ENOENT')
-          throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
-        const detail = `${committed.stdout}\n${committed.stderr}`.trim() || 'git commit failed'
-        if (/nothing to commit|no changes added to commit/i.test(detail)) {
-          throw new GitGraphError('nothing-staged', 'There are no staged changes to commit.', 409)
-        }
-        throw new GitGraphError('git-command-failed', detail, 409)
-      }
-      const head = await runGit(root, ['rev-parse', '--short', 'HEAD'])
-      return { ok: true, commit: head.ok ? head.stdout.trim() : null }
-    }
     case 'checkout': {
-      const branch = payload.branch
-      if (typeof branch !== 'string' || branch === '' || branch.startsWith('-')) {
-        throw new GitGraphError('bad-request', 'A local branch name is required.', 400)
-      }
-      const formatted = await runGit(root, ['check-ref-format', '--branch', branch])
-      if (!formatted.ok || !(await branchExists(root, branch))) {
-        throw new GitGraphError('unknown-branch', `No local branch named "${branch}" exists.`, 404)
-      }
-      const switched = await runGit(root, ['switch', branch])
-      if (!switched.ok) {
-        if (switched.code === 'ENOENT')
-          throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
-        throw new GitGraphError(
-          'git-command-failed',
-          `${switched.stdout}\n${switched.stderr}`.trim() || 'git switch failed',
-          409,
-        )
-      }
+      const branch = await checkoutBranchNameOf(root, payload.branch)
+      await checkoutBranch(root, branch)
       return { ok: true, branch }
     }
-    case 'checkout-detached': {
-      const oid = commitOf(payload.oid)
-      await gitOrThrow(root, ['switch', '--detach', '--', oid])
+    case 'checkout-detached':
+      await checkoutDetached(root, commitOf(payload.oid))
       return { ok: true }
-    }
     case 'create-branch': {
       const oid = commitOf(payload.oid)
       const name = await branchNameOf(root, payload.name)
-      await gitOrThrow(root, ['switch', '-c', name, '--', oid])
+      await createBranch(root, oid, name)
       return { ok: true, branch: name }
     }
     case 'create-tag': {
       const oid = commitOf(payload.oid)
       const name = await tagNameOf(root, payload.name)
-      const supplied = payload.message
-      if (supplied !== undefined && (typeof supplied !== 'string' || supplied.length > 20_000)) {
-        throw new GitGraphError('bad-request', 'A tag message is too long or not text.', 400)
-      }
-      const message = supplied?.trim() ?? ''
-      await gitOrThrow(root, [
-        'tag',
-        ...(message === '' ? [] : ['-a', '-m', message]),
-        '--',
-        name,
-        oid,
-      ])
+      await createTag(root, oid, name, tagMessageOf(payload.message))
       return { ok: true }
     }
     case 'delete-branch': {
       const branch = await branchNameOf(root, payload.branch)
-      if (!(await branchExists(root, branch))) {
-        throw new GitGraphError('unknown-branch', `No local branch named "${branch}" exists.`, 404)
-      }
-      await gitOrThrow(root, ['branch', '-d', '--', branch])
+      await deleteBranch(root, branch)
       return { ok: true }
     }
     case 'diff': {
-      const path = payload.path
-      if (typeof path !== 'string')
-        throw new GitGraphError('bad-request', 'A file path is required.', 400)
+      const path = filePathOf(payload.path)
       if (payload.commit !== undefined) {
-        const commit = payload.commit
-        if (typeof commit !== 'string' || !FULL_OID.test(commit)) {
-          throw new GitGraphError('bad-request', 'A full commit identifier is required.', 400)
-        }
-        const origPath =
-          typeof payload.origPath === 'string' && payload.origPath !== ''
-            ? payload.origPath
-            : undefined
-        return readCommitDiff(root, path, commit, origPath)
+        return readCommitDiff(
+          root,
+          path,
+          commitOf(payload.commit),
+          optionalFilePathOf(payload.origPath),
+        )
       }
       return readDiff(root, path, payload.staged === true, payload.untracked === true)
     }

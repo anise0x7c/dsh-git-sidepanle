@@ -220,10 +220,9 @@ function dispatch(options: MenuCommandOptions, command: PanelCommand): void {
       reportStale()
       return
     }
+    const single = command.single === true && entries.length === 1 ? entries[0] : undefined
     setConfirm(
-      command.single === true && entries.length === 1
-        ? { kind: 'discard', entry: entries[0] }
-        : { kind: 'discardAll', entries },
+      single === undefined ? { kind: 'discardAll', entries } : { kind: 'discard', entry: single },
     )
     return
   }

@@ -8,12 +8,16 @@
  */
 
 import assert from 'node:assert/strict'
-import { resolve } from 'node:path'
+import { resolve, win32 } from 'node:path'
 import { describe, test } from 'node:test'
 import { GitGraphError } from '../../src/host/errors.ts'
 import { parseUnifiedDiff } from '../../src/host/git/diff.ts'
-import { resolveRepositoryPath, resolveRepositoryPaths } from '../../src/host/git/exec.ts'
 import { parseCommitMeta, parseHistory, parseNameStatus } from '../../src/host/git/history.ts'
+import {
+  isOutsideRoot,
+  resolveRepositoryPath,
+  resolveRepositoryPaths,
+} from '../../src/host/git/paths.ts'
 import type { RefRecord } from '../../src/host/git/references.ts'
 import {
   NO_GRAPH_REFERENCES,
@@ -149,7 +153,9 @@ describe('parseStatus', () => {
   test('parses paths that contain spaces', () => {
     const output = porcelain(ordinaryRecord('.M', 'folder name/file name.txt'))
     const { files } = parseStatus(output)
-    assert.equal(files[0].path, 'folder name/file name.txt')
+    const first = files[0]
+    assert.ok(first, 'the status output should parse one row')
+    assert.equal(first.path, 'folder name/file name.txt')
   })
 
   test('consumes the second -z record of a rename as the original path', () => {
@@ -244,12 +250,14 @@ describe('parseUnifiedDiff', () => {
       parsed.hunks.map((hunk) => hunk.header),
       ['@@ -1,3 +1,4 @@ function name()', '@@ -10,2 +11,2 @@', '@@ -1 +1 @@'],
     )
+    const firstHunk = parsed.hunks[0]
+    assert.ok(firstHunk, 'the first hunk should be parsed')
     assert.deepEqual(
-      parsed.hunks[0].lines.map((line) => line.t),
+      firstHunk.lines.map((line) => line.t),
       [' ', '-', '+', '+', ' '],
     )
-    assert.deepEqual(parsed.hunks[0].lines[1], { t: '-', text: 'removed line' })
-    assert.deepEqual(parsed.hunks[0].lines[2], { t: '+', text: 'added line' })
+    assert.deepEqual(firstHunk.lines[1], { t: '-', text: 'removed line' })
+    assert.deepEqual(firstHunk.lines[2], { t: '+', text: 'added line' })
   })
 
   test('addresses the compared files without the a/ and b/ prefixes', () => {
@@ -260,10 +268,12 @@ describe('parseUnifiedDiff', () => {
     const single = parseUnifiedDiff('--- a/alpha.txt\n+++ b/alpha.txt\n@@ -1 +1 @@\n-a\n+b\n')
     assert.equal(single.oldPath, 'alpha.txt')
     assert.equal(single.newPath, 'alpha.txt')
-    assert.equal(single.hunks[0].oldStart, 1)
-    assert.equal(single.hunks[0].oldCount, 1)
-    assert.equal(single.hunks[0].newStart, 1)
-    assert.equal(single.hunks[0].newCount, 1)
+    const singleHunk = single.hunks[0]
+    assert.ok(singleHunk, 'the single-file diff should parse one hunk')
+    assert.equal(singleHunk.oldStart, 1)
+    assert.equal(singleHunk.oldCount, 1)
+    assert.equal(singleHunk.newStart, 1)
+    assert.equal(singleHunk.newCount, 1)
   })
 
   test('defaults omitted hunk counts to one and keeps the header text', () => {
@@ -296,7 +306,9 @@ describe('parseUnifiedDiff', () => {
     )
     assert.equal(parsed.additions, 1)
     assert.equal(parsed.deletions, 1)
-    assert.deepEqual(parsed.hunks[0].lines, [
+    const hunk = parsed.hunks[0]
+    assert.ok(hunk, 'the diff should parse one hunk')
+    assert.deepEqual(hunk.lines, [
       { t: ' ', text: 'keep' },
       { t: '-', text: 'gone' },
       { t: '+', text: 'added' },
@@ -336,8 +348,10 @@ describe('parseUnifiedDiff', () => {
     const parsed = parseUnifiedDiff('+not in a hunk\n@@ -1 +1 @@\n-a\n+b\n')
     assert.equal(parsed.additions, 1)
     assert.equal(parsed.deletions, 1)
+    const hunk = parsed.hunks[0]
+    assert.ok(hunk, 'the diff should parse one hunk')
     assert.deepEqual(
-      parsed.hunks[0].lines.map((line) => line.t),
+      hunk.lines.map((line) => line.t),
       ['-', '+'],
     )
   })
@@ -367,6 +381,26 @@ describe('resolveRepositoryPath', () => {
 
   test('allows a path that walks into and back out of a subdirectory', () => {
     assert.equal(resolveRepositoryPath(ROOT, 'deep/../inside.txt'), resolve(ROOT, 'inside.txt'))
+  })
+
+  test('accepts a double-dot-prefixed filename as an ordinary path', () => {
+    assert.equal(resolveRepositoryPath(ROOT, '..notes'), resolve(ROOT, '..notes'))
+    assert.equal(resolveRepositoryPath(ROOT, 'deep/..notes'), resolve(ROOT, 'deep/..notes'))
+  })
+
+  test('rejects a resolved path that is absolute on another Windows drive', () => {
+    assert.equal(
+      isOutsideRoot('C:\\repo', 'C:\\repo\\..notes', win32),
+      false,
+      'a dot-prefixed child name stays inside',
+    )
+    assert.equal(isOutsideRoot('C:\\repo', 'C:\\repo', win32), true)
+    assert.equal(isOutsideRoot('C:\\repo', 'C:\\repo\\..\\outside.txt', win32), true)
+    assert.equal(
+      isOutsideRoot('C:\\repo', 'D:\\outside.txt', win32),
+      true,
+      'relative() returns another absolute path across drives',
+    )
   })
 
   test('rejects an absolute path', () => {
@@ -587,6 +621,7 @@ describe('parseHistory', () => {
   test('keeps a tab inside the subject in the subject field', () => {
     const payload = logLine({ oid: OID_A, parents: OID_B, subject: 'before\tafter' })
     const [commit] = parseHistory(payload)
+    assert.ok(commit, 'the history output should parse one commit')
     assert.equal(commit.subject, 'before\tafter')
     assert.deepEqual(commit.parents, [OID_B])
   })

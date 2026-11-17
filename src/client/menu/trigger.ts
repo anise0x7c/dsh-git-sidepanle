@@ -34,8 +34,6 @@ export interface MenuTargetValue {
   readonly busy?: boolean
   /** Full commit id. */
   readonly oid?: string
-  /** Short commit id. */
-  readonly shortOid?: string
   /** Commit subject. */
   readonly subject?: string
   /** Local branch heads at this commit, used by checkout and deletion submenus. */

@@ -1,0 +1,188 @@
+/* ---------------------------------------------------------------- graph --- */
+
+/* The commit graph reproduces VS Code's Source Control Graph, so its palette
+ * is VS Code's `scmGraph.*` color set rather than host tokens: five rotation
+ * colors shared by light and dark themes, plus the checked-out (`charts.blue`),
+ * upstream (`charts.purple`) and base reference colors. Badge text uses the
+ * host's base background, standing in for VS Code's `panel.background`. */
+.dshgg-root {
+  --dshgg-scm-lane1: #ffb000;
+  --dshgg-scm-lane2: #dc267f;
+  --dshgg-scm-lane3: #994f00;
+  --dshgg-scm-lane4: #40b0a6;
+  --dshgg-scm-lane5: #b66dff;
+  --dshgg-scm-ref: #1a85ff;
+  --dshgg-scm-remote: #652d90;
+  --dshgg-scm-base: #ea5c00;
+  --dshgg-scm-label-foreground: var(--dsw-alias-bg-base);
+}
+
+body[data-ds-dark-theme] .dshgg-root {
+  --dshgg-scm-ref: #3794ff;
+  --dshgg-scm-remote: #b180d7;
+}
+
+/* The rows and the one layer that draws their lines. The layer is positioned so
+ * it paints over a row's hover surface, and the row's cell keeps the node. */
+.dshgg-graphBody {
+  --dshgg-graph-inset: 4px;
+  position: relative;
+}
+
+.dshgg-graphLayer {
+  position: absolute;
+  top: 0;
+  left: var(--dshgg-graph-inset);
+  pointer-events: none;
+}
+
+/* VS Code `.history-item`: 22px rows, the graph cell, the label, the badges. */
+.dshgg-graphRow {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 22px;
+  min-width: 0;
+  padding: 0 6px 0 var(--dshgg-graph-inset);
+  border-radius: var(--dsw-radius-md);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dshgg-graphRow:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dshgg-graphRow:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
+/* The row's cell is as wide as its graph width and as tall as the row; both come
+ * from the element's own attributes. */
+.dshgg-graphSvg {
+  display: block;
+  flex: none;
+}
+
+/* VS Code's one-pixel strokes. Every segment of one color in the whole graph
+ * shares an element, so a lane crossing a row boundary is one continuous
+ * stroke and no seam can appear between two rows. */
+.dshgg-graphEdge {
+  fill: none;
+  stroke-width: 1px;
+  stroke-linecap: round;
+}
+
+/* VS Code clears its node strokes on hover: the node's outer edge grows by half
+ * a stroke. The geometry carries the hover radii; the node gap that also closes
+ * is driven by the section's hovered row, because the gap belongs to the line
+ * layer rather than to the row. */
+@media (hover: hover) {
+  .dshgg-graphRow:hover .dshgg-graphNode {
+    r: var(--dshgg-node-hover-r);
+  }
+
+  .dshgg-graphRow:hover .dshgg-graphNode[data-paint="ring"] {
+    stroke-width: var(--dshgg-node-hover-stroke);
+  }
+}
+
+/* VS Code `.monaco-icon-label`: subject and description ellipsize together. */
+.dshgg-graphLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font: var(--dsw-font-xs-13);
+  line-height: 22px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-graphSubject {
+  white-space: pre;
+}
+
+.dshgg-graphAuthor {
+  margin-left: 0.5em;
+  font-size: 0.9em;
+  white-space: pre;
+  opacity: 0.7;
+}
+
+.dshgg-graphRow[data-current="true"] .dshgg-graphSubject,
+.dshgg-graphRow[data-current="true"] .dshgg-graphAuthor {
+  font-weight: 600;
+}
+
+/* VS Code `.label-container` and `.label`. */
+.dshgg-graphBadges {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.dshgg-graphBadge {
+  display: flex;
+  align-items: center;
+  color: var(--dshgg-scm-label-foreground);
+  line-height: 18px;
+  border-radius: 10px;
+}
+
+.dshgg-graphBadgeCount {
+  padding-left: 4px;
+  font-size: 12px;
+}
+
+.dshgg-graphBadgeIcon {
+  display: flex;
+  padding: 1px;
+}
+
+/* The icon element is sized by its own attributes: 16px, or 12px for branches,
+ * matching VS Code's codicon font sizes inside an 18px badge. */
+
+.dshgg-graphBadge[data-icon="branch"] .dshgg-graphBadgeIcon {
+  padding: 3px;
+}
+
+.dshgg-graphBadgeName {
+  max-width: 100px;
+  padding-right: 4px;
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* End-of-graph paging: the load control keeps the section's inset instead of a
+ * 22-pixel commit row, and a failed page puts its note beside the retry. */
+.dshgg-graphMore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 2px 6px 8px;
+}
+
+.dshgg-graphMoreText {
+  min-width: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  overflow-wrap: anywhere;
+}
+
+.dshgg-graphMoreBtn {
+  margin: 2px 6px 8px;
+}
+
+/* The paging control stays focusable while it loads, so it dims instead of
+ * becoming disabled and dropping keyboard focus. */
+.dshgg-graphMoreBtn[data-loading="true"] {
+  opacity: 0.6;
+  cursor: default;
+}

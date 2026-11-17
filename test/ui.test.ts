@@ -7,7 +7,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { before, test } from 'node:test'
+import { afterEach, before, test } from 'node:test'
 import type {
   BranchesResult,
   ChangeEntry,
@@ -27,7 +27,7 @@ import {
   HISTORY,
   STATUS,
 } from './support/fixtures.ts'
-import { createHarness } from './support/mini-react.ts'
+import { createHarness as createHarnessRuntime } from './support/mini-react.ts'
 import type {
   CapturedTarget,
   ClientRegistration,
@@ -84,6 +84,12 @@ interface MountOptions {
   failOp?: string
   /** Pause one operation before responding so busy controls can be exercised. */
   pending?: { op: string; until: Promise<void> }
+  /** `status` answers in call order; the last repeats once exhausted. */
+  statusPages?: StatusResult[]
+  /** Zero-based `status` request indexes that answer with a failure. */
+  failStatusPages?: number[]
+  /** Deferred fences awaited before the matching zero-based `status` call answers. */
+  statusGates?: (Promise<void> | undefined)[]
   /** Locale override for long translated copy and action labels. */
   t?: typeof translate
   diff?: boolean
@@ -122,6 +128,43 @@ interface MountedGit {
 
 let registration: ClientRegistration
 
+/**
+ * Lifetimes created by the running test. A failing assertion skips the
+ * `dispose()` call at the end of a test body, so everything created here is
+ * disposed in reverse at the end of the test as a safety net. Explicit
+ * disposal stays valid: both the harness and the bundle lifetime are
+ * idempotent.
+ */
+const lifetimes: Array<() => void | Promise<void>> = []
+
+/** Register one lifetime for the test's final cleanup. */
+function trackLifetime(dispose: () => void | Promise<void>): void {
+  lifetimes.push(dispose)
+}
+
+/** Create one mini React harness and register its disposal as a fallback. */
+function createHarness(options: Parameters<typeof createHarnessRuntime>[0]): TestHarness {
+  const harness = createHarnessRuntime(options)
+  trackLifetime(() => harness.dispose())
+  return harness
+}
+
+afterEach(async () => {
+  const errors: unknown[] = []
+  for (const dispose of lifetimes.splice(0).reverse()) {
+    try {
+      await dispose()
+    } catch (error) {
+      // Keep disposing: one broken cleanup must not leave the next test with
+      // this test's timer and fetch globals. The failures surface below.
+      errors.push(error)
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, 'UI test lifetime cleanup failed')
+  }
+})
+
 before(async () => {
   ;({ registration } = await loadClientBundle())
   assert.equal(typeof registration?.factory, 'function')
@@ -134,12 +177,14 @@ before(async () => {
  */
 async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
   const calls: RpcRequestRecord[] = []
+  const statusPages = options.statusPages ?? [options.status ?? STATUS]
+  const failedStatusPages = new Set(options.failStatusPages ?? [])
   const responses: Record<string, unknown> = {
-    status: options.status ?? STATUS,
     history: options.history ?? HISTORY,
     branches: options.branches ?? BRANCHES,
     'commit-details': options.commitDetails ?? COMMIT_DETAILS,
   }
+  let statusPage = 0
   const historyPages = options.historyPages ?? [options.history ?? HISTORY]
   const failedHistoryPages = new Set(options.failHistoryPages ?? [])
   const referencePages = options.referencePages ?? [(options.history ?? HISTORY).references]
@@ -150,6 +195,30 @@ async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
       const request = JSON.parse(init.body) as RpcRequestRecord
       calls.push(request)
       if (request.op === options.pending?.op) await options.pending.until
+      if (request.op === 'status') {
+        const index = statusPage
+        statusPage += 1
+        const gate = options.statusGates?.[index]
+        if (gate !== undefined) await gate
+        if (failedStatusPages.has(index) || options.failOp === 'status') {
+          return {
+            ok: false,
+            status: 409,
+            json: async () => ({
+              ok: false,
+              error: { code: 'git-command-failed', message: 'git said no' },
+            }),
+          }
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            value: statusPages[Math.min(index, statusPages.length - 1)],
+          }),
+        }
+      }
       if (request.op === 'watch') {
         return {
           ok: true,
@@ -237,7 +306,10 @@ async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
     panel: { id: 'pane-1', isFloating: false },
     tab,
   })
-  const components = loadComponents(harness, { contextMenus: options.menuService })
+  const components = loadComponents(
+    harness,
+    options.menuService === undefined ? {} : { contextMenus: options.menuService },
+  )
   const component = options.diff === true ? components.diff : components.git
   const menu = createMenuMock()
   harness.setComponent(component, {
@@ -273,7 +345,13 @@ function loadComponents(
     if (specifier === 'react') return harness.React
     throw new Error(`unexpected require("${specifier}")`)
   })
-  const fake = createFakeContext({ contextMenus: options.contextMenus })
+  const fake =
+    options.contextMenus === undefined
+      ? createFakeContext()
+      : createFakeContext({ contextMenus: options.contextMenus })
+  // Register the bundle lifetime before applying it: a throw in `apply` still
+  // leaves registered effects for the file-level cleanup to unwind.
+  trackLifetime(() => fake.dispose())
   module.apply(fake.ctx)
   const bySeat = new Map(
     fake.records.slots.map(({ options: slot, component }) => {
@@ -1295,12 +1373,16 @@ test('nested changed files stay in one flat path-sorted layer', async () => {
     0,
   )
   const texts = fileRows.map(elementText)
+  const readmeRowText = texts[2]
+  const deepRowText = texts[4]
+  assert.ok(readmeRowText, 'the docs file row rendered no text')
+  assert.ok(deepRowText, 'the nested file row rendered no text')
   assert.ok(
-    texts[2].includes('readme.md') && texts[2].includes('docs'),
+    readmeRowText.includes('readme.md') && readmeRowText.includes('docs'),
     'the row shows the file name and its parent directory',
   )
   assert.ok(
-    texts[4].includes('deep.js') && texts[4].includes('src/z'),
+    deepRowText.includes('deep.js') && deepRowText.includes('src/z'),
     'a nested file keeps its whole parent path on one line',
   )
   for (const row of fileRows)
@@ -1316,11 +1398,15 @@ test('row actions stage and unstage through the Host', async () => {
       element.props?.title === 'src/app.js',
   )
   assert.equal(rows.length, 2, 'the file appears staged and again unstaged')
-  mounted.harness.click(buttonInside(rows[1], 'actions.stage'))
+  const stagedRow = rows[0]
+  const unstagedRow = rows[1]
+  assert.ok(stagedRow, 'the staged file row is missing')
+  assert.ok(unstagedRow, 'the unstaged file row is missing')
+  mounted.harness.click(buttonInside(unstagedRow, 'actions.stage'))
   await mounted.harness.flush()
   const stageCall = mounted.calls.find((call) => call.op === 'stage')
   assert.deepEqual(stageCall?.paths, ['src/app.js'])
-  mounted.harness.click(buttonInside(rows[0], 'actions.unstage'))
+  mounted.harness.click(buttonInside(stagedRow, 'actions.unstage'))
   await mounted.harness.flush()
   const unstageCall = mounted.calls.find((call) => call.op === 'unstage')
   assert.deepEqual(unstageCall?.paths, ['src/app.js'])
@@ -1774,6 +1860,7 @@ test('a changed file opens a diff tab with its addressing parameters', async () 
   assert.ok(rows.length >= 2)
   mounted.harness.click(rows[rows.length - 1])
   const opened = mounted.openedTabs[0]
+  assert.ok(opened, 'no diff tab was opened')
   assert.equal(opened.kind, 'git-diff')
   assert.equal(opened.options.params.path, 'src/app.js')
   assert.equal(opened.options.params.staged, false)
@@ -1915,7 +2002,9 @@ test('past-commit files offer copy-only context menus', async () => {
   assert.equal(fileRows.length, 1)
   mounted.harness.contextmenu(fileRows[0], { clientX: 7, clientY: 8 })
   assert.equal(mounted.menu.opens.length, 1, 'a past-commit file binds a menu target')
-  const target = mounted.menu.opens[0].target
+  const open = mounted.menu.opens[0]
+  assert.ok(open, 'no past-commit menu target was bound')
+  const target = open.target
   assert.equal(target.value.kind, 'commitFile')
   assert.equal(target.value.path, 'src/app.js')
   assert.equal(target.value.cwd, '/repo')
@@ -2214,8 +2303,10 @@ test('right-clicking a change binds its target without calling the Host', async 
   )
   mounted.harness.contextmenu(rows[rows.length - 1], { clientX: 40, clientY: 60 })
   assert.equal(mounted.menu.opens.length, 1)
-  assert.deepEqual(mounted.menu.opens[0].point, { x: 40, y: 60 })
-  const target = mounted.menu.opens[0].target
+  const open = mounted.menu.opens[0]
+  assert.ok(open, 'no context-menu target was bound')
+  assert.deepEqual(open.point, { x: 40, y: 60 })
+  const target = open.target
   assert.equal(target.kind, 'gitGraphItem')
   assert.equal(target.value.sessionId, 'session-1')
   assert.equal(target.value.kind, 'file')
@@ -2616,8 +2707,10 @@ test('the keyboard context-menu gesture binds the focused row', async () => {
   )
   mounted.harness.keydown(rows[rows.length - 1], { key: 'F10', shiftKey: true })
   assert.equal(mounted.menu.opens.length, 1)
-  assert.equal(mounted.menu.opens[0].target.value.path, 'src/app.js')
-  assert.equal(mounted.menu.opens[0].target.value.kind, 'file')
+  const open = mounted.menu.opens[0]
+  assert.ok(open, 'the keyboard gesture bound no menu target')
+  assert.equal(open.target.value.path, 'src/app.js')
+  assert.equal(open.target.value.kind, 'file')
   // Enter still opens the diff instead of a menu.
   mounted.harness.keydown(rows[rows.length - 1], { key: 'Enter' })
   assert.equal(mounted.menu.opens.length, 1)
@@ -2743,6 +2836,7 @@ test('without host context menus the inline controls keep working', async () => 
       element.props?.title === 'src/app.js',
   )
   const row = rows[rows.length - 1]
+  assert.ok(row, 'the unstaged file row is missing')
   assert.equal(row.props.onContextMenu, undefined)
   mounted.harness.click(buttonInside(row, 'actions.stage'))
   await mounted.harness.flush()
@@ -2940,6 +3034,7 @@ test('a group discard uses the group confirmation wording', async () => {
   const section = mounted.harness.findAll(
     (element) => element.props?.['data-section'] === 'changes',
   )[0]
+  assert.ok(section, 'the changes section did not render')
   mounted.harness.contextmenu(elementOf(section.children[0]))
   const target = lastTarget(mounted.menu)
   await runMenuAction(mounted.components, target, 'discard-all')
@@ -2954,11 +3049,14 @@ test('commit rows are keyboard focus stops with menu semantics', async () => {
   const graphRow = mounted.harness.findAll((element) =>
     String(element.props?.className ?? '').includes('dshgg-graphRow'),
   )[0]
+  assert.ok(graphRow, 'no graph row rendered')
   assert.equal(graphRow.props.tabIndex, 0)
   assert.equal(graphRow.props['aria-haspopup'], 'menu')
   mounted.harness.keydown(graphRow, { key: 'ContextMenu' })
   assert.equal(mounted.menu.opens.length, 1)
-  assert.equal(mounted.menu.opens[0].target.value.kind, 'commit')
+  const open = mounted.menu.opens[0]
+  assert.ok(open, 'the keyboard gesture bound no menu target')
+  assert.equal(open.target.value.kind, 'commit')
   await mounted.harness.dispose()
 })
 
@@ -3129,4 +3227,205 @@ test('a Host that cannot watch leaves the periodic status check in charge', asyn
     mounted.calls.some((call) => call.op === 'unwatch'),
     'unmounting releases the subscription',
   )
+})
+
+/** One externally released await used to hold a Host answer open. */
+function deferred(): { readonly promise: Promise<void>; readonly release: () => void } {
+  let release = (): void => {}
+  const promise = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return { promise, release }
+}
+
+/** The commit box textarea, whose disabled state follows the busy lock. */
+function commitBox(harness: TestHarness): TestElement | undefined {
+  return harness.findAll((element) => element.type === 'textarea')[0]
+}
+
+/** Hold a status poll open, so a write lands while the old snapshot is in flight. */
+async function holdSlowStatusPoll(mounted: MountedGit, counters: () => void): Promise<void> {
+  counters()
+  mounted.harness.runIntervals()
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 2, 'the poll status read is in flight')
+}
+
+test('a slow poll cannot overwrite the status refreshed after a write', async (t) => {
+  const gate = deferred()
+  const stale = createStatus({
+    files: [
+      {
+        kind: 'untracked',
+        x: '?',
+        y: '?',
+        path: 'poll-stale.txt',
+        conflict: false,
+        untracked: true,
+      },
+    ],
+  })
+  const fresh = createStatus({
+    files: [
+      { kind: 'ordinary', x: 'M', y: ' ', path: 'src/fresh.js', conflict: false, untracked: false },
+    ],
+  })
+  let counters: WatchState = { watching: true, worktree: 0, references: 0 }
+  const mounted = await mountGit({
+    watchState: () => counters,
+    statusPages: [STATUS, stale, fresh],
+    statusGates: [undefined, gate.promise],
+  })
+  t.after(() => mounted.harness.dispose())
+  await holdSlowStatusPoll(mounted, () => {
+    counters = { watching: true, worktree: 1, references: 0 }
+  })
+
+  mounted.harness.click(buttonByLabel(mounted.harness, 'actions.stageAll'))
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'stage'), 1)
+  assert.equal(
+    opCount(mounted, 'status'),
+    2,
+    'the write does not start a second status RPC while one is in flight',
+  )
+  assert.equal(
+    commitBox(mounted.harness)?.props.disabled,
+    true,
+    'the panel stays busy until the post-write read has answered',
+  )
+
+  gate.release()
+  await mounted.harness.flush()
+  assert.equal(
+    opCount(mounted, 'status'),
+    3,
+    'exactly one follow-up read drains the queued refresh',
+  )
+  assert.match(mounted.harness.text(), /fresh\.js/, 'the post-write snapshot wins')
+  assert.doesNotMatch(
+    mounted.harness.text(),
+    /poll-stale\.txt/,
+    'the slow poll snapshot never becomes the final state',
+  )
+  assert.equal(commitBox(mounted.harness)?.props.disabled, false, 'busy clears after the follow-up')
+})
+
+test('repeated explicit refreshes during one read coalesce into one follow-up', async (t) => {
+  const gate = deferred()
+  const stale = createStatus({
+    files: [
+      {
+        kind: 'untracked',
+        x: '?',
+        y: '?',
+        path: 'poll-stale.txt',
+        conflict: false,
+        untracked: true,
+      },
+    ],
+  })
+  const fresh = createStatus({
+    files: [
+      {
+        kind: 'ordinary',
+        x: 'M',
+        y: ' ',
+        path: 'src/coalesced.js',
+        conflict: false,
+        untracked: false,
+      },
+    ],
+  })
+  let counters: WatchState = { watching: true, worktree: 0, references: 0 }
+  const mounted = await mountGit({
+    watchState: () => counters,
+    statusPages: [STATUS, stale, fresh],
+    statusGates: [undefined, gate.promise],
+  })
+  t.after(() => mounted.harness.dispose())
+  await holdSlowStatusPoll(mounted, () => {
+    counters = { watching: true, worktree: 1, references: 0 }
+  })
+
+  const refresh = buttonByLabel(mounted.harness, 'refresh')
+  mounted.harness.click(refresh)
+  mounted.harness.click(refresh)
+  mounted.harness.click(refresh)
+  await mounted.harness.flush()
+  assert.equal(
+    opCount(mounted, 'status'),
+    2,
+    'queued refreshes never start a concurrent status read',
+  )
+
+  gate.release()
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 3, 'three requests fold into one follow-up read')
+  assert.match(mounted.harness.text(), /coalesced\.js/)
+  assert.doesNotMatch(mounted.harness.text(), /poll-stale\.txt/)
+})
+
+test('a failed status read still drains the queued retry', async (t) => {
+  const gate = deferred()
+  const fresh = createStatus({
+    files: [
+      {
+        kind: 'untracked',
+        x: '?',
+        y: '?',
+        path: 'src/retried.js',
+        conflict: false,
+        untracked: true,
+      },
+    ],
+  })
+  let counters: WatchState = { watching: true, worktree: 0, references: 0 }
+  const mounted = await mountGit({
+    watchState: () => counters,
+    statusPages: [STATUS, STATUS, fresh],
+    failStatusPages: [1],
+    statusGates: [undefined, gate.promise],
+  })
+  t.after(() => mounted.harness.dispose())
+  await holdSlowStatusPoll(mounted, () => {
+    counters = { watching: true, worktree: 1, references: 0 }
+  })
+
+  mounted.harness.click(buttonByLabel(mounted.harness, 'refresh'))
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 2)
+
+  gate.release()
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 3, 'the queued retry runs after the failure')
+  assert.match(mounted.harness.text(), /retried\.js/, 'the retry answer is applied')
+  assert.doesNotMatch(
+    mounted.harness.text(),
+    /error\.title/,
+    'the successful retry clears the failure banner',
+  )
+})
+
+test('an unmounting panel does not run a queued status read', async (t) => {
+  const gate = deferred()
+  let counters: WatchState = { watching: true, worktree: 0, references: 0 }
+  const mounted = await mountGit({
+    watchState: () => counters,
+    statusPages: [STATUS, STATUS, STATUS],
+    statusGates: [undefined, gate.promise],
+  })
+  t.after(() => mounted.harness.dispose())
+  await holdSlowStatusPoll(mounted, () => {
+    counters = { watching: true, worktree: 1, references: 0 }
+  })
+
+  mounted.harness.click(buttonByLabel(mounted.harness, 'refresh'))
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 2, 'the refresh is queued behind the read')
+
+  await mounted.harness.dispose()
+  gate.release()
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 2, 'unmounting drops the queued read')
 })

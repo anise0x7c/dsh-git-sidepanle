@@ -9,20 +9,12 @@
 import assert from 'node:assert/strict'
 import { execFile as execFileCallback } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { createServer, type Server } from 'node:http'
+import type { Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { promisify } from 'node:util'
-import type {
-  HostContext,
-  SessionPersistenceService,
-  SessionsService,
-  WebServerRoute,
-  WorkingDirectoryService,
-} from '../src/host/context.ts'
 import { createRepositoryWatchRegistry } from '../src/host/watch/registry.ts'
-import { apply } from '../src/host-entry.ts'
 import type {
   ChangeEntry,
   GitGraphOperation,
@@ -31,12 +23,19 @@ import type {
   StatusResult,
   WatchState,
 } from '../src/shared/git.ts'
+import {
+  createFakeContext,
+  routeServer,
+  serverPort,
+  withSessionServer,
+} from './support/host-server.ts'
 import type { RpcReply } from './support/types.ts'
 
 const execFile = promisify(execFileCallback)
 let tmpRoot = ''
 let repo = ''
 let server: Server | undefined
+let disposeHost: (() => void) | undefined
 let base = ''
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
@@ -55,88 +54,6 @@ function fileByPath(files: readonly ChangeEntry[], path: string): ChangeEntry {
 function requireRepo(status: StatusResult): RepositoryStatus {
   assert.ok(status.repo !== null, 'the directory should be inside a repository')
   return status.repo
-}
-
-/**
- * Build a fake Host context and register the bundle's routes with it.
- * @param cwd - Session working directory the fake services report.
- * @returns registered routes by path.
- */
-function createFakeContext(cwd: string): Map<string, WebServerRoute> {
-  const routes = new Map<string, WebServerRoute>()
-  function get(name: 'sessions'): SessionsService | undefined
-  function get(name: 'workingDirectory'): WorkingDirectoryService | undefined
-  function get(name: 'sessionPersistence'): SessionPersistenceService | undefined
-  function get(name: string): unknown
-  function get(
-    name: string,
-  ): SessionsService | WorkingDirectoryService | SessionPersistenceService | undefined {
-    if (name === 'sessions')
-      return { get: (id: string) => (id === 'session-1' ? { header: { cwd } } : undefined) }
-    if (name === 'workingDirectory') return { get: () => cwd }
-    if (name === 'sessionPersistence')
-      return { stat: async (id: string) => (id === 'session-1' ? { header: { cwd } } : undefined) }
-    return undefined
-  }
-  const ctx: HostContext = {
-    effect(setup) {
-      const disposer = setup()
-      return () => {
-        if (typeof disposer === 'function') disposer()
-      }
-    },
-    webServer: {
-      register(route) {
-        if (routes.has(route.path)) throw new Error(`duplicate route ${route.path}`)
-        routes.set(route.path, route)
-        return () => {
-          routes.delete(route.path)
-        }
-      },
-    },
-    get,
-  }
-  apply(ctx)
-  return routes
-}
-
-/** Serve the routes through a real loopback server. */
-function routeServer(routes: Map<string, WebServerRoute>): Server {
-  return createServer((request, response) => {
-    const path = new URL(request.url ?? '/', 'http://localhost').pathname
-    const route = routes.get(path)
-    if (route === undefined) {
-      response.writeHead(404)
-      response.end()
-      return
-    }
-    void route.handler(request, response)
-  })
-}
-
-/** Read the bound port of a listening test server. */
-function serverPort(target: Server): number {
-  const address = target.address()
-  assert.ok(address !== null && typeof address === 'object', 'the test server has no TCP address')
-  return address.port
-}
-
-async function withSessionServer<T>(
-  cwd: string,
-  operation: (baseUrl: string) => Promise<T>,
-): Promise<T> {
-  const routes = createFakeContext(cwd)
-  const other = routeServer(routes)
-  await new Promise<void>((resolve) => {
-    other.listen(0, '127.0.0.1', resolve)
-  })
-  try {
-    return await operation(`http://127.0.0.1:${serverPort(other)}`)
-  } finally {
-    await new Promise<void>((resolve) => {
-      other.close(() => resolve())
-    })
-  }
 }
 
 /** One RPC reply plus the HTTP status the test server answered. */
@@ -235,8 +152,9 @@ before(async () => {
   await git(repo, 'add', '-A')
   await git(repo, 'commit', '-m', 'initial commit')
 
-  const routes = createFakeContext(repo)
-  server = routeServer(routes)
+  const host = createFakeContext(repo)
+  disposeHost = host.dispose
+  server = routeServer(host.routes)
   await new Promise<void>((resolve) => {
     server?.listen(0, '127.0.0.1', resolve)
   })
@@ -248,6 +166,7 @@ after(async () => {
     await new Promise<void>((resolve) => {
       server?.close(() => resolve())
     })
+  disposeHost?.()
   await rm(tmpRoot, { recursive: true, force: true })
 })
 
@@ -334,7 +253,11 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
 
   const untrackedDiff = await call('diff', { path: 'beta.txt', untracked: true })
   assert.equal(untrackedDiff.body.value.additions, 1)
-  assert.equal(untrackedDiff.body.value.hunks[0].lines[0].t, '+')
+  const untrackedHunk = untrackedDiff.body.value.hunks[0]
+  assert.ok(untrackedHunk, 'the untracked diff has no hunk')
+  const untrackedLine = untrackedHunk.lines[0]
+  assert.ok(untrackedLine, 'the untracked diff has no rendered line')
+  assert.equal(untrackedLine.t, '+')
 
   await call('unstage', { paths: ['alpha.txt'] })
   status = (await call('status')).body.value
@@ -361,18 +284,22 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
   assert.equal(history.body.ok, true)
   assert.equal(history.body.value.commits.length, 2)
   assert.equal(history.body.value.hasMore, false)
-  assert.equal(history.body.value.commits[0].subject, 'change alpha and add beta')
-  assert.equal(history.body.value.commits[0].refs.includes('main'), true)
-  assert.deepEqual(history.body.value.commits[0].parents, [history.body.value.commits[1].oid])
-  assert.deepEqual(history.body.value.commits[1].parents, [])
-  assert.equal('graph' in history.body.value.commits[0], false)
+  const newestCommit = history.body.value.commits[0]
+  const rootCommit = history.body.value.commits[1]
+  assert.ok(newestCommit, 'the history has no newest commit')
+  assert.ok(rootCommit, 'the history has no root commit')
+  assert.equal(newestCommit.subject, 'change alpha and add beta')
+  assert.equal(newestCommit.refs.includes('main'), true)
+  assert.deepEqual(newestCommit.parents, [rootCommit.oid])
+  assert.deepEqual(rootCommit.parents, [])
+  assert.equal('graph' in newestCommit, false)
   assert.equal(
-    history.body.value.commits[0].refs,
+    newestCommit.refs,
     'HEAD -> refs/heads/main',
     'decorations carry full reference names',
   )
   assert.deepEqual(history.body.value.references, {
-    current: { id: 'refs/heads/main', name: 'main', revision: history.body.value.commits[0].oid },
+    current: { id: 'refs/heads/main', name: 'main', revision: newestCommit.oid },
     remote: null,
     base: null,
   })
@@ -397,18 +324,26 @@ test('history pages backwards by offset and reports when older commits remain', 
     assert.equal(first.body.ok, true)
     assert.equal(first.body.value.commits.length, 60)
     assert.equal(first.body.value.hasMore, true)
-    assert.equal(first.body.value.commits[0].subject, 'commit 60')
-    assert.equal(first.body.value.commits[59].subject, 'commit 1')
+    const firstPageHead = first.body.value.commits[0]
+    const firstPageTail = first.body.value.commits[59]
+    assert.ok(firstPageHead, 'the first history page has no head')
+    assert.ok(firstPageTail, 'the first history page has no tail')
+    assert.equal(firstPageHead.subject, 'commit 60')
+    assert.equal(firstPageTail.subject, 'commit 1')
 
     const second = await callAt(baseUrl, 'history', { offset: 60 })
     assert.equal(second.body.ok, true)
     assert.equal(second.body.value.commits.length, 1)
     assert.equal(second.body.value.hasMore, false)
-    assert.equal(second.body.value.commits[0].subject, 'commit 0')
-    assert.deepEqual(second.body.value.commits[0].parents, [])
+    const secondPageHead = second.body.value.commits[0]
+    assert.ok(secondPageHead, 'the second history page has no head')
+    assert.equal(secondPageHead.subject, 'commit 0')
+    assert.deepEqual(secondPageHead.parents, [])
+    const continuedParent = firstPageTail.parents[0]
+    assert.ok(continuedParent, 'the first page tail has no parent')
     assert.deepEqual(
-      second.body.value.commits[0].oid,
-      first.body.value.commits[59].parents[0],
+      secondPageHead.oid,
+      continuedParent,
       'the page continues below the previous one',
     )
 
@@ -867,18 +802,24 @@ test('an unborn repository stages, unstages, and takes its first commit', async 
     let status = await callAt(baseUrl, 'status')
     assert.equal(requireRepo(status.body.value).unborn, true)
     assert.equal(requireRepo(status.body.value).branch, 'main')
-    assert.equal(status.body.value.files[0].kind, 'untracked')
+    const firstUntracked = status.body.value.files[0]
+    assert.ok(firstUntracked, 'the unborn repository reports no untracked file')
+    assert.equal(firstUntracked.kind, 'untracked')
 
     const history = await callAt(baseUrl, 'history')
     assert.deepEqual(history.body.value.commits, [])
 
     await callAt(baseUrl, 'stage', { paths: ['first.txt'] })
     status = await callAt(baseUrl, 'status')
-    assert.equal(status.body.value.files[0].x, 'A')
+    const stagedFirst = status.body.value.files[0]
+    assert.ok(stagedFirst, 'staging the first file reports no change')
+    assert.equal(stagedFirst.x, 'A')
 
     await callAt(baseUrl, 'unstage', { paths: ['first.txt'] })
     status = await callAt(baseUrl, 'status')
-    assert.equal(status.body.value.files[0].kind, 'untracked')
+    const unstagedFirst = status.body.value.files[0]
+    assert.ok(unstagedFirst, 'unstaging the first file reports no change')
+    assert.equal(unstagedFirst.kind, 'untracked')
 
     const refused = await callAt(baseUrl, 'commit', { message: 'first commit' })
     assert.equal(refused.body.error.code, 'nothing-staged')
@@ -891,7 +832,9 @@ test('an unborn repository stages, unstages, and takes its first commit', async 
 
     const after = await callAt(baseUrl, 'history')
     assert.equal(after.body.value.commits.length, 1)
-    assert.equal(after.body.value.commits[0].subject, 'first commit')
+    const firstCommit = after.body.value.commits[0]
+    assert.ok(firstCommit, 'the first commit is missing from history')
+    assert.equal(firstCommit.subject, 'first commit')
 
     const branches = await callAt(baseUrl, 'branches')
     assert.deepEqual(branches.body.value.branches, [{ name: 'main', current: true }])
@@ -902,17 +845,8 @@ test('a directory outside a repository reports no repository', async () => {
   const outside = join(tmpRoot, 'plain')
   await mkdir(outside, { recursive: true })
   await writeFile(join(outside, 'file.txt'), 'x')
-  const routes = createFakeContext(outside)
-  const other = createServer((request, response) => {
-    const path = new URL(request.url ?? '/', 'http://localhost').pathname
-    const route = routes.get(path)
-    if (route === undefined) {
-      response.writeHead(404)
-      response.end()
-      return
-    }
-    void route.handler(request, response)
-  })
+  const host = createFakeContext(outside)
+  const other = routeServer(host.routes)
   await new Promise<void>((resolve) => {
     other.listen(0, '127.0.0.1', resolve)
   })
@@ -938,6 +872,7 @@ test('a directory outside a repository reports no repository', async () => {
     await new Promise<void>((resolve) => {
       other.close(() => resolve())
     })
+    host.dispose()
   }
 })
 

@@ -1,8 +1,35 @@
 /**
  * Working-tree status: porcelain-v2 parsing and reading.
  */
-import type { ChangeEntry, RepositoryInfo, StatusResult } from '../../shared/git.ts'
-import { changeEntry, findRepositoryRoot, gitOrThrow } from './exec.ts'
+import type { ChangeEntry, ChangeKind, RepositoryInfo, StatusResult } from '../../shared/git.ts'
+import { findRepositoryRoot, gitOrThrow } from './exec.ts'
+
+/**
+ * Build one wire entry from a parsed porcelain-v2 record.
+ * @param kind - record kind.
+ * @param x - index status character.
+ * @param y - worktree status character.
+ * @param path - path.
+ * @param origPath - rename source.
+ * @returns wire entry.
+ */
+function changeEntry(
+  kind: ChangeKind,
+  x: string,
+  y: string,
+  path: string,
+  origPath?: string,
+): ChangeEntry {
+  return {
+    kind,
+    x,
+    y,
+    path,
+    ...(origPath === undefined ? {} : { origPath }),
+    conflict: kind === 'unmerged',
+    untracked: kind === 'untracked',
+  }
+}
 
 /** Status separated into the repository summary and its changed files. */
 export interface ParsedStatus {

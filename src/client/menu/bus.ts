@@ -2,14 +2,31 @@
  * Per-panel command bus: one shared subscription point for menu command dispatch.
  */
 
+/** Panel operation one command names; the dispatcher handles each value. */
+export type PanelCommandType =
+  | 'open'
+  | 'stage'
+  | 'unstage'
+  | 'discard'
+  | 'ignore'
+  | 'stageSection'
+  | 'unstageSection'
+  | 'discardSection'
+  | 'checkout'
+  | 'checkoutDetached'
+  | 'createBranch'
+  | 'createTag'
+  | 'deleteBranch'
+  | 'refresh'
+
 /** One command envelope emitted by a context-menu action. */
 export interface PanelCommand {
   /** Panel operation (`open`, `stage`, `discard`, `refresh`, ...). */
-  readonly type: string
+  readonly type: PanelCommandType
   /** Session the captured target belongs to. */
   readonly sessionId?: string
-  /** Panel instance that captured the target. */
-  readonly panelId?: string
+  /** Panel instance that captured the target; undefined when it had none. */
+  readonly panelId?: string | undefined
   /** Change group the operation applies to. */
   readonly section?: string
   /** One repository-relative path. */
@@ -22,10 +39,6 @@ export interface PanelCommand {
   readonly oid?: string
   /** Local branch for a checkout or deletion. */
   readonly branch?: string
-  /** New branch or tag name. */
-  readonly name?: string
-  /** Optional annotated tag message. */
-  readonly message?: string
 }
 
 /** Dispatch target for menu commands. */

@@ -3,6 +3,31 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## Unreleased
+
+- Adapted source, contract tooling and test fixtures to the existing strict
+  TypeScript checks, including unchecked indexed access and exact optional
+  properties, without relaxing compiler settings or changing plugin behavior.
+- File actions use literal Git paths, protect direct previews and untracked
+  deletion from linked targets, and recheck untracked classification before
+  accessing the filesystem. Valid double-dot-prefixed names remain usable;
+  cross-drive relative-path results are rejected.
+- Overlapping status refreshes retain a serialized follow-up read. Cancelled,
+  superseded or disposed watch setup cannot reopen resources after its lifetime.
+- Extracted change-group rules, graph artwork/row presentation, Host validation
+  and mutation boundaries; consolidated menu commands and path-copy actions, and
+  made clipboard/UI-test cleanup reliable on failure.
+- Split the 1,400-line stylesheet into per-area files assembled by one ordered
+  module. Every selector and declaration is unchanged; only two obsolete lint
+  suppression comments disappear, so panel styling, theme tokens and the
+  commit-graph palette are identical.
+- The read-only maintenance gate now checks unused declarations and runtime
+  architecture boundaries, cycles and unreachable executable production modules.
+  No dependencies, public routes or loader contracts changed. See the maintenance
+  audit for remaining trust boundaries and follow-up debt.
+- This maintenance work changes both runtime halves; rebuild and restart the
+  Host, then refresh the existing Web page to verify the new artifacts.
+
 ## 0.12.0
 
 Operation notices and prompts now use DSH's shared host presentation instead of

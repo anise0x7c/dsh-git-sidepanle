@@ -33,17 +33,15 @@ export function renderDiff(t: LocaleBinder, diff: DiffResult | null | undefined)
   let clipped = false
   if (diff.truncated === true)
     rows.push(h('div', { key: 'truncated', className: 'dshgg-diffNote' }, t('diff.truncated')))
-  for (let index = 0; index < hunks.length; index += 1) {
-    const hunk = hunks[index]
+  for (const [index, hunk] of hunks.entries()) {
     rows.push(h('div', { key: `hunk:${index}`, className: 'dshgg-hunkHeader' }, hunk.header ?? ''))
     let oldLine = hunk.oldStart ?? 0
     let newLine = hunk.newStart ?? 0
-    for (let lineIndex = 0; lineIndex < hunk.lines.length; lineIndex += 1) {
+    for (const [lineIndex, line] of hunk.lines.entries()) {
       if (rendered >= MAX_RENDERED_DIFF_LINES) {
         clipped = true
         break
       }
-      const line = hunk.lines[lineIndex]
       let oldNumber = ''
       let newNumber = ''
       if (line.t === ' ') {

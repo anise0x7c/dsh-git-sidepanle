@@ -21,8 +21,8 @@ interface SvgIconOptions {
   readonly fill?: string
   /** Stroke width; defaults to 1.3. */
   readonly strokeWidth?: number
-  /** Extra class name. */
-  readonly className?: string
+  /** Extra class name; undefined means no extra class. */
+  readonly className?: string | undefined
 }
 
 /** A React component that draws one inline SVG icon. */

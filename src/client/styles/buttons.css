@@ -1,0 +1,91 @@
+/* --------------------------------------------------------------- buttons --- */
+
+.dshgg-iconBtn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  color: var(--dsw-alias-label-secondary);
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+}
+
+.dshgg-iconBtn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.dshgg-iconBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.dshgg-iconBtn[data-spinning="true"] svg {
+  animation: dshgg-spin 1s linear infinite;
+}
+
+@keyframes dshgg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dshgg-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0.5px solid transparent;
+  border-radius: var(--dsw-radius-sm);
+  font: var(--dsw-font-xxs-strong-12);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dshgg-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.dshgg-btnPrimary {
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsw-alias-button-primary-fill);
+}
+
+.dshgg-btnPrimary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.dshgg-btnGhost {
+  color: var(--dsw-alias-label-primary);
+  background: transparent;
+  border-color: var(--dsw-alias-border-l3);
+  font-weight: 400;
+}
+
+.dshgg-btnGhost:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
+.dshgg-linkBtn {
+  flex: none;
+  padding: 0;
+  color: var(--dsw-alias-state-business-primary);
+  font: var(--dsw-font-xxs-strong-12);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.dshgg-linkBtn:hover {
+  text-decoration: underline;
+}

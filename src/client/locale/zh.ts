@@ -94,6 +94,7 @@ export const zh: Record<GitGraphLocaleKey, string> = {
   'action.dismiss': '关闭',
   'error.discardUnborn': '首次提交前无法放弃更改。',
   'error.unknownCommit': '该提交已不存在。',
+  'error.notUntracked': '该文件已被跟踪或忽略，请刷新更改列表后重试。',
   'status.modified': '已修改',
   'status.added': '已添加',
   'status.deleted': '已删除',

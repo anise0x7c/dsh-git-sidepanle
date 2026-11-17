@@ -1,0 +1,80 @@
+/* --------------------------------------------------------- commit detail --- */
+
+.dshgg-commitView {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  padding: 2px 0 8px;
+}
+
+.dshgg-commitToolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  min-width: 0;
+}
+
+.dshgg-commitHash {
+  flex: none;
+  padding: 0 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 18px;
+  background: var(--dsw-alias-bg-module-platform);
+  border-radius: 999px;
+}
+
+.dshgg-commitSubject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font: var(--dsw-font-xs-strong-13);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-commitMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px 8px 34px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  overflow-wrap: anywhere;
+}
+
+.dshgg-commitBody {
+  max-height: 160px;
+  margin: 0 0 8px 34px;
+  padding: 8px 10px;
+  overflow: auto;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--dsw-alias-markdown-code-block);
+  border-radius: var(--dsw-radius-sm);
+}
+
+.dshgg-commitFilesHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin-top: 6px;
+  padding: 0 4px;
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-strong-12);
+}
+
+.dshgg-commitNote {
+  padding: 6px 6px 10px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}

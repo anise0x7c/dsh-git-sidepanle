@@ -143,11 +143,12 @@ describe('isStaged and isUnstaged', () => {
   })
 
   test('conflicted rows never appear in either change group', () => {
-    for (const [x, y] of [
+    const cases: [string, string][] = [
       ['U', 'U'],
       ['A', 'A'],
       ['A', 'U'],
-    ]) {
+    ]
+    for (const [x, y] of cases) {
       const entry = changedEntry(x, y, true)
       assert.equal(isStaged(entry), false, `staged for ${x}${y}`)
       assert.equal(isUnstaged(entry), false, `unstaged for ${x}${y}`)
@@ -297,6 +298,10 @@ describe('errorText', () => {
     assert.equal(errorText(t, { code: 'forbidden' }), 'T(error.forbidden)')
     assert.equal(errorText(t, { code: 'not-a-repository' }), 'T(noRepo.title)')
     assert.equal(errorText(t, { code: 'discard-unborn' }), 'T(error.discardUnborn)')
+    assert.equal(
+      errorText(t, { code: 'not-untracked', message: 'Host detail' }),
+      'T(error.notUntracked)',
+    )
   })
 
   test('shows the failure message for unmapped codes, falling back to unknown', () => {
