@@ -1,8 +1,9 @@
 /** Theme-token driven naming and deletion dialogs for graph menu commands. */
 
 import type React from 'react'
-import { createElement, useId } from 'react'
+import { createElement, useRef } from 'react'
 import type { LocaleBinder } from '../../types/dsh.ts'
+import { FloatingPanel, isCompositionKey } from '../FloatingPanel.ts'
 import type { CommitMenuDialog as CommitMenuDialogState } from '../hooks/useCommitMenuActions.ts'
 
 const h = createElement
@@ -15,6 +16,8 @@ export interface CommitMenuDialogProps {
   readonly t: LocaleBinder
   /** Operation running: keep text visible and controls inactive but focused. */
   readonly busy: boolean
+  /** Existing action-failure presentation, kept inside the operation panel. */
+  readonly feedback?: React.ReactNode
   /** Edit the branch or tag name. */
   readonly onNameChange: (name: string) => void
   /** Edit an optional tag annotation. */
@@ -25,16 +28,10 @@ export interface CommitMenuDialogProps {
   readonly onSubmit: () => void
 }
 
-/**
- * Render one operation dialog under the panel's feedback area. Creation inputs
- * receive focus; a destructive confirmation starts on Cancel. Escape cancels
- * while idle. A failed submission keeps both the text and the logical focus.
- * @param props - open state and handlers supplied by the graph-action hook.
- * @returns operation dialog element.
- */
+/** Render a reference-operation form; its hook still owns restoring graph focus. */
 export function CommitMenuDialog(props: CommitMenuDialogProps): React.ReactElement {
   const { dialog, t } = props
-  const descriptionId = useId()
+  const composing = useRef(false)
   const title =
     dialog.kind === 'createBranch'
       ? t('menu.createBranch')
@@ -53,106 +50,91 @@ export function CommitMenuDialog(props: CommitMenuDialogProps): React.ReactEleme
       : dialog.kind === 'createTag'
         ? t('menu.creatingTag')
         : t('menu.deletingBranch')
+  const canSubmit = dialog.kind === 'deleteBranch' || dialog.name.trim() !== ''
+  const submit = (): void => {
+    if (!props.busy && canSubmit) props.onSubmit()
+  }
   const enter = (event: React.KeyboardEvent<HTMLElement>): void => {
-    if (event.key !== 'Enter' || event.shiftKey) return
+    if (event.key !== 'Enter' || event.shiftKey || composing.current || isCompositionKey(event))
+      return
     event.preventDefault()
-    props.onSubmit()
+    submit()
   }
   const annotationEnter = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key !== 'Enter' || (!event.ctrlKey && !event.metaKey)) return
+    if (
+      event.key !== 'Enter' ||
+      (!event.ctrlKey && !event.metaKey) ||
+      composing.current ||
+      isCompositionKey(event)
+    )
+      return
     event.preventDefault()
-    props.onSubmit()
+    submit()
+  }
+  const compositionHandlers = {
+    onCompositionStart: () => {
+      composing.current = true
+    },
+    onCompositionEnd: () => {
+      composing.current = false
+    },
   }
   return h(
-    'div',
+    FloatingPanel,
     {
-      className: 'dshgg-confirm',
-      role: 'alertdialog',
-      'aria-label': title,
-      'aria-describedby': descriptionId,
-      'aria-busy': props.busy,
-      onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
-        if (event.key !== 'Escape' || props.busy) return
-        event.preventDefault()
-        event.stopPropagation()
-        props.onCancel()
-      },
+      title,
+      description,
+      busy: props.busy,
+      canSubmit,
+      focusCancel: dialog.kind === 'deleteBranch',
+      cancelLabel: t('action.cancel'),
+      submitLabel: title,
+      progress,
+      feedback: props.feedback,
+      onCancel: props.onCancel,
+      onSubmit: submit,
     },
-    h(
-      'div',
-      { className: 'dshgg-confirmText' },
-      h('div', { className: 'dshgg-confirmTitle' }, title),
-      h('div', { id: descriptionId, className: 'dshgg-confirmDesc' }, description),
-      dialog.kind === 'deleteBranch'
-        ? null
-        : h(
-            'label',
-            { className: 'dshgg-dialogField' },
-            h('span', { className: 'dshgg-dialogLabel' }, t('menu.referenceName')),
-            h('input', {
-              type: 'text',
-              className: 'dshgg-dialogInput',
-              'aria-label': t('menu.referenceName'),
-              value: dialog.name,
-              maxLength: 200,
-              autoFocus: true,
-              readOnly: props.busy,
-              onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
-                props.onNameChange(event.target.value),
-              onKeyDown: enter,
-            }),
-          ),
-      dialog.kind !== 'createTag'
-        ? null
-        : h(
-            'label',
-            { className: 'dshgg-dialogField' },
-            h('span', { className: 'dshgg-dialogLabel' }, t('menu.tagMessage')),
-            h('textarea', {
-              className: 'dshgg-dialogInput dshgg-dialogMessage',
-              'aria-label': t('menu.tagMessage'),
-              value: dialog.message,
-              maxLength: 20_000,
-              rows: 3,
-              readOnly: props.busy,
-              onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) =>
-                props.onMessageChange(event.target.value),
-              onKeyDown: annotationEnter,
-            }),
-            h('span', { className: 'dshgg-dialogHint' }, t('menu.tagMessageHint')),
-          ),
-      props.busy ? h('div', { className: 'dshgg-dialogHint', role: 'status' }, progress) : null,
-    ),
-    h(
-      'div',
-      { className: 'dshgg-confirmActions' },
-      h(
-        'button',
-        {
-          type: 'button',
-          className: 'dshgg-btn dshgg-btnGhost',
-          autoFocus: dialog.kind === 'deleteBranch',
-          'aria-disabled': props.busy ? 'true' : undefined,
-          onClick: () => {
-            if (!props.busy) props.onCancel()
-          },
-        },
-        t('action.cancel'),
-      ),
-      h(
-        'button',
-        {
-          type: 'button',
-          className: 'dshgg-btn dshgg-btnPrimary',
-          disabled: !props.busy && dialog.kind !== 'deleteBranch' && dialog.name.trim() === '',
-          'aria-disabled':
-            props.busy || (dialog.kind !== 'deleteBranch' && dialog.name.trim() === '')
-              ? 'true'
-              : undefined,
-          onClick: props.onSubmit,
-        },
-        title,
-      ),
-    ),
+    dialog.kind === 'deleteBranch'
+      ? null
+      : h(
+          'label',
+          { className: 'dshgg-dialogField' },
+          h('span', { className: 'dshgg-dialogLabel' }, t('menu.referenceName')),
+          h('input', {
+            type: 'text',
+            className: 'dshgg-dialogInput',
+            'aria-label': t('menu.referenceName'),
+            value: dialog.name,
+            maxLength: 200,
+            autoFocus: true,
+            readOnly: props.busy,
+            ...compositionHandlers,
+            onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+              if (!props.busy) props.onNameChange(event.target.value)
+            },
+            onKeyDown: enter,
+          }),
+        ),
+    dialog.kind !== 'createTag'
+      ? null
+      : h(
+          'label',
+          { className: 'dshgg-dialogField' },
+          h('span', { className: 'dshgg-dialogLabel' }, t('menu.tagMessage')),
+          h('textarea', {
+            className: 'dshgg-dialogInput dshgg-dialogMessage',
+            'aria-label': t('menu.tagMessage'),
+            value: dialog.message,
+            maxLength: 20_000,
+            rows: 3,
+            readOnly: props.busy,
+            ...compositionHandlers,
+            onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+              if (!props.busy) props.onMessageChange(event.target.value)
+            },
+            onKeyDown: annotationEnter,
+          }),
+          h('span', { className: 'dshgg-dialogHint' }, t('menu.tagMessageHint')),
+        ),
   )
 }

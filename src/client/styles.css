@@ -13,10 +13,13 @@
 /* ------------------------------------------------------------------ base --- */
 
 .dshgg-root {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   height: 100%;
+  min-width: 0;
   min-height: 0;
   color: var(--dsw-alias-label-primary);
   font: var(--dsw-font-xs-13);
@@ -1001,19 +1004,95 @@ body[data-ds-dark-theme] .dshgg-root {
 
 /* ------------------------------------------------------------- confirm --- */
 
-.dshgg-confirm {
+/* This local layer never participates in the pane split or intercepts clicks
+   outside the card. No portal, viewport positioning or modal backdrop. */
+.dshgg-root .dshgg-floating-panel-layer {
+  position: absolute;
+  inset: 8px;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+}
+
+.dshgg-root .dshgg-floating-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  max-width: 440px;
+  min-height: 0;
+  max-height: 100%;
+  /* If even the wrapping footer exceeds the pane, every action stays reachable. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-lg);
+  box-shadow: var(--dsw-elevation-prominent);
+  pointer-events: auto;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* Keep the solid theme surface on browsers without backdrop filtering. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .dshgg-root .dshgg-floating-panel {
+    background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));
+    backdrop-filter: var(--dsw-menu-backdrop-filter);
+    -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);
+  }
+}
+
+.dshgg-root .dshgg-floating-panel-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
+
+.dshgg-root .dshgg-floating-panel-footer {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
   padding: 10px 12px;
-  background: var(--dsw-alias-bg-layer-2);
   border-top: 0.5px solid var(--dsw-alias-border-l3);
 }
 
-.dshgg-confirmText {
-  flex: 1;
+.dshgg-root .dshgg-floating-panel-footer .dshgg-btn {
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
+  height: auto;
+  min-height: 28px;
+  padding: 6px 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.dshgg-root .dshgg-floating-panel [aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.dshgg-root .dshgg-floating-panel .dshgg-banner {
+  margin: 10px 0 0;
 }
 
 .dshgg-confirmTitle {
@@ -1026,13 +1105,6 @@ body[data-ds-dark-theme] .dshgg-root {
   color: var(--dsw-alias-label-secondary);
   font: var(--dsw-font-xxs-12);
   overflow-wrap: anywhere;
-}
-
-.dshgg-confirmActions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
 }
 
 /* -------------------------------------------------------- graph dialogs --- */
@@ -1058,6 +1130,7 @@ body[data-ds-dark-theme] .dshgg-root {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
+  max-width: 100%;
   padding: 6px 8px;
   color: var(--dsw-alias-label-primary);
   font: var(--dsw-font-xs-13);

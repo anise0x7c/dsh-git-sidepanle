@@ -1,8 +1,8 @@
 /**
  * The source-control sidebar tab. This module only assembles: the panel wiring
  * and the state machines come from `hooks/`, the markup below the toolbar comes
- * from `views/`, and the confirmation dialog stays here because it overlays the
- * whole panel. No Host call is made directly here.
+ * from `views/`, and shared floating prompts render above the assembled body.
+ * No Host call is made directly here.
  */
 
 import type React from 'react'
@@ -13,7 +13,9 @@ import { sortChangeEntries } from '../git/list.ts'
 import { AlertIcon, GitBranchIcon } from '../icons.ts'
 import type { ChangeEntry, ChangeRow, CommitFileRow } from '../types/domain.ts'
 import type { LocaleBinder, TabInfoHook, UseContextMenu } from '../types/dsh.ts'
+import type { ConfirmState } from './confirm.ts'
 import { confirmActionLabel, confirmDescription, confirmTitle } from './confirm.ts'
+import { FloatingPanel } from './FloatingPanel.ts'
 import { Banner, EmptyState } from './feedback.ts'
 import { useBranches } from './hooks/useBranches.ts'
 import { useChangeActions } from './hooks/useChangeActions.ts'
@@ -166,12 +168,12 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     actionFailure,
     setActionFailure,
     confirm,
-    setConfirm,
+    setConfirm: rawSetConfirm,
     perform,
     stage,
     unstage,
     ignore,
-    requestCommit,
+    requestCommit: rawRequestCommit,
     confirmAction,
   } = actions
   const {
@@ -191,6 +193,29 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     perform,
     onReferencesChanged: resetBranches,
   })
+  // Replace the other idle prompt at its entry point, rather than hiding it
+  // behind a render priority that could reveal stale forms after cancellation.
+  const requestConfirmation = (next: ConfirmState | null): void => {
+    if (refs.busy.current !== null) return
+    if (next !== null) {
+      if (commitMenuActions.dialog !== null) commitMenuActions.closeDialog(false)
+      setActionFailure(null)
+    }
+    rawSetConfirm(next)
+  }
+  const requestReference = (open: () => void): void => {
+    if (refs.busy.current !== null) return
+    rawSetConfirm(null)
+    setActionFailure(null)
+    open()
+  }
+  const requestCommit = (): void => {
+    if (refs.busy.current !== null || message.trim() === '') return
+    if (commitMenuActions.dialog !== null) commitMenuActions.closeDialog(false)
+    rawSetConfirm(null)
+    setActionFailure(null)
+    rawRequestCommit()
+  }
   const commitState = useCommitDetails({ call, refs })
   const selectedCommit = commitState.selected
   const commitRows = useMemo<CommitFileRow[]>(
@@ -296,10 +321,10 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     ignore,
     checkout,
     checkoutDetached: commitMenuActions.checkoutDetached,
-    createBranch: commitMenuActions.createBranch,
-    createTag: commitMenuActions.createTag,
-    deleteBranch: commitMenuActions.deleteBranch,
-    setConfirm,
+    createBranch: (oid) => requestReference(() => commitMenuActions.createBranch(oid)),
+    createTag: (oid) => requestReference(() => commitMenuActions.createTag(oid)),
+    deleteBranch: (branch) => requestReference(() => commitMenuActions.deleteBranch(branch)),
+    setConfirm: requestConfirmation,
     setNotice,
     openDiff,
   }
@@ -403,8 +428,8 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
             onStage: stage,
             onUnstage: unstage,
             onOpenDiff: openDiff,
-            onDiscard: (entry) => setConfirm({ kind: 'discard', entry }),
-            onDiscardAll: () => setConfirm({ kind: 'discardAll', entries: changedRows }),
+            onDiscard: (entry) => requestConfirmation({ kind: 'discard', entry }),
+            onDiscardAll: () => requestConfirmation({ kind: 'discardAll', entries: changedRows }),
             menuTrigger,
             sectionTarget: targets.sectionTarget,
             rowTarget: targets.rowTarget,
@@ -437,6 +462,16 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     repo === null
       ? t('commit.placeholder', { branch: '' })
       : t('commit.placeholder', { branch: branchLabel ?? '' })
+
+  const actionFeedback =
+    actionFailure === null
+      ? null
+      : h(Banner, {
+          title: t('error.title'),
+          detail: errorText(t, actionFailure),
+          dismissLabel: t('action.dismiss'),
+          onDismiss: () => setActionFailure(null),
+        })
 
   return h(
     'div',
@@ -483,68 +518,39 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           onDismiss: () => setLoadFailure(null),
         })
       : null,
-    actionFailure !== null
-      ? h(Banner, {
-          title: t('error.title'),
-          detail: errorText(t, actionFailure),
-          dismissLabel: t('action.dismiss'),
-          onDismiss: () => setActionFailure(null),
-        })
-      : null,
+    commitMenuActions.dialog === null && confirm === null ? actionFeedback : null,
     notice !== null ? h('div', { className: 'dshgg-notice', role: 'status' }, notice) : null,
     body,
     commitMenuActions.dialog === null
       ? null
       : h(CommitMenuDialog, {
+          key:
+            commitMenuActions.dialog.kind === 'deleteBranch'
+              ? `delete:${commitMenuActions.dialog.branch}`
+              : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
           dialog: commitMenuActions.dialog,
           t,
           busy: busy !== null,
+          feedback: actionFeedback,
           onNameChange: commitMenuActions.setName,
           onMessageChange: commitMenuActions.setMessage,
-          onCancel: commitMenuActions.closeDialog,
+          onCancel: () => commitMenuActions.closeDialog(),
           onSubmit: commitMenuActions.submitDialog,
         }),
-    confirm !== null
-      ? h(
-          'div',
-          {
-            className: 'dshgg-confirm',
-            role: 'alertdialog',
-            'aria-label': confirmTitle(t, confirm),
+    confirm === null
+      ? null
+      : h(FloatingPanel, {
+          key: confirm.kind === 'discard' ? `discard:${confirm.entry.path}` : confirm.kind,
+          title: confirmTitle(t, confirm),
+          description: confirmDescription(t, confirm),
+          cancelLabel: t('action.cancel'),
+          submitLabel: confirmActionLabel(t, confirm),
+          busy: busy !== null,
+          feedback: actionFeedback,
+          onCancel: () => requestConfirmation(null),
+          onSubmit: () => {
+            if (refs.busy.current === null) confirmAction()
           },
-          h(
-            'div',
-            { className: 'dshgg-confirmText' },
-            h('div', { className: 'dshgg-confirmTitle' }, confirmTitle(t, confirm)),
-            confirmDescription(t, confirm) === ''
-              ? null
-              : h('div', { className: 'dshgg-confirmDesc' }, confirmDescription(t, confirm)),
-          ),
-          h(
-            'div',
-            { className: 'dshgg-confirmActions' },
-            h(
-              'button',
-              {
-                type: 'button',
-                className: 'dshgg-btn dshgg-btnGhost',
-                disabled: busy !== null,
-                onClick: () => setConfirm(null),
-              },
-              t('action.cancel'),
-            ),
-            h(
-              'button',
-              {
-                type: 'button',
-                className: 'dshgg-btn dshgg-btnPrimary',
-                disabled: busy !== null,
-                onClick: confirmAction,
-              },
-              confirmActionLabel(t, confirm),
-            ),
-          ),
-        )
-      : null,
+        }),
   )
 }

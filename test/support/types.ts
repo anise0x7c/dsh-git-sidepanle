@@ -159,6 +159,8 @@ export interface TestEvent {
   altKey?: boolean
   metaKey?: boolean
   shiftKey?: boolean
+  /** Native keyboard composition state, as React's KeyboardEvent exposes it. */
+  nativeEvent?: { isComposing?: boolean }
 }
 
 /** Pointer gesture phase the harness can invoke. */

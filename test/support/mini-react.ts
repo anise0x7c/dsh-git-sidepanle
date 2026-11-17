@@ -351,6 +351,7 @@ export function createHarness(options: HarnessOptions): TestHarness {
       preventDefault() {},
       target: {},
       currentTarget: eventTargetStub(),
+      nativeEvent: { isComposing: false },
       key: '',
       repeat: false,
       ...event,

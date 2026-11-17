@@ -61,8 +61,8 @@ export interface CommitMenuActionsState {
   readonly setName: (name: string) => void
   /** Edit the optional tag annotation. */
   readonly setMessage: (message: string) => void
-  /** Cancel the open dialog without calling Git and restore its row's focus. */
-  readonly closeDialog: () => void
+  /** Cancel without Git; replacements can skip restoring the previous row. */
+  readonly closeDialog: (restoreFocus?: boolean) => void
   /** Submit the validated dialog through the busy-locked action wrapper. */
   readonly submitDialog: () => void
 }
@@ -100,9 +100,10 @@ export function useCommitMenuActions(options: UseCommitMenuActionsOptions): Comm
     })
   }
 
-  const closeDialog = (): void => {
+  const closeDialog = (restoreFocus = true): void => {
     setDialog(null)
-    restoreTriggerFocus()
+    if (restoreFocus) restoreTriggerFocus()
+    else invoker.current = null
   }
 
   const finishDialog = (): void => {

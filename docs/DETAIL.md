@@ -23,6 +23,14 @@ The Git tab and its diff tabs live in the right Sidebar's normal docking surface
 
 Status refreshes when the panel opens, after every action, and when the refresh control is used. While the tab is visible the Host also watches the repository, so an edit, stage, commit, fetch, or branch switch made in a terminal appears on its own within about two seconds: a working-tree or index change refreshes the summary and change list, while a `HEAD` or reference change also moves the graph's checked-out, upstream, and base colors and badges on the rows already loaded, without returning the graph to its first page. The newest page is reloaded only when the checked-out commit is not among the loaded rows. If the Host cannot watch the files, the panel falls back to checking the status every few seconds, and no watcher failure is shown.
 
+## Operation panels
+
+Discard confirmations, the offer to stage all changes before committing, and branch/tag forms float above the bottom of the Git panel without shrinking the change list or graph or moving their divider. They share a rounded, translucent frosted surface that follows the native theme, with a solid background fallback when backdrop filtering is unavailable.
+
+Copy and fields appear above a separate action footer. Long filenames, branch names and button labels wrap in narrow panes; taller forms scroll internally while their actions remain reachable. Reference-operation failures appear inside the open form and keep the entered values. The surrounding panel stays usable; requesting another prompt replaces the idle prompt rather than stacking cards or executing the replaced operation.
+
+Plain confirmations start on **Cancel**, and idle `Escape` cancels without running Git. Reference creation starts in the name input. Pending operations prevent cancellation and duplicate submission.
+
 ## Context menus
 
 Right-click a row, or focus a changed file or commit (or a button inside a group or diff header) and press the context-menu key or `Shift+F10`. Menus use the application's shared context-menu presentation, so position, dismissal, focus return, theme, and language match the rest of DSH.

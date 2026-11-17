@@ -3,6 +3,17 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## Unreleased
+
+- Discard, stage-all-and-commit and reference-operation prompts now share a
+  rounded native-themed frosted floating panel instead of shrinking the change
+  list and graph. Long text and action labels wrap, taller forms scroll above a
+  separate action footer, and operation failures remain inside the open form.
+- Plain confirmations start on Cancel and accept idle Escape. Prompts replace
+  one another rather than stacking; pending forms prevent cancellation and
+  duplicate submission. Git operations and host context menus are unchanged.
+- This is a browser-only change; no Host restart is required.
+
 ## 0.11.0
 
 The context menus now follow VS Code's action structure and continue to use

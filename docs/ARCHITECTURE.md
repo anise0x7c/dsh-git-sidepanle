@@ -53,6 +53,7 @@ src/
       controls.ts, rows.ts    controls and flat change-file rows
       Section.ts              collapsible section header
       feedback.ts             banners and empty states
+      FloatingPanel.ts        shared panel-local floating operation surface and actions
       BranchMenu.ts           branch picker
       confirm.ts              confirmation wording
       menu.ts                 panel-scoped command wiring
@@ -78,7 +79,7 @@ test/
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
-panel/views/* -> { panel/autosize, panel/controls, panel/split, icons, git/format, git/graph }
+panel/views/* -> { panel/FloatingPanel, panel/autosize, panel/controls, panel/split, icons, git/format, git/graph }
 pure git/menu/locale logic -> no React, no ctx
 host: http/* -> nothing; git/* -> git/exec; watch/* -> git/exec; rpc -> readers + watch; host-entry -> rpc + http/* + watch
 either half -- import type --> shared/git
@@ -125,6 +126,12 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
    path. Commit/checkout also refresh history. The commit box sizes itself to its
    message (`panel/autosize.ts`): one line at rest, ten at most, re-measured from
    a layout effect per message and from a width watcher when the box rewraps.
+   `FloatingPanel` owns the presentation shared by discard/commit confirmations
+   and reference forms: a non-modal absolute layer anchored inside the panel,
+   with native frosted surface tokens, a height-bounded scrolling content area,
+   and a separate wrapping action footer. It does not enter the split's flex
+   layout. `GitPanel` keeps prompts mutually exclusive and routes action errors
+   into the open surface; hooks retain all operation state and Git calls.
 7. Triggers capture targets. The shared overlay calls a contribution with the
    target's **value**, never the wrapper. Nested native checkout/deletion submenus
    come from the commit's local branch heads. Menu actions travel through the bus

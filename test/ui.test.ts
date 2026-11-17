@@ -79,6 +79,10 @@ interface MountOptions {
   /** `references` responses in call order; the last repeats. */
   referencePages?: GraphReferences[]
   failOp?: string
+  /** Pause one operation before responding so busy controls can be exercised. */
+  pending?: { op: string; until: Promise<void> }
+  /** Locale override for long translated copy and action labels. */
+  t?: typeof translate
   diff?: boolean
   menus?: boolean
   tabInfo?: UiTabInfo
@@ -133,6 +137,7 @@ async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
     fetch: async (_url: string, init: { body: string }): Promise<FetchResponseLike> => {
       const request = JSON.parse(init.body) as RpcRequestRecord
       calls.push(request)
+      if (request.op === options.pending?.op) await options.pending.until
       if (request.op === 'watch') {
         return {
           ok: true,
@@ -225,7 +230,7 @@ async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
   const menu = createMenuMock()
   harness.setComponent(component, {
     sessionId: 'session-1',
-    t: translate,
+    t: options.t ?? translate,
     useTabInfo: options.tabInfo ?? useTabInfo,
     useSessions: () => undefined,
     ...(options.menus === false ? {} : { useContextMenu: menu.useContextMenu }),
@@ -358,6 +363,77 @@ function buttonByText(harness: TestHarness, text: string): TestElement {
   const button = buttons[0]
   assert.ok(button)
   return button
+}
+
+/** Check the shared accessible content/footer contract, not component internals. */
+function floatingPanel(
+  harness: TestHarness,
+  description = true,
+): {
+  dialog: TestElement
+  body: TestElement
+  footer: TestElement
+} {
+  const dialogs = harness.findAll((element) => element.props.role === 'alertdialog')
+  assert.equal(dialogs.length, 1, 'exactly one operation prompt is visible')
+  const [dialog] = dialogs
+  assert.ok(dialog)
+  assert.ok(hasClass(dialog, 'dshgg-floating-panel'), 'the prompt uses the shared floating card')
+  assert.equal(dialog.props['aria-modal'], undefined, 'the operation prompt stays nonmodal')
+  assert.equal(typeof dialog.props['aria-label'], 'string')
+  assert.notEqual(String(dialog.props['aria-label']).trim(), '', 'the dialog has a name')
+  const [body] = collectElements(dialog, (element) =>
+    hasClass(element, 'dshgg-floating-panel-body'),
+  )
+  const [footer] = collectElements(dialog, (element) =>
+    hasClass(element, 'dshgg-floating-panel-footer'),
+  )
+  assert.ok(body, 'the prompt has its own scroll body')
+  assert.ok(footer, 'the prompt has a separate action footer')
+  assert.ok(dialog.children.includes(body) && dialog.children.includes(footer))
+  assert.ok(dialog.children.indexOf(body) < dialog.children.indexOf(footer))
+  assert.equal(collectElements(body, (element) => element === footer).length, 0)
+  assert.equal(collectElements(footer, (element) => element.type === 'button').length, 2)
+  const describedBy = dialog.props['aria-describedby']
+  if (description) {
+    assert.equal(typeof describedBy, 'string', 'copy is associated with the dialog')
+    const descriptions = collectElements(body, (element) => element.props.id === describedBy)
+    assert.equal(descriptions.length, 1, 'description resolves inside the scrolling content')
+    assert.notEqual(elementText(descriptions[0]).trim(), '', 'description is not empty')
+  } else {
+    assert.equal(describedBy, undefined, 'a title-only prompt has no dangling description id')
+    assert.equal(
+      collectElements(body, (element) => hasClass(element, 'dshgg-confirmDesc')).length,
+      0,
+      'a title-only prompt has no empty description block',
+    )
+  }
+  return { dialog, body, footer }
+}
+
+/** Whether one public DOM class is present. */
+function hasClass(element: TestElement, name: string): boolean {
+  return String(element.props.className ?? '')
+    .split(/\s+/)
+    .includes(name)
+}
+
+/** Capture a fresh graph-row target through the host-shaped context menu. */
+function graphMenuTarget(mounted: MountedGit, invoker?: TestEventTarget): CapturedTarget {
+  const [row] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-graphRow'))
+  assert.ok(row)
+  mounted.harness.contextmenu(row, invoker === undefined ? {} : { currentTarget: invoker })
+  return lastTarget(mounted.menu)
+}
+
+/** Open an inline discard without executing the repository operation. */
+async function openDiscard(mounted: MountedGit, path = 'src/app.js'): Promise<void> {
+  const row = mounted.harness
+    .findAll((element) => hasClass(element, 'dshgg-fileRow') && element.props.title === path)
+    .at(-1)
+  assert.ok(row, `no changed-file row rendered for ${path}`)
+  mounted.harness.click(buttonInside(row, 'actions.discard'))
+  await mounted.harness.flush()
 }
 
 /**
@@ -1275,6 +1351,335 @@ test('discard asks for confirmation before calling the Host', async () => {
   await mounted.harness.dispose()
 })
 
+test('floating discard focuses Cancel and Escape preserves the split without Git', async (t) => {
+  const mounted = await mountGit()
+  t.after(() => mounted.harness.dispose())
+  const [splitter] = mounted.harness.findAll((element) => element.props.role === 'separator')
+  assert.ok(splitter)
+  mounted.harness.keydown(splitter, { key: 'ArrowDown' })
+  await mounted.harness.flush()
+  const geometry = () =>
+    mounted.harness
+      .findAll(
+        (element) =>
+          hasClass(element, 'dshgg-split') ||
+          hasClass(element, 'dshgg-paneTop') ||
+          hasClass(element, 'dshgg-paneBottom') ||
+          element.props.role === 'separator',
+      )
+      .map((element) => [
+        element.props.className,
+        element.props.style,
+        element.props['aria-valuenow'],
+      ])
+  const beforeGeometry = geometry()
+  const beforeCalls = [...mounted.calls]
+  await openDiscard(mounted)
+  const { dialog, footer } = floatingPanel(mounted.harness)
+  assert.equal(buttonByText(mounted.harness, 'action.cancel').props.autoFocus, true)
+  assert.match(elementText(footer), /confirm\.discard/)
+  const [split] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-split'))
+  assert.equal(collectElements(split, (element) => element === dialog).length, 0)
+  assert.deepEqual(geometry(), beforeGeometry, 'opening a card keeps both pane allocations')
+  let prevented = false
+  let stopped = false
+  mounted.harness.keydown(dialog, {
+    key: 'Escape',
+    preventDefault: () => {
+      prevented = true
+    },
+    stopPropagation: () => {
+      stopped = true
+    },
+  })
+  await mounted.harness.flush()
+  assert.ok(prevented && stopped, 'Escape is handled here, not by the surrounding tab')
+  assert.equal(mounted.harness.findAll((element) => element.props.role === 'alertdialog').length, 0)
+  assert.deepEqual(mounted.calls, beforeCalls, 'opening and cancelling do not call Git')
+  assert.deepEqual(geometry(), beforeGeometry)
+})
+
+test('floating stage-all confirmation has no empty or dangling description', async (t) => {
+  const status = createStatus({
+    files: [
+      { kind: 'ordinary', x: '.', y: 'M', path: 'src/app.js', conflict: false, untracked: false },
+    ],
+  })
+  const mounted = await mountGit({ status })
+  t.after(() => mounted.harness.dispose())
+  const [message] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitMessage'))
+  mounted.harness.change(message, 'commit everything')
+  await mounted.harness.flush()
+  const beforeCalls = [...mounted.calls]
+  mounted.harness.click(buttonByText(mounted.harness, 'commit.action'))
+  await mounted.harness.flush()
+  const { body, footer } = floatingPanel(mounted.harness, false)
+  assert.match(elementText(body), /commit\.emptyConfirm/)
+  assert.match(elementText(footer), /commit\.stageAll/)
+  assert.equal(buttonByText(mounted.harness, 'action.cancel').props.autoFocus, true)
+  mounted.harness.click(buttonByText(mounted.harness, 'action.cancel'))
+  await mounted.harness.flush()
+  assert.deepEqual(mounted.calls, beforeCalls)
+})
+
+test('floating prompts replace each other in both directions and never resurface on cancel', async (t) => {
+  const mounted = await mountGit({
+    status: createStatus({
+      files: [
+        { kind: 'ordinary', x: '.', y: 'M', path: 'src/app.js', conflict: false, untracked: false },
+      ],
+    }),
+  })
+  t.after(() => mounted.harness.dispose())
+  const beforeCalls = [...mounted.calls]
+  let focusRestores = 0
+  const invoker: TestEventTarget = {
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 80, height: 22, bottom: 22 }),
+    isConnected: true,
+    focus: () => {
+      focusRestores += 1
+    },
+  }
+  const createTag = async () => {
+    await runMenuAction(mounted.components, graphMenuTarget(mounted, invoker), 'create-tag')
+    await mounted.harness.flush()
+  }
+  const commitAll = async () => {
+    const [message] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitMessage'))
+    mounted.harness.change(message, 'not submitted')
+    await mounted.harness.flush()
+    mounted.harness.click(buttonByText(mounted.harness, 'commit.action'))
+    await mounted.harness.flush()
+  }
+  const cancel = async () => {
+    mounted.harness.click(buttonByText(mounted.harness, 'action.cancel'))
+    await mounted.harness.flush()
+    assert.equal(
+      mounted.harness.findAll((element) => element.props.role === 'alertdialog').length,
+      0,
+    )
+  }
+  await openDiscard(mounted)
+  await createTag()
+  assert.equal(floatingPanel(mounted.harness).dialog.props['aria-label'], 'menu.createTag')
+  await cancel()
+  await createTag()
+  const focusBeforeReplacement = focusRestores
+  await openDiscard(mounted)
+  assert.equal(
+    focusRestores,
+    focusBeforeReplacement,
+    'replacement must not focus the old graph row over the new Cancel',
+  )
+  assert.equal(floatingPanel(mounted.harness).dialog.props['aria-label'], 'confirm.discardTitle')
+  await cancel()
+  await createTag()
+  await commitAll()
+  assert.equal(
+    floatingPanel(mounted.harness, false).dialog.props['aria-label'],
+    'commit.emptyConfirm',
+  )
+  await cancel()
+  await commitAll()
+  await createTag()
+  assert.equal(floatingPanel(mounted.harness).dialog.props['aria-label'], 'menu.createTag')
+  await cancel()
+  assert.deepEqual(mounted.calls, beforeCalls, 'replaced operations are never submitted')
+})
+
+test('floating content retains long filenames, branch names, annotations and translated actions', async (t) => {
+  const filename = `${'very-long-unbroken-filename'.repeat(15)}.ts`
+  const branch = `feature/${'long-unbroken-branch'.repeat(10)}`
+  const cancelLabel = '取消这个尚未提交的操作'.repeat(8)
+  const discardLabel = '确认放弃这个文件的全部更改'.repeat(8)
+  const head = HISTORY.commits[0]
+  assert.ok(head)
+  const mounted = await mountGit({
+    status: createStatus({
+      files: [
+        { kind: 'ordinary', x: '.', y: 'M', path: filename, conflict: false, untracked: false },
+      ],
+    }),
+    history: {
+      ...HISTORY,
+      commits: [{ ...head, refs: `HEAD -> refs/heads/main, refs/heads/${branch}` }],
+    },
+    t: (key, params) => {
+      if (key === 'confirm.discardTitle' || key === 'menu.deleteBranchConfirm')
+        return `${key}: ${params?.name}`
+      if (key === 'action.cancel') return cancelLabel
+      if (key === 'confirm.discard') return discardLabel
+      return translate(key, params)
+    },
+  })
+  t.after(() => mounted.harness.dispose())
+  await openDiscard(mounted, filename)
+  let panel = floatingPanel(mounted.harness)
+  assert.ok(elementText(panel.body).includes(filename), 'long copy is preserved in the scroll body')
+  assert.ok(elementText(panel.footer).includes(cancelLabel))
+  assert.ok(elementText(panel.footer).includes(discardLabel))
+  mounted.harness.click(buttonContaining(mounted.harness, cancelLabel))
+  await mounted.harness.flush()
+  await runMenuAction(mounted.components, graphMenuTarget(mounted), 'delete-branch', branch)
+  await mounted.harness.flush()
+  panel = floatingPanel(mounted.harness)
+  assert.ok(elementText(panel.body).includes(branch), 'deletion copy keeps the full branch name')
+  mounted.harness.click(buttonContaining(mounted.harness, cancelLabel))
+  await mounted.harness.flush()
+  await runMenuAction(mounted.components, graphMenuTarget(mounted), 'create-tag')
+  await mounted.harness.flush()
+  const annotation = 'Long annotation\n'.repeat(120)
+  const [message] = mounted.harness.findAll(
+    (element) => element.props['aria-label'] === 'menu.tagMessage',
+  )
+  mounted.harness.change(message, annotation)
+  await mounted.harness.flush()
+  panel = floatingPanel(mounted.harness)
+  const [field] = collectElements(
+    panel.body,
+    (element) => element.props['aria-label'] === 'menu.tagMessage',
+  )
+  assert.equal(field?.props.value, annotation)
+  assert.equal(collectElements(panel.footer, (element) => element.type === 'textarea').length, 0)
+})
+
+for (const operation of ['create-branch', 'create-tag', 'delete-branch']) {
+  test(`floating pending ${operation} rejects cancellation and duplicate submission`, async (t) => {
+    let release = () => {}
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const head = HISTORY.commits[0]
+    assert.ok(head)
+    const mounted = await mountGit({
+      pending: { op: operation, until: pending },
+      history: {
+        ...HISTORY,
+        commits: [{ ...head, refs: 'HEAD -> refs/heads/main, refs/heads/feature/graph' }],
+      },
+    })
+    t.after(async () => {
+      release()
+      await mounted.harness.flush()
+      await mounted.harness.dispose()
+    })
+    const target = graphMenuTarget(mounted)
+    if (operation === 'delete-branch') {
+      await runMenuAction(mounted.components, target, operation, 'feature/graph')
+    } else {
+      await runMenuAction(mounted.components, target, operation)
+    }
+    await mounted.harness.flush()
+    const [name] = mounted.harness.findAll(
+      (element) => element.props['aria-label'] === 'menu.referenceName',
+    )
+    if (operation !== 'delete-branch') {
+      assert.equal(name?.props.autoFocus, true, 'reference creation keeps focus on its name')
+      mounted.harness.change(name, 'new-reference')
+      await mounted.harness.flush()
+    } else {
+      assert.equal(buttonByText(mounted.harness, 'action.cancel').props.autoFocus, true)
+    }
+    const label =
+      operation === 'create-branch'
+        ? 'menu.createBranch'
+        : operation === 'create-tag'
+          ? 'menu.createTag'
+          : 'menu.deleteBranch'
+    const submit = buttonContaining(mounted.harness, label)
+    mounted.harness.click(submit)
+    mounted.harness.click(submit)
+    await mounted.harness.flush()
+    const { dialog, body } = floatingPanel(mounted.harness)
+    assert.equal(dialog.props['aria-busy'], true)
+    assert.ok(collectElements(body, (element) => element.props.role === 'status').length > 0)
+    const cancel = buttonByText(mounted.harness, 'action.cancel')
+    const busySubmit = buttonContaining(mounted.harness, label)
+    assert.equal(cancel.props['aria-disabled'], 'true')
+    assert.equal(busySubmit.props['aria-disabled'], 'true')
+    assert.notEqual(cancel.props.disabled, true, 'busy state does not steal keyboard focus')
+    let stopped = false
+    mounted.harness.keydown(dialog, {
+      key: 'Escape',
+      stopPropagation: () => {
+        stopped = true
+      },
+    })
+    mounted.harness.click(cancel)
+    mounted.harness.click(busySubmit)
+    if (name !== undefined) {
+      const [busyName] = mounted.harness.findAll(
+        (element) => element.props['aria-label'] === 'menu.referenceName',
+      )
+      mounted.harness.keydown(busyName, { key: 'Enter' })
+    }
+    await mounted.harness.flush()
+    assert.ok(stopped, 'busy Escape is consumed instead of dismissing the containing tab')
+    assert.equal(mounted.calls.filter((call) => call.op === operation).length, 1)
+    floatingPanel(mounted.harness)
+    release()
+    await mounted.harness.flush()
+    assert.equal(
+      mounted.harness.findAll((element) => element.props.role === 'alertdialog').length,
+      0,
+    )
+  })
+}
+
+test('floating reference inputs keep IME Enter and ordinary annotation Enter out of submit', async (t) => {
+  const mounted = await mountGit()
+  t.after(() => mounted.harness.dispose())
+  await runMenuAction(mounted.components, graphMenuTarget(mounted), 'create-tag')
+  await mounted.harness.flush()
+  const [name] = mounted.harness.findAll(
+    (element) => element.props['aria-label'] === 'menu.referenceName',
+  )
+  mounted.harness.change(name, 'composition-tag')
+  await mounted.harness.flush()
+  const [currentName] = mounted.harness.findAll(
+    (element) => element.props['aria-label'] === 'menu.referenceName',
+  )
+  const [message] = mounted.harness.findAll(
+    (element) => element.props['aria-label'] === 'menu.tagMessage',
+  )
+  mounted.harness.keydown(currentName, { key: 'Enter', nativeEvent: { isComposing: true } })
+  mounted.harness.keydown(message, { key: 'Enter' })
+  mounted.harness.keydown(message, {
+    key: 'Enter',
+    ctrlKey: true,
+    nativeEvent: { isComposing: true },
+  })
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'create-tag').length, 0)
+  floatingPanel(mounted.harness)
+})
+
+test('floating branch failure remains inside the retained form', async (t) => {
+  const mounted = await mountGit({ failOp: 'create-branch' })
+  t.after(() => mounted.harness.dispose())
+  await runMenuAction(mounted.components, graphMenuTarget(mounted), 'create-branch')
+  await mounted.harness.flush()
+  const [name] = mounted.harness.findAll(
+    (element) => element.props['aria-label'] === 'menu.referenceName',
+  )
+  mounted.harness.change(name, 'existing-branch')
+  await mounted.harness.flush()
+  mounted.harness.click(buttonContaining(mounted.harness, 'menu.createBranch'))
+  await mounted.harness.flush()
+  const { body, dialog } = floatingPanel(mounted.harness)
+  assert.match(elementText(body), /git said no/)
+  assert.equal(
+    collectElements(body, (element) => element.props['aria-label'] === 'menu.referenceName')[0]
+      ?.props.value,
+    'existing-branch',
+  )
+  assert.notEqual(dialog.props['aria-busy'], true)
+  mounted.harness.click(buttonByText(mounted.harness, 'action.cancel'))
+  await mounted.harness.flush()
+  assert.equal(mounted.harness.findAll((element) => element.props.role === 'alertdialog').length, 0)
+  assert.equal(mounted.calls.filter((call) => call.op === 'create-branch').length, 1)
+})
+
 test('the branch menu loads local branches and checks one out', async () => {
   const mounted = await mountGit()
   const chip = mounted.harness.findAll(
@@ -2015,6 +2420,10 @@ test('a failed tag creation keeps the dialog text and displays the failure', asy
     'keep this text\non two lines',
   )
   assert.match(mounted.harness.text(), /menu\.createTagAt/)
+  const { body, dialog } = floatingPanel(mounted.harness)
+  assert.match(elementText(body), /git said no/, 'the retained form itself explains its failure')
+  assert.notEqual(dialog.props['aria-busy'], true)
+  assert.equal(mounted.calls.filter((call) => call.op === 'create-tag').length, 1)
   await mounted.harness.dispose()
 })
 
@@ -2284,6 +2693,7 @@ test('a group discard uses the group confirmation wording', async () => {
   await runMenuAction(mounted.components, target, 'discard-all')
   await mounted.harness.flush()
   assert.match(mounted.harness.text(), /confirm\.discardAllTitle/)
+  floatingPanel(mounted.harness)
   await mounted.harness.dispose()
 })
 
