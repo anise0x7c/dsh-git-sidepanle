@@ -448,6 +448,9 @@ async function discardTracked(root, input) {
 }
 async function discardPath(root, rawPath, untracked) {
   const [path] = resolveRepositoryPaths(root, [rawPath]);
+  if (path === void 0) {
+    throw new GitGraphError("bad-request", "A file path is required.", 400);
+  }
   if (untracked) {
     await removeUntrackedPath(root, path);
     return;

@@ -480,7 +480,16 @@ function createMenuTargets(options) {
       panelId,
       busy: busy !== null
     }),
-    rowTarget: (kind, detail) => menuTarget(sessionId, kind, { ...detail, cwd, busy: busy !== null, panelId })
+    rowTarget: (kind, detail) => {
+      const fields = { ...detail };
+      delete fields.cwd;
+      return menuTarget(sessionId, kind, {
+        ...fields,
+        ...cwd === void 0 ? {} : { cwd },
+        busy: busy !== null,
+        panelId
+      });
+    }
   };
 }
 
@@ -503,17 +512,15 @@ function renderDiff(t, diff) {
   let clipped = false;
   if (diff.truncated === true)
     rows.push(h4("div", { key: "truncated", className: "dshgg-diffNote" }, t("diff.truncated")));
-  for (let index = 0; index < hunks.length; index += 1) {
-    const hunk = hunks[index];
+  for (const [index, hunk] of hunks.entries()) {
     rows.push(h4("div", { key: `hunk:${index}`, className: "dshgg-hunkHeader" }, hunk.header ?? ""));
     let oldLine = hunk.oldStart ?? 0;
     let newLine = hunk.newStart ?? 0;
-    for (let lineIndex = 0; lineIndex < hunk.lines.length; lineIndex += 1) {
+    for (const [lineIndex, line] of hunk.lines.entries()) {
       if (rendered >= MAX_RENDERED_DIFF_LINES) {
         clipped = true;
         break;
       }
-      const line = hunk.lines[lineIndex];
       let oldNumber = "";
       let newNumber = "";
       if (line.t === " ") {
@@ -576,7 +583,8 @@ function DiffPanel(props) {
       path,
       staged,
       untracked,
-      ...commit === null ? {} : { commit, origPath }
+      ...commit === null ? {} : { commit },
+      ...commit === null || origPath === void 0 ? {} : { origPath }
     }).then((diff) => {
       if (!cancelled) setState({ phase: "ready", diff, failure: null });
     }).catch((failure) => {
@@ -590,11 +598,14 @@ function DiffPanel(props) {
   const badgeLabel = commit !== null ? t("diff.commit", {
     hash: typeof params.shortOid === "string" && params.shortOid !== "" ? params.shortOid : commit.slice(0, 7)
   }) : badgeKind === "untracked" ? t("diff.untracked") : badgeKind === "staged" ? t("diff.staged") : t("diff.unstaged");
-  const headerMenu = menuTrigger === null || path === null ? null : menuTrigger(menuTarget(sessionId, "diff", { path, cwd }), {
-    tabIndex: -1,
-    "aria-haspopup": "menu",
-    title: t("menu.hint")
-  });
+  const headerMenu = menuTrigger === null || path === null ? null : menuTrigger(
+    menuTarget(sessionId, "diff", { path, ...cwd === void 0 ? {} : { cwd } }),
+    {
+      tabIndex: -1,
+      "aria-haspopup": "menu",
+      title: t("menu.hint")
+    }
+  );
   const rawOrigPath = params.origPath;
   const header = path !== null ? h5(
     "div",
@@ -1993,8 +2004,9 @@ function dispatch(options, command) {
       reportStale();
       return;
     }
+    const single = command.single === true && entries.length === 1 ? entries[0] : void 0;
     setConfirm(
-      command.single === true && entries.length === 1 ? { kind: "discard", entry: entries[0] } : { kind: "discardAll", entries }
+      single === void 0 ? { kind: "discardAll", entries } : { kind: "discard", entry: single }
     );
     return;
   }
@@ -2331,8 +2343,9 @@ function FileRow(props) {
   );
 }
 function renderFileRows(entries, context) {
-  return entries.map(
-    (entry) => h9(FileRow, {
+  return entries.map((entry) => {
+    const target = context.menuTarget === void 0 ? void 0 : context.menuTarget(entry);
+    return h9(FileRow, {
       key: `file:${entry.kind}:${entry.path}:${entry.x}:${entry.y}:${entry.letter ?? ""}`,
       entry,
       letter: entry.letter ?? "",
@@ -2344,9 +2357,9 @@ function renderFileRows(entries, context) {
       onUnstage: context.onUnstage,
       onDiscard: context.onDiscard,
       menuTrigger: context.menuTrigger,
-      menuTarget: context.menuTarget === void 0 ? void 0 : context.menuTarget(entry)
-    })
-  );
+      ...target === void 0 ? {} : { menuTarget: target }
+    });
+  });
 }
 
 // src/client/panel/Section.ts
@@ -3370,8 +3383,8 @@ function GraphSection(props) {
           t,
           onSelect: props.onSelect,
           menuTrigger: trigger,
-          menuTarget: menu === void 0 || trigger === null ? void 0 : menu.commitTarget(commit),
-          onInvoke: menu.onInvoke,
+          ...menu === void 0 || trigger === null ? {} : { menuTarget: menu.commitTarget(commit) },
+          ...menu.onInvoke === void 0 ? {} : { onInvoke: menu.onInvoke },
           onHover: setHovered
         })
       );
@@ -3435,7 +3448,7 @@ function GraphSection(props) {
       onToggle: props.onToggle,
       menuTrigger: trigger,
       menuHint: t("menu.hint"),
-      menuTarget: menu === void 0 || trigger === null ? void 0 : menu.sectionTarget("graph")
+      ...menu === void 0 || trigger === null ? {} : { menuTarget: menu.sectionTarget("graph") }
     },
     rows
   );
@@ -3692,7 +3705,12 @@ function GitPanel(props) {
   const ahead = repo?.ahead ?? 0;
   const behind = repo?.behind ?? 0;
   const canAct = repo !== null && busy === null;
-  const targets = createMenuTargets({ sessionId: props.sessionId, panelId, busy, cwd: repoRoot });
+  const targets = createMenuTargets({
+    sessionId: props.sessionId,
+    panelId,
+    busy,
+    ...repoRoot === void 0 ? {} : { cwd: repoRoot }
+  });
   const graphMenu = {
     trigger: menuTrigger,
     sectionTarget: targets.sectionTarget,
