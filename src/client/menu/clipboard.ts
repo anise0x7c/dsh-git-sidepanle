@@ -42,10 +42,12 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     area.style.position = 'fixed'
     area.style.top = '-1000px'
     document.body.appendChild(area)
-    area.select()
-    const copied = document.execCommand('copy') !== false
-    document.body.removeChild(area)
-    return copied
+    try {
+      area.select()
+      return document.execCommand('copy') !== false
+    } finally {
+      document.body.removeChild(area)
+    }
   } catch {
     return false
   }

@@ -14,7 +14,7 @@
  * reports `watching: false`, which tells the panel to fall back to its periodic
  * status check; watcher failures are never user-visible.
  */
-import { type FSWatcher, watch } from 'node:fs'
+import { watch as fsWatch } from 'node:fs'
 import { join } from 'node:path'
 import type { WatchState } from '../../shared/git.ts'
 import { findRepositoryRoot, readGitDirectory } from '../git/exec.ts'
@@ -34,6 +34,33 @@ export interface WatchTimings {
   readonly idleMs?: number
 }
 
+/** Minimal filesystem watcher handle owned by the registry. */
+export interface WatcherHandle {
+  /** Close the watcher, ignoring an already-closed one. */
+  close(): void
+  /** Listen for watcher failures. */
+  on(event: 'error', listener: () => void): unknown
+}
+
+/**
+ * Optional discovery and watcher injection.
+ *
+ * Tests use it to hold repository discovery open and to make watcher lifetime
+ * observable; the defaults run the real Git lookup and `fs.watch`.
+ */
+export interface WatchRegistryDeps {
+  /** Resolve the repository root containing a directory. */
+  readonly findRepositoryRoot?: (cwd: string) => Promise<string | null>
+  /** Resolve a repository's Git metadata directory. */
+  readonly readGitDirectory?: (root: string) => Promise<string | null>
+  /** Start one filesystem watcher. */
+  readonly watch?: (
+    path: string,
+    options: { recursive: boolean; persistent: boolean },
+    listener: (event: string, filename: string | null) => void,
+  ) => WatcherHandle
+}
+
 /** Result for a directory that is not a repository or cannot be watched. */
 function idleState(): WatchState {
   return { watching: false, worktree: 0, references: 0 }
@@ -42,7 +69,7 @@ function idleState(): WatchState {
 /** One panel's subscription to a repository. */
 interface PanelSubscription {
   /** Session directory the panel polled from. */
-  readonly cwd: string
+  cwd: string
   /** Repository root that directory resolved to. */
   readonly root: string
   /** Last time the panel polled. */
@@ -54,7 +81,7 @@ interface WatchedRepository {
   /** Absolute repository root. */
   readonly root: string
   /** Open filesystem watchers. */
-  watchers: FSWatcher[]
+  watchers: WatcherHandle[]
   /** Panel ids currently subscribed. */
   panels: Set<string>
   /** Working tree/index counter. */
@@ -97,13 +124,33 @@ export interface RepositoryWatchRegistry {
  * Create the watch registry. It owns only filesystem watchers and timers; Git
  * reads happen elsewhere, on demand, when the browser sees a counter move.
  * @param timings - debounce and subscription-lifetime overrides.
+ * @param deps - optional discovery and watcher injection for tests.
  * @returns the registry.
  */
-export function createRepositoryWatchRegistry(timings: WatchTimings = {}): RepositoryWatchRegistry {
+export function createRepositoryWatchRegistry(
+  timings: WatchTimings = {},
+  deps: WatchRegistryDeps = {},
+): RepositoryWatchRegistry {
   const debounceMs = timings.debounceMs ?? WATCH_DEBOUNCE_MS
   const idleMs = timings.idleMs ?? WATCH_IDLE_MS
+  const discover = deps.findRepositoryRoot ?? findRepositoryRoot
+  const readGitDir = deps.readGitDirectory ?? readGitDirectory
+  const startWatch: NonNullable<WatchRegistryDeps['watch']> =
+    deps.watch ??
+    ((path, options, listener) => {
+      const watcher = fsWatch(path, options, (event, filename) =>
+        listener(event, typeof filename === 'string' ? filename : null),
+      )
+      return {
+        close: () => watcher.close(),
+        on: (event, onError) => watcher.on(event, onError),
+      }
+    })
   const repositories = new Map<string, WatchedRepository>()
   const subscriptions = new Map<string, PanelSubscription>()
+  /** Latest watch/unwatch generation per panel; stale async work checks it. */
+  const panelTokens = new Map<string, object>()
+  let disposed = false
   const now = (): number => Date.now()
 
   /**
@@ -167,9 +214,9 @@ export function createRepositoryWatchRegistry(timings: WatchTimings = {}): Repos
     recursive: boolean,
     onEvent: (filename: string | null) => void,
     onFailure: () => void,
-  ): FSWatcher | null {
+  ): WatcherHandle | null {
     try {
-      const watcher = watch(path, { recursive, persistent: false }, (_event, filename) => {
+      const watcher = startWatch(path, { recursive, persistent: false }, (_event, filename) => {
         onEvent(filename)
       })
       watcher.on('error', onFailure)
@@ -183,7 +230,7 @@ export function createRepositoryWatchRegistry(timings: WatchTimings = {}): Repos
    * Close a list of watchers, ignoring watchers that are already gone.
    * @param watchers - watchers to close.
    */
-  function closeWatchers(watchers: readonly FSWatcher[]): void {
+  function closeWatchers(watchers: readonly WatcherHandle[]): void {
     for (const watcher of watchers) {
       try {
         watcher.close()
@@ -344,31 +391,67 @@ export function createRepositoryWatchRegistry(timings: WatchTimings = {}): Repos
 
   return {
     async watch(cwd: string, panel: string): Promise<WatchState> {
-      const known = subscriptions.get(panel)
-      if (known !== undefined && known.cwd === cwd) {
-        const repo = repositories.get(known.root)
-        if (repo !== undefined && !repo.closed) {
-          known.seenAt = now()
-          repo.panels.add(panel)
-          scheduleExpiry(repo)
-          return stateOf(repo)
+      if (disposed) return idleState()
+      const token: object = {}
+      panelTokens.set(panel, token)
+      try {
+        // A normal poll refreshes the existing subscription without touching
+        // repository discovery or watcher life. It also supersedes any older
+        // in-flight request for the same panel.
+        const known = subscriptions.get(panel)
+        if (known !== undefined && known.cwd === cwd) {
+          const repo = repositories.get(known.root)
+          if (repo !== undefined && !repo.closed) {
+            known.seenAt = now()
+            repo.panels.add(panel)
+            scheduleExpiry(repo)
+            return stateOf(repo)
+          }
         }
+        const root = await discover(cwd)
+        // Disposal and newer watch/unwatch calls win over every pending step.
+        if (disposed || panelTokens.get(panel) !== token) return idleState()
+        if (root === null) {
+          detach(panel)
+          return idleState()
+        }
+        const gitDirectory = await readGitDir(root)
+        if (disposed || panelTokens.get(panel) !== token) return idleState()
+        // Moving inside the same repository keeps its watchers alive.
+        const existing = subscriptions.get(panel)
+        if (existing !== undefined && existing.root === root) {
+          const repo = repositories.get(root)
+          if (repo !== undefined && !repo.closed) {
+            existing.cwd = cwd
+            existing.seenAt = now()
+            repo.panels.add(panel)
+            scheduleExpiry(repo)
+            return stateOf(repo)
+          }
+        }
+        // Only a current request may replace the old subscription; an obsolete
+        // one returning idle must never detach the newer subscription.
+        detach(panel)
+        const repo = obtain(root, gitDirectory)
+        if (repo === null) return idleState()
+        repo.panels.add(panel)
+        subscriptions.set(panel, { cwd, root, seenAt: now() })
+        scheduleExpiry(repo)
+        return stateOf(repo)
+      } finally {
+        if (panelTokens.get(panel) === token) panelTokens.delete(panel)
       }
-      detach(panel)
-      const root = await findRepositoryRoot(cwd)
-      if (root === null) return idleState()
-      const gitDirectory = await readGitDirectory(root)
-      const repo = obtain(root, gitDirectory)
-      if (repo === null) return idleState()
-      repo.panels.add(panel)
-      subscriptions.set(panel, { cwd, root, seenAt: now() })
-      scheduleExpiry(repo)
-      return stateOf(repo)
     },
     unwatch(panel: string): void {
+      if (disposed) return
+      // Invalidate a watch that is still discovering, then drop what exists.
+      panelTokens.delete(panel)
       detach(panel)
     },
     dispose(): void {
+      if (disposed) return
+      disposed = true
+      panelTokens.clear()
       for (const repo of [...repositories.values()]) closeRepository(repo)
       subscriptions.clear()
     },

@@ -8,12 +8,16 @@
  */
 
 import assert from 'node:assert/strict'
-import { resolve } from 'node:path'
+import { resolve, win32 } from 'node:path'
 import { describe, test } from 'node:test'
 import { GitGraphError } from '../../src/host/errors.ts'
 import { parseUnifiedDiff } from '../../src/host/git/diff.ts'
-import { resolveRepositoryPath, resolveRepositoryPaths } from '../../src/host/git/exec.ts'
 import { parseCommitMeta, parseHistory, parseNameStatus } from '../../src/host/git/history.ts'
+import {
+  isOutsideRoot,
+  resolveRepositoryPath,
+  resolveRepositoryPaths,
+} from '../../src/host/git/paths.ts'
 import type { RefRecord } from '../../src/host/git/references.ts'
 import {
   NO_GRAPH_REFERENCES,
@@ -367,6 +371,26 @@ describe('resolveRepositoryPath', () => {
 
   test('allows a path that walks into and back out of a subdirectory', () => {
     assert.equal(resolveRepositoryPath(ROOT, 'deep/../inside.txt'), resolve(ROOT, 'inside.txt'))
+  })
+
+  test('accepts a double-dot-prefixed filename as an ordinary path', () => {
+    assert.equal(resolveRepositoryPath(ROOT, '..notes'), resolve(ROOT, '..notes'))
+    assert.equal(resolveRepositoryPath(ROOT, 'deep/..notes'), resolve(ROOT, 'deep/..notes'))
+  })
+
+  test('rejects a resolved path that is absolute on another Windows drive', () => {
+    assert.equal(
+      isOutsideRoot('C:\\repo', 'C:\\repo\\..notes', win32),
+      false,
+      'a dot-prefixed child name stays inside',
+    )
+    assert.equal(isOutsideRoot('C:\\repo', 'C:\\repo', win32), true)
+    assert.equal(isOutsideRoot('C:\\repo', 'C:\\repo\\..\\outside.txt', win32), true)
+    assert.equal(
+      isOutsideRoot('C:\\repo', 'D:\\outside.txt', win32),
+      true,
+      'relative() returns another absolute path across drives',
+    )
   })
 
   test('rejects an absolute path', () => {

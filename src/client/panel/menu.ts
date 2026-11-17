@@ -118,9 +118,7 @@ export interface MenuTargetFactories {
   /** Build a group-header target. */
   readonly sectionTarget: (section: string) => MenuTarget
   /** Build a commit-row target. */
-  readonly commitTarget: (
-    commit: Pick<CommitSummary, 'oid' | 'shortOid' | 'subject' | 'refs'>,
-  ) => MenuTarget
+  readonly commitTarget: (commit: Pick<CommitSummary, 'oid' | 'subject' | 'refs'>) => MenuTarget
   /** Build a row target for one row family. */
   readonly rowTarget: (kind: MenuTargetKind, detail: MenuTargetDetail) => MenuTarget
 }
@@ -145,7 +143,6 @@ export function createMenuTargets(options: {
     commitTarget: (commit) =>
       menuTarget(sessionId, 'commit', {
         oid: commit.oid,
-        shortOid: commit.shortOid,
         subject: commit.subject,
         branchHeads: parseRefs(commit.refs)
           .filter((ref) => ref.kind === 'head' || ref.kind === 'branch')

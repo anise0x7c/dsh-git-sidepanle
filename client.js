@@ -215,6 +215,7 @@ function errorText(t, failure) {
   if (code === "not-a-repository") return t("noRepo.title");
   if (code === "discard-unborn") return t("error.discardUnborn");
   if (code === "unknown-commit") return t("error.unknownCommit");
+  if (code === "not-untracked") return t("error.notUntracked");
   return failure.message || t("error.unknown");
 }
 
@@ -474,7 +475,6 @@ function createMenuTargets(options) {
     sectionTarget: (section) => menuTarget(sessionId, "section", { section, busy: busy !== null, panelId }),
     commitTarget: (commit) => menuTarget(sessionId, "commit", {
       oid: commit.oid,
-      shortOid: commit.shortOid,
       subject: commit.subject,
       branchHeads: parseRefs(commit.refs).filter((ref) => ref.kind === "head" || ref.kind === "branch").map((ref) => ({ name: ref.name, current: ref.kind === "head" })).sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0),
       panelId,
@@ -741,6 +741,7 @@ var en = {
   "action.dismiss": "Dismiss",
   "error.discardUnborn": "Changes cannot be discarded before the first commit.",
   "error.unknownCommit": "That commit is no longer available.",
+  "error.notUntracked": "This file is tracked or ignored. Refresh the changes before trying again.",
   "status.modified": "Modified",
   "status.added": "Added",
   "status.deleted": "Deleted",
@@ -878,6 +879,7 @@ var zh = {
   "action.dismiss": "关闭",
   "error.discardUnborn": "首次提交前无法放弃更改。",
   "error.unknownCommit": "该提交已不存在。",
+  "error.notUntracked": "该文件已被跟踪或忽略，请刷新更改列表后重试。",
   "status.modified": "已修改",
   "status.added": "已添加",
   "status.deleted": "已删除",
@@ -984,10 +986,12 @@ async function copyToClipboard(text) {
     area.style.position = "fixed";
     area.style.top = "-1000px";
     document.body.appendChild(area);
-    area.select();
-    const copied = document.execCommand("copy") !== false;
-    document.body.removeChild(area);
-    return copied;
+    try {
+      area.select();
+      return document.execCommand("copy") !== false;
+    } finally {
+      document.body.removeChild(area);
+    }
   } catch {
     return false;
   }
@@ -1013,6 +1017,26 @@ function resolveMenuActions(value, t, notify) {
   if (typeof sessionId !== "string" || sessionId === "") return [];
   const command = (payload) => () => panelCommands.emit({ sessionId, panelId: target.panelId, ...payload });
   const copy = (text, successKey) => () => copyAndReport(t, notify, text, successKey);
+  const copyPathActions = (path, cwd, separatorBefore = false) => {
+    const actions = [
+      menuAction(
+        "copy-relative",
+        t("menu.copyRelativePath"),
+        copy(path, "menu.copiedRelativePath"),
+        separatorBefore ? { separatorBefore: true } : {}
+      )
+    ];
+    if (typeof cwd === "string" && cwd !== "") {
+      actions.push(
+        menuAction(
+          "copy-path",
+          t("menu.copyPath"),
+          copy(absolutePath(cwd, path), "menu.copiedPath")
+        )
+      );
+    }
+    return actions;
+  };
   const blocked = target.busy === true ? { disabled: true } : {};
   if (target.kind === "file") {
     const path = target.path;
@@ -1048,23 +1072,7 @@ function resolveMenuActions(value, t, notify) {
     actions.push(
       menuAction("ignore", t("menu.addToGitignore"), command({ type: "ignore", path }), blocked)
     );
-    actions.push(
-      menuAction(
-        "copy-relative",
-        t("menu.copyRelativePath"),
-        copy(path, "menu.copiedRelativePath"),
-        { separatorBefore: true }
-      )
-    );
-    if (typeof target.cwd === "string" && target.cwd !== "") {
-      actions.push(
-        menuAction(
-          "copy-path",
-          t("menu.copyPath"),
-          copy(absolutePath(target.cwd, path), "menu.copiedPath")
-        )
-      );
-    }
+    actions.push(...copyPathActions(path, target.cwd, true));
     return actions;
   }
   if (target.kind === "section") {
@@ -1202,53 +1210,16 @@ function resolveMenuActions(value, t, notify) {
     }
     return actions;
   }
-  if (target.kind === "commitFile") {
+  if (target.kind === "commitFile" || target.kind === "diff") {
     const path = target.path;
     if (typeof path !== "string" || path === "") return [];
-    const actions = [
-      menuAction(
-        "copy-relative",
-        t("menu.copyRelativePath"),
-        copy(path, "menu.copiedRelativePath")
-      )
-    ];
-    if (typeof target.cwd === "string" && target.cwd !== "") {
-      actions.push(
-        menuAction(
-          "copy-path",
-          t("menu.copyPath"),
-          copy(absolutePath(target.cwd, path), "menu.copiedPath")
-        )
-      );
-    }
-    return actions;
-  }
-  if (target.kind === "diff") {
-    const path = target.path;
-    if (typeof path !== "string" || path === "") return [];
-    const actions = [
-      menuAction(
-        "copy-relative",
-        t("menu.copyRelativePath"),
-        copy(path, "menu.copiedRelativePath")
-      )
-    ];
-    if (typeof target.cwd === "string" && target.cwd !== "") {
-      actions.push(
-        menuAction(
-          "copy-path",
-          t("menu.copyPath"),
-          copy(absolutePath(target.cwd, path), "menu.copiedPath")
-        )
-      );
-    }
-    return actions;
+    return copyPathActions(path, target.cwd);
   }
   return [];
 }
 
 // src/client/panel/GitPanel.ts
-var import_react26 = require("react");
+var import_react28 = require("react");
 
 // src/client/git/list.ts
 function sortChangeEntries(entries) {
@@ -1256,6 +1227,26 @@ function sortChangeEntries(entries) {
   return [...entries].sort(
     (left, right) => left.path.localeCompare(right.path, void 0, collator)
   );
+}
+
+// src/client/panel/change-groups.ts
+function changeRowLetter(entry, mode) {
+  if (mode === "merge") return "!";
+  if (mode === "staged") return statusLetter(entry.x);
+  return entry.untracked === true ? "U" : statusLetter(entry.y);
+}
+function changeRow(entry, mode) {
+  return { ...entry, letter: changeRowLetter(entry, mode) };
+}
+function groupChangeEntries(files) {
+  const mergeFiles = files.filter((entry) => entry.conflict === true);
+  const stagedFiles = files.filter((entry) => isStaged(entry));
+  const changedFiles = files.filter((entry) => isUnstaged(entry));
+  return {
+    mergeRows: sortChangeEntries(mergeFiles).map((entry) => changeRow(entry, "merge")),
+    stagedRows: sortChangeEntries(stagedFiles).map((entry) => changeRow(entry, "staged")),
+    changedRows: sortChangeEntries(changedFiles).map((entry) => changeRow(entry, "changes"))
+  };
 }
 
 // src/client/panel/confirm.ts
@@ -2024,25 +2015,52 @@ function useRepoStatus(options) {
   const [status, setStatus] = (0, import_react15.useState)(null);
   const [loading, setLoading] = (0, import_react15.useState)(true);
   const [loadFailure, setLoadFailure] = (0, import_react15.useState)(null);
-  const loadStatus = (0, import_react15.useCallback)(
-    async (loadOptions = {}) => {
-      if (refs.inFlight.current) return;
+  const activeRead = (0, import_react15.useRef)(null);
+  const queuedRead = (0, import_react15.useRef)(null);
+  const drain = (0, import_react15.useCallback)(
+    async (firstSilent) => {
       refs.inFlight.current = true;
-      if (loadOptions.silent !== true) setLoading(true);
+      let silent = firstSilent;
       try {
-        const value = await call("status");
-        if (!refs.mounted.current) return;
-        setStatus(value);
-        setLoadFailure(null);
-      } catch (error) {
-        if (!refs.mounted.current) return;
-        setLoadFailure(toFailure(error));
+        for (; ; ) {
+          if (!silent) setLoading(true);
+          try {
+            const value = await call("status");
+            if (!refs.mounted.current) return;
+            setStatus(value);
+            setLoadFailure(null);
+          } catch (error) {
+            if (!refs.mounted.current) return;
+            setLoadFailure(toFailure(error));
+          }
+          const queued = queuedRead.current;
+          if (queued === null) return;
+          queuedRead.current = null;
+          silent = queued.silent;
+        }
       } finally {
         refs.inFlight.current = false;
+        queuedRead.current = null;
+        activeRead.current = null;
         if (refs.mounted.current) setLoading(false);
       }
     },
     [call, refs]
+  );
+  const loadStatus = (0, import_react15.useCallback)(
+    (loadOptions = {}) => {
+      const silent = loadOptions.silent === true;
+      const active = activeRead.current;
+      if (active !== null) {
+        const queued = queuedRead.current;
+        queuedRead.current = { silent: (queued?.silent ?? true) && silent };
+        return active;
+      }
+      const read = drain(silent);
+      activeRead.current = read;
+      return read;
+    },
+    [drain]
   );
   (0, import_react15.useEffect)(() => {
     void loadStatus();
@@ -2762,7 +2780,7 @@ function CommitMenuDialog(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var import_react24 = require("react");
+var import_react26 = require("react");
 
 // src/client/git/graph.ts
 var SWIMLANE_HEIGHT = 22;
@@ -3108,134 +3126,14 @@ function refBadges(refs) {
   return badges;
 }
 
-// src/client/panel/views/GraphSection.ts
+// src/client/panel/views/graph/CommitGraphRow.ts
+var import_react25 = require("react");
+
+// src/client/panel/views/graph/GraphArtwork.ts
+var import_react24 = require("react");
 var h15 = import_react24.createElement;
 function graphColorValue(color) {
   return `var(--dshgg-scm-${color})`;
-}
-function GraphSection(props) {
-  const t = props.t;
-  const commits = Array.isArray(props.commits) ? props.commits : null;
-  const references = props.references ?? null;
-  const rowsLayout = (0, import_react24.useMemo)(
-    () => computeGraph(
-      bindReferenceTargets(
-        (commits ?? []).map((commit) => ({
-          oid: commit.oid,
-          parents: commit.parents,
-          refs: parseRefs(commit.refs)
-        })),
-        references
-      ),
-      references
-    ),
-    [commits, references]
-  );
-  const graphId = props.graphId ?? "git-graph";
-  const layer = (0, import_react24.useMemo)(() => graphLayer(rowsLayout), [rowsLayout]);
-  const [hovered, setHovered] = (0, import_react24.useState)(null);
-  const menu = props.menu;
-  const trigger = menu === void 0 ? null : menu.trigger;
-  const rows = [];
-  if (props.loading === true && commits === null) {
-    rows.push(h15("div", { key: "loading", className: "dshgg-note" }, t("graph.loading")));
-  } else if (props.failure !== null) {
-    rows.push(
-      h15(Banner, {
-        key: "error",
-        title: t("error.title"),
-        detail: errorText(t, props.failure),
-        retryLabel: t("retry"),
-        onRetry: props.onRetry
-      })
-    );
-  } else if (commits === null || commits.length === 0) {
-    rows.push(h15("div", { key: "empty", className: "dshgg-note" }, t("graph.empty")));
-  } else {
-    const rowElements = [];
-    for (let index = 0; index < commits.length; index += 1) {
-      const commit = commits[index];
-      const row = rowsLayout[index];
-      if (commit === void 0 || row === void 0) continue;
-      rowElements.push(
-        h15(GraphRow, {
-          key: commit.oid,
-          index,
-          commit,
-          row,
-          geometry: graphRowGeometry(row),
-          t,
-          onSelect: props.onSelect,
-          menuTrigger: trigger,
-          menuTarget: menu === void 0 || trigger === null ? void 0 : menu.commitTarget(commit),
-          onInvoke: menu.onInvoke,
-          onHover: setHovered
-        })
-      );
-    }
-    rows.push(
-      h15(
-        GraphBody,
-        {
-          key: "body",
-          layer,
-          maskId: `${graphId}-lines-mask`,
-          hovered
-        },
-        rowElements
-      )
-    );
-    const loadMore = typeof props.onLoadMore === "function" ? props.onLoadMore : null;
-    const moreFailure = props.moreFailure ?? null;
-    if (loadMore !== null && moreFailure !== null) {
-      rows.push(
-        h15(
-          "div",
-          { key: "moreError", className: "dshgg-graphMore" },
-          h15("span", { className: "dshgg-graphMoreText" }, errorText(t, moreFailure)),
-          h15(
-            "button",
-            {
-              type: "button",
-              className: "dshgg-btn dshgg-btnGhost",
-              onClick: loadMore
-            },
-            t("retry")
-          )
-        )
-      );
-    } else if (loadMore !== null && props.hasMore === true) {
-      const loading = props.moreLoading === true;
-      rows.push(
-        h15(
-          "button",
-          {
-            key: "more",
-            type: "button",
-            className: "dshgg-btn dshgg-btnGhost dshgg-graphMoreBtn",
-            "data-loading": loading ? "true" : void 0,
-            "aria-busy": loading ? "true" : void 0,
-            "aria-disabled": loading ? "true" : void 0,
-            onClick: loadMore
-          },
-          t(loading ? "graph.loadingMore" : "graph.loadMore")
-        )
-      );
-    }
-  }
-  return h15(
-    Section,
-    {
-      id: "graph",
-      title: t("sections.graph"),
-      open: props.open,
-      onToggle: props.onToggle,
-      menuTrigger: trigger,
-      menuHint: t("menu.hint"),
-      menuTarget: menu === void 0 || trigger === null ? void 0 : menu.sectionTarget("graph")
-    },
-    rows
-  );
 }
 function GraphBody(props) {
   const layer = props.layer;
@@ -3336,15 +3234,18 @@ function GraphCell(props) {
     )
   );
 }
+
+// src/client/panel/views/graph/CommitGraphRow.ts
+var h16 = import_react25.createElement;
 function badgeIconElement(icon) {
-  if (icon === "target") return h15(TargetIcon, { size: 16 });
-  if (icon === "cloud") return h15(CloudIcon, { size: 16 });
-  if (icon === "tag") return h15(TagIcon, { size: 16 });
-  return h15(GitBranchIcon, { size: 12 });
+  if (icon === "target") return h16(TargetIcon, { size: 16 });
+  if (icon === "cloud") return h16(CloudIcon, { size: 16 });
+  if (icon === "tag") return h16(TagIcon, { size: 16 });
+  return h16(GitBranchIcon, { size: 12 });
 }
 function Badge(props) {
   const badge = props.badge;
-  return h15(
+  return h16(
     "span",
     {
       className: "dshgg-graphBadge",
@@ -3353,9 +3254,9 @@ function Badge(props) {
       style: { backgroundColor: graphColorValue(badge.color) },
       title: badge.refs.map((ref) => ref.name).join(", ")
     },
-    badge.count > 1 ? h15("span", { className: "dshgg-graphBadgeCount" }, String(badge.count)) : null,
-    h15("span", { className: "dshgg-graphBadgeIcon" }, badgeIconElement(badge.icon)),
-    badge.name === null ? null : h15("span", { className: "dshgg-graphBadgeName" }, badge.name)
+    badge.count > 1 ? h16("span", { className: "dshgg-graphBadgeCount" }, String(badge.count)) : null,
+    h16("span", { className: "dshgg-graphBadgeIcon" }, badgeIconElement(badge.icon)),
+    badge.name === null ? null : h16("span", { className: "dshgg-graphBadgeName" }, badge.name)
   );
 }
 function GraphRow(props) {
@@ -3388,7 +3289,7 @@ function GraphRow(props) {
   const subject = commit.subject === "" ? t("graph.noSubject") : commit.subject;
   const ago = formatAgo(t, commit.authoredAt);
   const titlePrefix = row.refs.length === 0 ? "" : `${row.refs.map((ref) => ref.name).join(", ")} · `;
-  return h15(
+  return h16(
     "div",
     {
       className: "dshgg-graphRow",
@@ -3396,29 +3297,156 @@ function GraphRow(props) {
       title: `${titlePrefix}${commit.shortOid} ${subject} · ${commit.author} · ${ago} · ${t("menu.hint")}`,
       ...rowProps
     },
-    h15(GraphCell, { geometry: props.geometry }),
-    h15(
+    h16(GraphCell, { geometry: props.geometry }),
+    h16(
       "span",
       { className: "dshgg-graphLabel" },
-      h15("span", { className: "dshgg-graphSubject" }, subject),
-      commit.author === "" ? null : h15("span", { className: "dshgg-graphAuthor" }, commit.author)
+      h16("span", { className: "dshgg-graphSubject" }, subject),
+      commit.author === "" ? null : h16("span", { className: "dshgg-graphAuthor" }, commit.author)
     ),
-    badges.length === 0 ? null : h15(
+    badges.length === 0 ? null : h16(
       "span",
       { className: "dshgg-graphBadges" },
       badges.map(
-        (badge, index) => h15(Badge, { key: `${badge.color}:${badge.icon}:${index}`, badge })
+        (badge, index) => h16(Badge, { key: `${badge.color}:${badge.icon}:${index}`, badge })
       )
     )
   );
 }
 
+// src/client/panel/views/GraphSection.ts
+var h17 = import_react26.createElement;
+function GraphSection(props) {
+  const t = props.t;
+  const commits = Array.isArray(props.commits) ? props.commits : null;
+  const references = props.references ?? null;
+  const rowsLayout = (0, import_react26.useMemo)(
+    () => computeGraph(
+      bindReferenceTargets(
+        (commits ?? []).map((commit) => ({
+          oid: commit.oid,
+          parents: commit.parents,
+          refs: parseRefs(commit.refs)
+        })),
+        references
+      ),
+      references
+    ),
+    [commits, references]
+  );
+  const graphId = props.graphId ?? "git-graph";
+  const layer = (0, import_react26.useMemo)(() => graphLayer(rowsLayout), [rowsLayout]);
+  const [hovered, setHovered] = (0, import_react26.useState)(null);
+  const menu = props.menu;
+  const trigger = menu === void 0 ? null : menu.trigger;
+  const rows = [];
+  if (props.loading === true && commits === null) {
+    rows.push(h17("div", { key: "loading", className: "dshgg-note" }, t("graph.loading")));
+  } else if (props.failure !== null) {
+    rows.push(
+      h17(Banner, {
+        key: "error",
+        title: t("error.title"),
+        detail: errorText(t, props.failure),
+        retryLabel: t("retry"),
+        onRetry: props.onRetry
+      })
+    );
+  } else if (commits === null || commits.length === 0) {
+    rows.push(h17("div", { key: "empty", className: "dshgg-note" }, t("graph.empty")));
+  } else {
+    const rowElements = [];
+    for (let index = 0; index < commits.length; index += 1) {
+      const commit = commits[index];
+      const row = rowsLayout[index];
+      if (commit === void 0 || row === void 0) continue;
+      rowElements.push(
+        h17(GraphRow, {
+          key: commit.oid,
+          index,
+          commit,
+          row,
+          geometry: graphRowGeometry(row),
+          t,
+          onSelect: props.onSelect,
+          menuTrigger: trigger,
+          menuTarget: menu === void 0 || trigger === null ? void 0 : menu.commitTarget(commit),
+          onInvoke: menu.onInvoke,
+          onHover: setHovered
+        })
+      );
+    }
+    rows.push(
+      h17(
+        GraphBody,
+        {
+          key: "body",
+          layer,
+          maskId: `${graphId}-lines-mask`,
+          hovered
+        },
+        rowElements
+      )
+    );
+    const loadMore = typeof props.onLoadMore === "function" ? props.onLoadMore : null;
+    const moreFailure = props.moreFailure ?? null;
+    if (loadMore !== null && moreFailure !== null) {
+      rows.push(
+        h17(
+          "div",
+          { key: "moreError", className: "dshgg-graphMore" },
+          h17("span", { className: "dshgg-graphMoreText" }, errorText(t, moreFailure)),
+          h17(
+            "button",
+            {
+              type: "button",
+              className: "dshgg-btn dshgg-btnGhost",
+              onClick: loadMore
+            },
+            t("retry")
+          )
+        )
+      );
+    } else if (loadMore !== null && props.hasMore === true) {
+      const loading = props.moreLoading === true;
+      rows.push(
+        h17(
+          "button",
+          {
+            key: "more",
+            type: "button",
+            className: "dshgg-btn dshgg-btnGhost dshgg-graphMoreBtn",
+            "data-loading": loading ? "true" : void 0,
+            "aria-busy": loading ? "true" : void 0,
+            "aria-disabled": loading ? "true" : void 0,
+            onClick: loadMore
+          },
+          t(loading ? "graph.loadingMore" : "graph.loadMore")
+        )
+      );
+    }
+  }
+  return h17(
+    Section,
+    {
+      id: "graph",
+      title: t("sections.graph"),
+      open: props.open,
+      onToggle: props.onToggle,
+      menuTrigger: trigger,
+      menuHint: t("menu.hint"),
+      menuTarget: menu === void 0 || trigger === null ? void 0 : menu.sectionTarget("graph")
+    },
+    rows
+  );
+}
+
 // src/client/panel/views/SplitView.ts
-var import_react25 = require("react");
-var h16 = import_react25.createElement;
+var import_react27 = require("react");
+var h18 = import_react27.createElement;
 function SplitView(props) {
-  const [dragging, setDragging] = (0, import_react25.useState)(false);
-  const dragStart = (0, import_react25.useRef)(null);
+  const [dragging, setDragging] = (0, import_react27.useState)(false);
+  const dragStart = (0, import_react27.useRef)(null);
   const ratio = clampSplitRatio(props.ratio);
   const percent = `${Math.round(ratio * 1e3) / 10}%`;
   const beginDrag = (event) => {
@@ -3449,15 +3477,15 @@ function SplitView(props) {
     event.preventDefault();
     props.onRatioChange(next);
   };
-  return h16(
+  return h18(
     "div",
     { className: "dshgg-split" },
-    h16(
+    h18(
       "div",
       { className: "dshgg-scroll dshgg-paneTop", style: { flexBasis: percent } },
       props.changes
     ),
-    h16(
+    h18(
       "div",
       {
         className: "dshgg-splitter",
@@ -3476,9 +3504,9 @@ function SplitView(props) {
         onPointerCancel: endDrag,
         onKeyDown: handleKey
       },
-      h16("span", { className: "dshgg-splitterLine" })
+      h18("span", { className: "dshgg-splitterLine" })
     ),
-    h16(
+    h18(
       "div",
       {
         className: "dshgg-scroll dshgg-paneBottom",
@@ -3491,7 +3519,7 @@ function SplitView(props) {
 }
 
 // src/client/panel/GitPanel.ts
-var h17 = import_react26.createElement;
+var h19 = import_react28.createElement;
 function GitPanel(props) {
   const t = props.t;
   const tab = props.useTabInfo().tab;
@@ -3507,45 +3535,29 @@ function GitPanel(props) {
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const history = useHistory({ call, refs });
   const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history;
-  const graphPane = (0, import_react26.useRef)(null);
-  const reloadHistory = (0, import_react26.useCallback)(async () => {
+  const graphPane = (0, import_react28.useRef)(null);
+  const reloadHistory = (0, import_react28.useCallback)(async () => {
     await loadGraph();
     if (graphPane.current !== null) graphPane.current.scrollTop = 0;
   }, [loadGraph]);
-  const [openSections, setOpenSections] = (0, import_react26.useState)({
+  const [openSections, setOpenSections] = (0, import_react28.useState)({
     merge: true,
     staged: true,
     changes: true,
     graph: true
   });
-  const [splitRatio, setSplitRatio] = (0, import_react26.useState)(DEFAULT_SPLIT_RATIO);
+  const [splitRatio, setSplitRatio] = (0, import_react28.useState)(DEFAULT_SPLIT_RATIO);
   const repo = status?.repo ?? null;
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
   const files = status?.files ?? [];
-  const mergeFiles = (0, import_react26.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
-  const stagedFiles = (0, import_react26.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
-  const changedFiles = (0, import_react26.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
-  const mergeRows = (0, import_react26.useMemo)(
-    () => sortChangeEntries(mergeFiles).map((entry) => ({ ...entry, letter: "!" })),
-    [mergeFiles]
-  );
-  const stagedRows = (0, import_react26.useMemo)(
-    () => sortChangeEntries(stagedFiles).map((entry) => ({ ...entry, letter: statusLetter(entry.x) })),
-    [stagedFiles]
-  );
-  const changedRows = (0, import_react26.useMemo)(
-    () => sortChangeEntries(changedFiles).map((entry) => ({
-      ...entry,
-      letter: entry.untracked === true ? "U" : statusLetter(entry.y)
-    })),
-    [changedFiles]
-  );
-  const clean = repo !== null && mergeFiles.length === 0 && stagedFiles.length === 0 && changedFiles.length === 0;
-  const handleWorktreeChange = (0, import_react26.useCallback)(() => {
+  const groups = (0, import_react28.useMemo)(() => groupChangeEntries(files), [files]);
+  const { mergeRows, stagedRows, changedRows } = groups;
+  const clean = repo !== null && mergeRows.length === 0 && stagedRows.length === 0 && changedRows.length === 0;
+  const handleWorktreeChange = (0, import_react28.useCallback)(() => {
     void loadStatus({ silent: true });
   }, [loadStatus]);
-  const handleReferencesChange = (0, import_react26.useCallback)(async () => {
+  const handleReferencesChange = (0, import_react28.useCallback)(async () => {
     const next = await refreshReferences();
     await loadStatus({ silent: true });
     const revision = next?.current?.revision;
@@ -3567,7 +3579,7 @@ function GitPanel(props) {
     t,
     refs,
     files,
-    stagedFiles,
+    stagedFiles: stagedRows,
     loadStatus,
     loadGraph: reloadHistory,
     notify: props.notify
@@ -3627,21 +3639,21 @@ function GitPanel(props) {
   };
   const commitState = useCommitDetails({ call, refs });
   const selectedCommit = commitState.selected;
-  const commitRows = (0, import_react26.useMemo)(
+  const commitRows = (0, import_react28.useMemo)(
     () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
       ...file,
       kind: "commit"
     })),
     [commitState.details]
   );
-  const openDiff = (0, import_react26.useCallback)(
+  const openDiff = (0, import_react28.useCallback)(
     (entry, mode) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
           path: entry.path,
           staged: mode === "staged",
           untracked: entry.untracked === true,
-          status: mode === "staged" ? statusLetter(entry.x) : entry.untracked === true ? "U" : statusLetter(entry.y),
+          status: changeRowLetter(entry, mode),
           origPath: entry.origPath,
           cwd: repoRoot ?? void 0
         }
@@ -3649,7 +3661,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openCommitDiff = (0, import_react26.useCallback)(
+  const openCommitDiff = (0, import_react28.useCallback)(
     (entry) => {
       if (selectedCommit === null) return;
       tab.actions.openTab(DIFF_KIND, {
@@ -3694,9 +3706,9 @@ function GitPanel(props) {
     busyRef: refs.busy,
     t,
     files,
-    stagedFiles,
-    changedFiles,
-    mergeFiles,
+    stagedFiles: stagedRows,
+    changedFiles: changedRows,
+    mergeFiles: mergeRows,
     refreshAll,
     stage,
     unstage,
@@ -3712,18 +3724,18 @@ function GitPanel(props) {
   };
   const renderState = () => {
     if (loading && status === null) {
-      return h17(EmptyState, {
-        icon: h17(GitBranchIcon, { size: 26 }),
+      return h19(EmptyState, {
+        icon: h19(GitBranchIcon, { size: 26 }),
         title: t("loading")
       });
     }
     if (loadFailure !== null && status === null) {
       if (loadFailure.code === "git-unavailable") {
-        return h17(EmptyState, {
-          icon: h17(AlertIcon, { size: 26 }),
+        return h19(EmptyState, {
+          icon: h19(AlertIcon, { size: 26 }),
           title: t("gitUnavailable.title"),
           desc: t("gitUnavailable.desc"),
-          action: h17(
+          action: h19(
             "button",
             {
               type: "button",
@@ -3736,11 +3748,11 @@ function GitPanel(props) {
           )
         });
       }
-      return h17(EmptyState, {
-        icon: h17(AlertIcon, { size: 26 }),
+      return h19(EmptyState, {
+        icon: h19(AlertIcon, { size: 26 }),
         title: t("error.title"),
         desc: errorText(t, loadFailure),
-        action: h17(
+        action: h19(
           "button",
           {
             type: "button",
@@ -3754,11 +3766,11 @@ function GitPanel(props) {
       });
     }
     if (status !== null && repo === null) {
-      return h17(EmptyState, {
-        icon: h17(GitBranchIcon, { size: 26 }),
+      return h19(EmptyState, {
+        icon: h19(GitBranchIcon, { size: 26 }),
         title: t("noRepo.title"),
         desc: t("noRepo.desc", { path: sessionDirectory ?? "" }),
-        action: h17(
+        action: h19(
           "button",
           { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: refreshAll },
           t("refresh")
@@ -3767,7 +3779,7 @@ function GitPanel(props) {
     }
     return null;
   };
-  const commitBody = selectedCommit === null ? null : h17(CommitDetails, {
+  const commitBody = selectedCommit === null ? null : h19(CommitDetails, {
     t,
     summary: selectedCommit,
     details: commitState.details,
@@ -3781,14 +3793,14 @@ function GitPanel(props) {
     rowTarget: targets.rowTarget
   });
   const singlePane = renderState() ?? commitBody;
-  const body = singlePane !== null ? h17("div", { className: "dshgg-scroll" }, singlePane) : h17(SplitView, {
+  const body = singlePane !== null ? h19("div", { className: "dshgg-scroll" }, singlePane) : h19(SplitView, {
     ratio: splitRatio,
     onRatioChange: setSplitRatio,
     label: t("split.label"),
     hint: t("split.hint"),
     onGraphScroll: handleGraphScroll,
     graphRef: graphPane,
-    changes: h17(ChangeGroups, {
+    changes: h19(ChangeGroups, {
       t,
       clean,
       mergeRows,
@@ -3807,7 +3819,7 @@ function GitPanel(props) {
       sectionTarget: targets.sectionTarget,
       rowTarget: targets.rowTarget
     }),
-    graph: h17(GraphSection, {
+    graph: h19(GraphSection, {
       t,
       commits: graph,
       references,
@@ -3829,18 +3841,18 @@ function GitPanel(props) {
       menu: graphMenu
     })
   });
-  const commitHint = stagedFiles.length > 0 ? t("commit.hint") : t("commit.hintNone");
+  const commitHint = stagedRows.length > 0 ? t("commit.hint") : t("commit.hintNone");
   const placeholder = repo === null ? t("commit.placeholder", { branch: "" }) : t("commit.placeholder", { branch: branchLabel ?? "" });
-  const actionFeedback = actionFailure === null ? null : h17(Banner, {
+  const actionFeedback = actionFailure === null ? null : h19(Banner, {
     title: t("error.title"),
     detail: errorText(t, actionFailure),
     dismissLabel: t("action.dismiss"),
     onDismiss: () => setActionFailure(null)
   });
-  return h17(
+  return h19(
     "div",
     { className: "dshgg-root", "data-dsh-git-graph": "" },
-    h17(BranchHeader, {
+    h19(BranchHeader, {
       t,
       wrapRef: refs.wrap,
       repo,
@@ -3859,7 +3871,7 @@ function GitPanel(props) {
       },
       onRefresh: refreshAll
     }),
-    repo === null || selectedCommit !== null ? null : h17(CommitBox, {
+    repo === null || selectedCommit !== null ? null : h19(CommitBox, {
       t,
       message,
       hint: commitHint,
@@ -3868,7 +3880,7 @@ function GitPanel(props) {
       onChange: setMessage,
       onCommit: requestCommit
     }),
-    loadFailure !== null && status !== null ? h17(Banner, {
+    loadFailure !== null && status !== null ? h19(Banner, {
       title: t("error.title"),
       detail: errorText(t, loadFailure),
       retryLabel: t("retry"),
@@ -3880,7 +3892,7 @@ function GitPanel(props) {
     }) : null,
     commitMenuActions.dialog === null && confirm === null ? actionFeedback : null,
     body,
-    commitMenuActions.dialog === null ? null : h17(CommitMenuDialog, {
+    commitMenuActions.dialog === null ? null : h19(CommitMenuDialog, {
       key: commitMenuActions.dialog.kind === "deleteBranch" ? `delete:${commitMenuActions.dialog.branch}` : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
       dialog: commitMenuActions.dialog,
       t,
@@ -3891,7 +3903,7 @@ function GitPanel(props) {
       onCancel: () => commitMenuActions.closeDialog(),
       onSubmit: commitMenuActions.submitDialog
     }),
-    confirm === null ? null : h17(FloatingPanel, {
+    confirm === null ? null : h19(FloatingPanel, {
       key: confirm.kind === "discard" ? `discard:${confirm.entry.path}` : confirm.kind,
       title: confirmTitle(t, confirm),
       description: confirmDescription(t, confirm),
@@ -3956,16 +3968,16 @@ function installStyles(target) {
 }
 
 // src/client/titles.ts
-var import_react27 = require("react");
-var h18 = import_react27.createElement;
+var import_react29 = require("react");
+var h20 = import_react29.createElement;
 function GitTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;
-  return h18(
+  return h20(
     "span",
     { className: "dshgg-title" },
-    h18(GitBranchIcon, { size: 14 }),
-    h18("span", { className: "dshgg-titleText" }, title)
+    h20(GitBranchIcon, { size: 14 }),
+    h20("span", { className: "dshgg-titleText" }, title)
   );
 }
 function DiffTabTitle(props) {
@@ -3974,11 +3986,11 @@ function DiffTabTitle(props) {
   const name = typeof params.path === "string" && params.path !== "" ? baseName(params.path) : tabInfo.tab.title;
   const shortOid = typeof params.shortOid === "string" && params.shortOid !== "" ? params.shortOid : typeof params.commit === "string" && params.commit !== "" ? params.commit.slice(0, 7) : "";
   const label = shortOid === "" ? name : `${name} · ${shortOid}`;
-  return h18(
+  return h20(
     "span",
     { className: "dshgg-title" },
-    h18(FileIcon, { size: 14 }),
-    h18("span", { className: "dshgg-titleText" }, label)
+    h20(FileIcon, { size: 14 }),
+    h20("span", { className: "dshgg-titleText" }, label)
   );
 }
 

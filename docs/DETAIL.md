@@ -57,6 +57,10 @@ Menu commands behave like the equivalent hover control: same confirmation, same 
 
 Every Git command runs on the Host in the Session's working directory, through a single local route (`/api/dsh-git-graph/rpc`). The route accepts only unproxied loopback requests with the bundle's own request header and same-origin browser markers; it never runs through a shell and never accepts a repository path from the browser.
 
+File paths are literal names, not Git wildcard or pathspec expressions, so selecting a name containing pattern characters does not select other matching files. Untracked previews and deletion verify the current Git classification rather than trusting an old row's flag. Direct file access refuses symbolic-link parent directories, and an untracked preview also refuses a symbolic link or a non-regular file. Discarding an untracked symbolic link itself removes only that link, not its target.
+
+The repository and local account remain trusted: normal Git hooks and configured helpers can still run. These path checks are not an operating-system sandbox against a local process concurrently replacing ancestor directories.
+
 ## Limitations
 
 - No network operations: fetch, pull, push, and remote management are not part of this bundle.

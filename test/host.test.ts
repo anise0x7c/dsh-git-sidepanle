@@ -9,20 +9,12 @@
 import assert from 'node:assert/strict'
 import { execFile as execFileCallback } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { createServer, type Server } from 'node:http'
+import type { Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { promisify } from 'node:util'
-import type {
-  HostContext,
-  SessionPersistenceService,
-  SessionsService,
-  WebServerRoute,
-  WorkingDirectoryService,
-} from '../src/host/context.ts'
 import { createRepositoryWatchRegistry } from '../src/host/watch/registry.ts'
-import { apply } from '../src/host-entry.ts'
 import type {
   ChangeEntry,
   GitGraphOperation,
@@ -31,12 +23,19 @@ import type {
   StatusResult,
   WatchState,
 } from '../src/shared/git.ts'
+import {
+  createFakeContext,
+  routeServer,
+  serverPort,
+  withSessionServer,
+} from './support/host-server.ts'
 import type { RpcReply } from './support/types.ts'
 
 const execFile = promisify(execFileCallback)
 let tmpRoot = ''
 let repo = ''
 let server: Server | undefined
+let disposeHost: (() => void) | undefined
 let base = ''
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
@@ -55,88 +54,6 @@ function fileByPath(files: readonly ChangeEntry[], path: string): ChangeEntry {
 function requireRepo(status: StatusResult): RepositoryStatus {
   assert.ok(status.repo !== null, 'the directory should be inside a repository')
   return status.repo
-}
-
-/**
- * Build a fake Host context and register the bundle's routes with it.
- * @param cwd - Session working directory the fake services report.
- * @returns registered routes by path.
- */
-function createFakeContext(cwd: string): Map<string, WebServerRoute> {
-  const routes = new Map<string, WebServerRoute>()
-  function get(name: 'sessions'): SessionsService | undefined
-  function get(name: 'workingDirectory'): WorkingDirectoryService | undefined
-  function get(name: 'sessionPersistence'): SessionPersistenceService | undefined
-  function get(name: string): unknown
-  function get(
-    name: string,
-  ): SessionsService | WorkingDirectoryService | SessionPersistenceService | undefined {
-    if (name === 'sessions')
-      return { get: (id: string) => (id === 'session-1' ? { header: { cwd } } : undefined) }
-    if (name === 'workingDirectory') return { get: () => cwd }
-    if (name === 'sessionPersistence')
-      return { stat: async (id: string) => (id === 'session-1' ? { header: { cwd } } : undefined) }
-    return undefined
-  }
-  const ctx: HostContext = {
-    effect(setup) {
-      const disposer = setup()
-      return () => {
-        if (typeof disposer === 'function') disposer()
-      }
-    },
-    webServer: {
-      register(route) {
-        if (routes.has(route.path)) throw new Error(`duplicate route ${route.path}`)
-        routes.set(route.path, route)
-        return () => {
-          routes.delete(route.path)
-        }
-      },
-    },
-    get,
-  }
-  apply(ctx)
-  return routes
-}
-
-/** Serve the routes through a real loopback server. */
-function routeServer(routes: Map<string, WebServerRoute>): Server {
-  return createServer((request, response) => {
-    const path = new URL(request.url ?? '/', 'http://localhost').pathname
-    const route = routes.get(path)
-    if (route === undefined) {
-      response.writeHead(404)
-      response.end()
-      return
-    }
-    void route.handler(request, response)
-  })
-}
-
-/** Read the bound port of a listening test server. */
-function serverPort(target: Server): number {
-  const address = target.address()
-  assert.ok(address !== null && typeof address === 'object', 'the test server has no TCP address')
-  return address.port
-}
-
-async function withSessionServer<T>(
-  cwd: string,
-  operation: (baseUrl: string) => Promise<T>,
-): Promise<T> {
-  const routes = createFakeContext(cwd)
-  const other = routeServer(routes)
-  await new Promise<void>((resolve) => {
-    other.listen(0, '127.0.0.1', resolve)
-  })
-  try {
-    return await operation(`http://127.0.0.1:${serverPort(other)}`)
-  } finally {
-    await new Promise<void>((resolve) => {
-      other.close(() => resolve())
-    })
-  }
 }
 
 /** One RPC reply plus the HTTP status the test server answered. */
@@ -235,8 +152,9 @@ before(async () => {
   await git(repo, 'add', '-A')
   await git(repo, 'commit', '-m', 'initial commit')
 
-  const routes = createFakeContext(repo)
-  server = routeServer(routes)
+  const host = createFakeContext(repo)
+  disposeHost = host.dispose
+  server = routeServer(host.routes)
   await new Promise<void>((resolve) => {
     server?.listen(0, '127.0.0.1', resolve)
   })
@@ -248,6 +166,7 @@ after(async () => {
     await new Promise<void>((resolve) => {
       server?.close(() => resolve())
     })
+  disposeHost?.()
   await rm(tmpRoot, { recursive: true, force: true })
 })
 
@@ -902,17 +821,8 @@ test('a directory outside a repository reports no repository', async () => {
   const outside = join(tmpRoot, 'plain')
   await mkdir(outside, { recursive: true })
   await writeFile(join(outside, 'file.txt'), 'x')
-  const routes = createFakeContext(outside)
-  const other = createServer((request, response) => {
-    const path = new URL(request.url ?? '/', 'http://localhost').pathname
-    const route = routes.get(path)
-    if (route === undefined) {
-      response.writeHead(404)
-      response.end()
-      return
-    }
-    void route.handler(request, response)
-  })
+  const host = createFakeContext(outside)
+  const other = routeServer(host.routes)
   await new Promise<void>((resolve) => {
     other.listen(0, '127.0.0.1', resolve)
   })
@@ -938,6 +848,7 @@ test('a directory outside a repository reports no repository', async () => {
     await new Promise<void>((resolve) => {
       other.close(() => resolve())
     })
+    host.dispose()
   }
 })
 

@@ -297,6 +297,10 @@ describe('errorText', () => {
     assert.equal(errorText(t, { code: 'forbidden' }), 'T(error.forbidden)')
     assert.equal(errorText(t, { code: 'not-a-repository' }), 'T(noRepo.title)')
     assert.equal(errorText(t, { code: 'discard-unborn' }), 'T(error.discardUnborn)')
+    assert.equal(
+      errorText(t, { code: 'not-untracked', message: 'Host detail' }),
+      'T(error.notUntracked)',
+    )
   })
 
   test('shows the failure message for unmapped codes, falling back to unknown', () => {

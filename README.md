@@ -49,7 +49,10 @@ Linux-only — a normal terminal, or macOS/Windows, needs the plain command.
 must fail rather than silently repair themselves. CI runs the same gate on Node
 22 and 24 after a frozen installation. `pnpm verify:contract` is separate because
 CI does not ship DSH; override its installation with `--dsh-root <directory>` or
-`DSH_ROOT`.
+`DSH_ROOT`. The same gate checks unused declarations and the runtime import graph:
+Host/browser isolation, shared type-only contracts, pure-module boundaries,
+cycles and unreachable executable production modules. Architecture tests include
+intentional violations so these rules cannot silently become no-ops.
 
 `index.js`, `index.js.map`, `client.js` and `client.js.map` are generated and
 committed. Never hand-edit them. Installing a prepared directory needs no build,
@@ -57,7 +60,8 @@ TypeScript loader or development dependencies. Development dependencies do not
 run install scripts; platform binary packages provide esbuild and Biome directly.
 
 See [Architecture](<docs/ARCHITECTURE.md>) for module boundaries and loader
-contracts, [Refactor record](<docs/REFACTOR-PLAN.md>) for migration decisions, and
+contracts, [Refactor record](<docs/REFACTOR-PLAN.md>) for migration decisions,
+[Maintenance audit](<docs/MAINTENANCE-AUDIT.md>) for findings and remaining trust boundaries, and
 [Usage](<docs/DETAIL.md>) / [中文说明](<docs/DETAIL.zh.md>) for features and limitations.
 
 ## Install and open

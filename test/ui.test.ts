@@ -7,7 +7,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { before, test } from 'node:test'
+import { afterEach, before, test } from 'node:test'
 import type {
   BranchesResult,
   ChangeEntry,
@@ -27,7 +27,7 @@ import {
   HISTORY,
   STATUS,
 } from './support/fixtures.ts'
-import { createHarness } from './support/mini-react.ts'
+import { createHarness as createHarnessRuntime } from './support/mini-react.ts'
 import type {
   CapturedTarget,
   ClientRegistration,
@@ -84,6 +84,12 @@ interface MountOptions {
   failOp?: string
   /** Pause one operation before responding so busy controls can be exercised. */
   pending?: { op: string; until: Promise<void> }
+  /** `status` answers in call order; the last repeats once exhausted. */
+  statusPages?: StatusResult[]
+  /** Zero-based `status` request indexes that answer with a failure. */
+  failStatusPages?: number[]
+  /** Deferred fences awaited before the matching zero-based `status` call answers. */
+  statusGates?: (Promise<void> | undefined)[]
   /** Locale override for long translated copy and action labels. */
   t?: typeof translate
   diff?: boolean
@@ -122,6 +128,43 @@ interface MountedGit {
 
 let registration: ClientRegistration
 
+/**
+ * Lifetimes created by the running test. A failing assertion skips the
+ * `dispose()` call at the end of a test body, so everything created here is
+ * disposed in reverse at the end of the test as a safety net. Explicit
+ * disposal stays valid: both the harness and the bundle lifetime are
+ * idempotent.
+ */
+const lifetimes: Array<() => void | Promise<void>> = []
+
+/** Register one lifetime for the test's final cleanup. */
+function trackLifetime(dispose: () => void | Promise<void>): void {
+  lifetimes.push(dispose)
+}
+
+/** Create one mini React harness and register its disposal as a fallback. */
+function createHarness(options: Parameters<typeof createHarnessRuntime>[0]): TestHarness {
+  const harness = createHarnessRuntime(options)
+  trackLifetime(() => harness.dispose())
+  return harness
+}
+
+afterEach(async () => {
+  const errors: unknown[] = []
+  for (const dispose of lifetimes.splice(0).reverse()) {
+    try {
+      await dispose()
+    } catch (error) {
+      // Keep disposing: one broken cleanup must not leave the next test with
+      // this test's timer and fetch globals. The failures surface below.
+      errors.push(error)
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, 'UI test lifetime cleanup failed')
+  }
+})
+
 before(async () => {
   ;({ registration } = await loadClientBundle())
   assert.equal(typeof registration?.factory, 'function')
@@ -134,12 +177,14 @@ before(async () => {
  */
 async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
   const calls: RpcRequestRecord[] = []
+  const statusPages = options.statusPages ?? [options.status ?? STATUS]
+  const failedStatusPages = new Set(options.failStatusPages ?? [])
   const responses: Record<string, unknown> = {
-    status: options.status ?? STATUS,
     history: options.history ?? HISTORY,
     branches: options.branches ?? BRANCHES,
     'commit-details': options.commitDetails ?? COMMIT_DETAILS,
   }
+  let statusPage = 0
   const historyPages = options.historyPages ?? [options.history ?? HISTORY]
   const failedHistoryPages = new Set(options.failHistoryPages ?? [])
   const referencePages = options.referencePages ?? [(options.history ?? HISTORY).references]
@@ -150,6 +195,30 @@ async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
       const request = JSON.parse(init.body) as RpcRequestRecord
       calls.push(request)
       if (request.op === options.pending?.op) await options.pending.until
+      if (request.op === 'status') {
+        const index = statusPage
+        statusPage += 1
+        const gate = options.statusGates?.[index]
+        if (gate !== undefined) await gate
+        if (failedStatusPages.has(index) || options.failOp === 'status') {
+          return {
+            ok: false,
+            status: 409,
+            json: async () => ({
+              ok: false,
+              error: { code: 'git-command-failed', message: 'git said no' },
+            }),
+          }
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            value: statusPages[Math.min(index, statusPages.length - 1)],
+          }),
+        }
+      }
       if (request.op === 'watch') {
         return {
           ok: true,
@@ -274,6 +343,9 @@ function loadComponents(
     throw new Error(`unexpected require("${specifier}")`)
   })
   const fake = createFakeContext({ contextMenus: options.contextMenus })
+  // Register the bundle lifetime before applying it: a throw in `apply` still
+  // leaves registered effects for the file-level cleanup to unwind.
+  trackLifetime(() => fake.dispose())
   module.apply(fake.ctx)
   const bySeat = new Map(
     fake.records.slots.map(({ options: slot, component }) => {
@@ -3129,4 +3201,205 @@ test('a Host that cannot watch leaves the periodic status check in charge', asyn
     mounted.calls.some((call) => call.op === 'unwatch'),
     'unmounting releases the subscription',
   )
+})
+
+/** One externally released await used to hold a Host answer open. */
+function deferred(): { readonly promise: Promise<void>; readonly release: () => void } {
+  let release = (): void => {}
+  const promise = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return { promise, release }
+}
+
+/** The commit box textarea, whose disabled state follows the busy lock. */
+function commitBox(harness: TestHarness): TestElement | undefined {
+  return harness.findAll((element) => element.type === 'textarea')[0]
+}
+
+/** Hold a status poll open, so a write lands while the old snapshot is in flight. */
+async function holdSlowStatusPoll(mounted: MountedGit, counters: () => void): Promise<void> {
+  counters()
+  mounted.harness.runIntervals()
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 2, 'the poll status read is in flight')
+}
+
+test('a slow poll cannot overwrite the status refreshed after a write', async (t) => {
+  const gate = deferred()
+  const stale = createStatus({
+    files: [
+      {
+        kind: 'untracked',
+        x: '?',
+        y: '?',
+        path: 'poll-stale.txt',
+        conflict: false,
+        untracked: true,
+      },
+    ],
+  })
+  const fresh = createStatus({
+    files: [
+      { kind: 'ordinary', x: 'M', y: ' ', path: 'src/fresh.js', conflict: false, untracked: false },
+    ],
+  })
+  let counters: WatchState = { watching: true, worktree: 0, references: 0 }
+  const mounted = await mountGit({
+    watchState: () => counters,
+    statusPages: [STATUS, stale, fresh],
+    statusGates: [undefined, gate.promise],
+  })
+  t.after(() => mounted.harness.dispose())
+  await holdSlowStatusPoll(mounted, () => {
+    counters = { watching: true, worktree: 1, references: 0 }
+  })
+
+  mounted.harness.click(buttonByLabel(mounted.harness, 'actions.stageAll'))
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'stage'), 1)
+  assert.equal(
+    opCount(mounted, 'status'),
+    2,
+    'the write does not start a second status RPC while one is in flight',
+  )
+  assert.equal(
+    commitBox(mounted.harness)?.props.disabled,
+    true,
+    'the panel stays busy until the post-write read has answered',
+  )
+
+  gate.release()
+  await mounted.harness.flush()
+  assert.equal(
+    opCount(mounted, 'status'),
+    3,
+    'exactly one follow-up read drains the queued refresh',
+  )
+  assert.match(mounted.harness.text(), /fresh\.js/, 'the post-write snapshot wins')
+  assert.doesNotMatch(
+    mounted.harness.text(),
+    /poll-stale\.txt/,
+    'the slow poll snapshot never becomes the final state',
+  )
+  assert.equal(commitBox(mounted.harness)?.props.disabled, false, 'busy clears after the follow-up')
+})
+
+test('repeated explicit refreshes during one read coalesce into one follow-up', async (t) => {
+  const gate = deferred()
+  const stale = createStatus({
+    files: [
+      {
+        kind: 'untracked',
+        x: '?',
+        y: '?',
+        path: 'poll-stale.txt',
+        conflict: false,
+        untracked: true,
+      },
+    ],
+  })
+  const fresh = createStatus({
+    files: [
+      {
+        kind: 'ordinary',
+        x: 'M',
+        y: ' ',
+        path: 'src/coalesced.js',
+        conflict: false,
+        untracked: false,
+      },
+    ],
+  })
+  let counters: WatchState = { watching: true, worktree: 0, references: 0 }
+  const mounted = await mountGit({
+    watchState: () => counters,
+    statusPages: [STATUS, stale, fresh],
+    statusGates: [undefined, gate.promise],
+  })
+  t.after(() => mounted.harness.dispose())
+  await holdSlowStatusPoll(mounted, () => {
+    counters = { watching: true, worktree: 1, references: 0 }
+  })
+
+  const refresh = buttonByLabel(mounted.harness, 'refresh')
+  mounted.harness.click(refresh)
+  mounted.harness.click(refresh)
+  mounted.harness.click(refresh)
+  await mounted.harness.flush()
+  assert.equal(
+    opCount(mounted, 'status'),
+    2,
+    'queued refreshes never start a concurrent status read',
+  )
+
+  gate.release()
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 3, 'three requests fold into one follow-up read')
+  assert.match(mounted.harness.text(), /coalesced\.js/)
+  assert.doesNotMatch(mounted.harness.text(), /poll-stale\.txt/)
+})
+
+test('a failed status read still drains the queued retry', async (t) => {
+  const gate = deferred()
+  const fresh = createStatus({
+    files: [
+      {
+        kind: 'untracked',
+        x: '?',
+        y: '?',
+        path: 'src/retried.js',
+        conflict: false,
+        untracked: true,
+      },
+    ],
+  })
+  let counters: WatchState = { watching: true, worktree: 0, references: 0 }
+  const mounted = await mountGit({
+    watchState: () => counters,
+    statusPages: [STATUS, STATUS, fresh],
+    failStatusPages: [1],
+    statusGates: [undefined, gate.promise],
+  })
+  t.after(() => mounted.harness.dispose())
+  await holdSlowStatusPoll(mounted, () => {
+    counters = { watching: true, worktree: 1, references: 0 }
+  })
+
+  mounted.harness.click(buttonByLabel(mounted.harness, 'refresh'))
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 2)
+
+  gate.release()
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 3, 'the queued retry runs after the failure')
+  assert.match(mounted.harness.text(), /retried\.js/, 'the retry answer is applied')
+  assert.doesNotMatch(
+    mounted.harness.text(),
+    /error\.title/,
+    'the successful retry clears the failure banner',
+  )
+})
+
+test('an unmounting panel does not run a queued status read', async (t) => {
+  const gate = deferred()
+  let counters: WatchState = { watching: true, worktree: 0, references: 0 }
+  const mounted = await mountGit({
+    watchState: () => counters,
+    statusPages: [STATUS, STATUS, STATUS],
+    statusGates: [undefined, gate.promise],
+  })
+  t.after(() => mounted.harness.dispose())
+  await holdSlowStatusPoll(mounted, () => {
+    counters = { watching: true, worktree: 1, references: 0 }
+  })
+
+  mounted.harness.click(buttonByLabel(mounted.harness, 'refresh'))
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 2, 'the refresh is queued behind the read')
+
+  await mounted.harness.dispose()
+  gate.release()
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 2, 'unmounting drops the queued read')
 })

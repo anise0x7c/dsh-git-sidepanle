@@ -1192,3 +1192,118 @@ The panel SHALL present its existing transient commit, ignore, reference-operati
 
 - **WHEN** the host notification facility is absent or cannot deliver feedback and the user completes an otherwise valid inline commit
 - **THEN** the commit still clears its message and refreshes changes and history without recreating a private notice or showing a notification failure as a Git error
+
+### Requirement: Literal file-action scope
+
+The Host MUST interpret accepted repository-relative file paths literally rather than as patterns when staging, unstaging, discarding tracked changes or reading file diffs. It MUST reject paths outside the repository while accepting ordinary filenames beginning with two dots.
+
+#### Scenario: Pattern-shaped filename
+
+- **GIVEN** the repository contains both a changed file with a literal pattern character in its name and another file that would match that pattern
+- **WHEN** the user stages, unstages or discards only the first file
+- **THEN** the second file's index and working-tree content remain unchanged
+
+#### Scenario: Pattern-shaped diff path
+
+- **WHEN** the user opens a working-tree or commit diff for a filename containing pattern characters
+- **THEN** the diff includes only the selected path and its rename source when applicable
+
+#### Scenario: Double-dot-prefixed filename
+
+- **WHEN** the user acts on a file named `..notes` within the repository
+- **THEN** the Host handles it as a file inside the repository rather than rejecting it as parent-directory traversal
+
+#### Scenario: Escaping path
+
+- **WHEN** a file action supplies an absolute path or a relative path that escapes the repository
+- **THEN** the Host rejects the action without reading or changing that target
+
+### Requirement: Direct filesystem target safety
+
+The Host MUST verify that a target is actually untracked and not ignored before previewing or deleting it as an untracked file, rather than trusting the caller's classification. It MUST refuse an untracked-file preview when the target is a symbolic link or a non-regular file. Direct filesystem previews and untracked-file deletion MUST refuse a path with a symbolic-link parent directory. Deleting an untracked symbolic link itself SHALL remove the link without following or changing its target.
+
+#### Scenario: Tracked file mislabeled as untracked
+
+- **GIVEN** a file is tracked in the current index, including one staged after its change row was captured
+- **WHEN** a request claims the file is untracked and asks to preview or delete it through the untracked path
+- **THEN** the Host rejects the request and does not remove the tracked file
+
+#### Scenario: Ignored target
+
+- **GIVEN** a file is excluded from the change list by an ignore rule
+- **WHEN** a request claims it is an ordinary untracked file and asks for a preview or deletion
+- **THEN** the Host rejects the request without returning its contents or deleting it
+
+#### Scenario: Linked preview file
+
+- **GIVEN** an untracked symbolic link points to a file outside the repository
+- **WHEN** its content is requested as an untracked diff
+- **THEN** the Host rejects the read and returns no linked file content
+
+#### Scenario: Linked parent directory
+
+- **GIVEN** a path inside the repository passes through a symbolic-link directory
+- **WHEN** an untracked preview or deletion is requested for a file below that directory
+- **THEN** the Host refuses the operation and the linked target remains unread and unchanged
+
+#### Scenario: Delete a link rather than its target
+
+- **WHEN** the user confirms discarding an untracked symbolic link whose parent directories are ordinary directories
+- **THEN** only the link is deleted and its target remains unchanged
+
+#### Scenario: Regular-file preview
+
+- **WHEN** the user opens an ordinary untracked file inside ordinary repository directories
+- **THEN** its existing bounded text or binary preview remains available
+
+### Requirement: Refresh completion ordering
+
+The panel SHALL preserve a status refresh requested while an older status read is in flight by completing a subsequent read, coalescing overlapping requests without concurrent status reads. A successful repository operation SHALL wait for its required fresh status read before releasing its busy state. Unmounting the panel MUST prevent a queued read from starting.
+
+#### Scenario: An older read overlaps a write
+
+- **GIVEN** a status read began before a repository mutation completed
+- **WHEN** the successful mutation requests its status refresh
+- **THEN** a subsequent status read completes and its result becomes the displayed state before the operation becomes idle
+
+#### Scenario: Several refresh requests overlap
+
+- **WHEN** several refresh requests arrive during one pending status read
+- **THEN** they are coalesced into a follow-up read and no two status reads run concurrently
+
+#### Scenario: Failed read with a queued refresh
+
+- **GIVEN** another refresh was requested while a status read was pending
+- **WHEN** the older read fails
+- **THEN** the queued refresh still runs and can replace the failure with fresh status
+
+#### Scenario: Panel closes with a queued refresh
+
+- **WHEN** the panel closes before its pending status read settles
+- **THEN** settling that read does not start a queued refresh or update the closed panel
+
+### Requirement: Cancelled watch setup stays cancelled
+
+The Host MUST prevent asynchronous watch setup from acquiring or replacing repository watchers after its panel subscription is cancelled, a newer subscription supersedes it or the plugin's watch registry is disposed. Disposal SHALL be idempotent and permanent for that registry.
+
+#### Scenario: Unload during repository discovery
+
+- **GIVEN** a watch request is still resolving its repository or metadata directory
+- **WHEN** the plugin unloads before resolution finishes
+- **THEN** the request finishes without opening watchers or retaining a subscription
+
+#### Scenario: Close before subscription is ready
+
+- **WHEN** a panel cancels its subscription before asynchronous watch setup finishes
+- **THEN** the obsolete request does not reopen watchers after cancellation
+
+#### Scenario: Newer repository wins
+
+- **GIVEN** two watch requests for the same panel resolve different repository directories
+- **WHEN** the newer request finishes before the older one
+- **THEN** the older result cannot replace or detach the newer subscription
+
+#### Scenario: Repeated disposal and subsequent requests
+
+- **WHEN** an already disposed registry is disposed again or receives a watch request
+- **THEN** it remains idle without opening watchers or timers

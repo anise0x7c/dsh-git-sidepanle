@@ -8,6 +8,11 @@ One DSH bundle, two runtime halves, and shared **type-only** wire contracts:
 - **Wire types**: `src/shared/git.ts`. Type-only imports disappear from both
   builds: the browser never imports Host execution code.
 
+The maintenance audit and its remaining trust boundaries are recorded in
+`docs/MAINTENANCE-AUDIT.md`. The current refactor intentionally leaves the pure
+VS Code graph algorithm intact; section state, artwork and row presentation have
+separate owners instead.
+
 Both distribution entries and their source maps are committed. Installation
 needs neither a compiler nor development dependencies. The Git Sidebar behavior
 specification remains the source of truth; migration decisions are recorded in
@@ -27,7 +32,12 @@ src/
     context.ts                minimal structural DSH service contracts
     http/respond.ts           JSON response + bounded request-body reader
     http/trust.ts             loopback / same-origin fence
-    git/exec.ts               execution, repository root and path validation
+    git/exec.ts               shell-free literal-path Git execution and repository discovery
+    git/paths.ts              lexical repository containment, including Windows drive boundaries
+    git/files.ts              bounded no-follow untracked previews and verified untracked deletion
+    git/changes.ts            stage/unstage/discard/ignore file operations
+    git/mutations.ts          commit and reference mutations with stable failure mapping
+    validation.ts             untrusted RPC field validation, not repository dispatch
     git/status.ts             porcelain parser and repository status
     git/history.ts            history, commit metadata and changed-file parsing
     git/references.ts         graph references: checked-out, upstream, base
@@ -51,6 +61,7 @@ src/
     menu/                     targets, triggers, clipboard, actions, command bus
     panel/
       controls.ts, rows.ts    controls and flat change-file rows
+      change-groups.ts        pure grouping, path ordering and display-letter rules
       Section.ts              collapsible section header
       feedback.ts             banners and empty states
       FloatingPanel.ts        shared panel-local floating operation surface and actions
@@ -62,6 +73,7 @@ src/
       autosize.ts             commit-message height rule and its one element pass
       hooks/                  repository/history/branches/details/action hooks
       views/                  branch/commit/change/graph sections, reference dialogs and the split view
+        graph/                shared SVG artwork and commit row/badge presentation
       GitPanel.ts             hook and view assembly
     diff/                     diff panel and pure diff rendering
     titles.ts, plugin.ts      tab titles and plugin registration assembly
@@ -69,7 +81,8 @@ scripts/
   build.ts                    both build targets, watch, read-only freshness gate
   verify-contract.ts          integration with the real installed DSH registry
 test/
-  *.test.ts                   Host, loader, rendered UI and workflow regressions
+  *.test.ts                   Host, loader, rendered UI, workflow and architecture regressions
+  support/architecture.ts     TypeScript-AST import graph checks over virtual source trees
   unit/*.test.ts              pure modules, no Git process or DOM
   support/*.ts                fixtures, minimal React, fake context/menu, VS Code graph oracle
 ```
@@ -81,7 +94,11 @@ client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, loca
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
 panel/views/* -> { panel/FloatingPanel, panel/autosize, panel/controls, panel/split, icons, git/format, git/graph }
 pure git/menu/locale logic -> no React, no ctx
-host: http/* -> nothing; git/* -> git/exec; watch/* -> git/exec; rpc -> readers + watch; host-entry -> rpc + http/* + watch
+host: http/* -> nothing; git/paths -> errors; git/exec -> errors
+      git/files -> { exec, paths }; git/changes -> { exec, paths, files, ignore }
+      git/mutations -> { exec, branches }; readers -> { exec, paths, files as needed }
+      validation -> { errors, git/exec }; watch/* -> git/exec
+      rpc -> { validation, readers, changes, mutations, watch }; host-entry -> { rpc, http/*, watch }
 either half -- import type --> shared/git
 ```
 
@@ -89,6 +106,15 @@ Pure logic stays directly importable in Node. Views never call `fetch`; hooks
 own requests and state. DSH interfaces are local structural subsets of the
 installed API, not runtime imports. Unknown network/request inputs are validated
 at boundaries instead of assuming TypeScript makes untrusted input safe.
+
+The existing maintenance gate executes `test/architecture.test.ts` against the
+real source graph and intentional violations. It rejects cross-runtime imports,
+runtime imports of shared wire declarations, runtime cycles, pure-zone dependency
+escapes and orphaned executable modules. Whole-clause `import type` and
+`export type` are erased; inline `{ type T }` specifiers still retain module
+side effects under `verbatimModuleSyntax` and count as runtime edges. Type-only
+view/hook contracts are permitted. This checks module reachability, not whether
+every public export or semantic branch has a consumer.
 
 ## Data flow
 
@@ -100,12 +126,16 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
    and references) about every 700 ms; a counter move refreshes only the status,
    or the status plus the graph references, without re-reading the commits. The
    old 5-second status check stays as the fallback while the Host cannot watch
-   and stands down once the counters are live.
+   and stands down once the counters are live. Status reads are serialized;
+   explicit requests during a read coalesce into a follow-up, and a successful
+   action waits for its post-write read before releasing its busy lock.
 3. The Host watch registry shares one recursive working-tree watcher, one Git
    metadata watcher and one refs watcher per repository, coalesces a burst with a
    short debounce, and releases them when the last panel unsubscribes, its
    subscription lapses, the Session moves, or the plugin unloads. Watch events
    only move counters; the Git reads still happen when the browser asks.
+   Per-panel setup identities invalidate cancelled or superseded asynchronous
+   discovery, and registry disposal permanently fences off new watchers.
 4. History loads one page on mount and more on demand. `history` returns commits
    in `--topo-order` with full decorations, an `offset` for earlier pages, a
    `hasMore` flag, and the checked-out, upstream and base references; reaching
@@ -155,8 +185,13 @@ at boundaries instead of assuming TypeScript makes untrusted input safe.
 - Routes stay `POST /api/dsh-git-graph/rpc` and
   `GET /api/dsh-git-graph/health`. Accept only loopback sockets/Host, bundle
   header `x-dsh-git-graph: 1`, no forwarding headers, and same-origin markers.
-  Git never runs through a shell. Browser requests contain Session ids and
-  repository-relative paths, never a repository root supplied by the browser.
+  Git never runs through a shell and file arguments are literal pathspecs.
+  Browser requests contain Session ids and repository-relative paths, never a
+  repository root supplied by the browser. Direct filesystem operations reject
+  linked parents; untracked previews use a bounded no-follow regular-file handle,
+  and both previews and deletion recheck Git's current untracked classification.
+  Normal Git hooks/configuration and local-account trust remain unchanged; these
+  checks do not sandbox concurrent local replacement of ancestor directories.
 - The browser factory calls `window.__ModuleLoader__.load({id, factory})`,
   returns `{inject, apply}`, and has no side effects. Registrations belong to
   `apply` with `ctx.effect`; style leases are shared across module replacements and released on disposal. Only `react` is external.

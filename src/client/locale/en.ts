@@ -95,6 +95,7 @@ export const en = {
   'action.dismiss': 'Dismiss',
   'error.discardUnborn': 'Changes cannot be discarded before the first commit.',
   'error.unknownCommit': 'That commit is no longer available.',
+  'error.notUntracked': 'This file is tracked or ignored. Refresh the changes before trying again.',
   'status.modified': 'Modified',
   'status.added': 'Added',
   'status.deleted': 'Deleted',

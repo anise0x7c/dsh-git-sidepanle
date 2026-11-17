@@ -1,18 +1,23 @@
 /**
- * Git execution, repository discovery, and repository-relative path validation.
+ * Git process execution and repository discovery.
  *
  * Every command runs through `execFile` with an explicit argument vector —
- * never through a shell — in a pinned, non-interactive environment. Paths that
- * come from the browser are validated to stay inside the repository before
- * they reach Git; the browser never sends a repository path of its own.
+ * never through a shell — in a pinned, non-interactive environment. Every
+ * invocation also carries `--literal-pathspecs`, so a browser-supplied filename
+ * is never reinterpreted as a Git pattern or pathspec magic.
  */
 import { execFile } from 'node:child_process'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
-import type { ChangeEntry, ChangeKind } from '../../shared/git.ts'
 import { GitGraphError } from '../errors.ts'
 
 const DEFAULT_TIMEOUT_MS = 20_000
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024
+/**
+ * Global Git option making every pathspec literal.
+ *
+ * It is passed as an argument rather than exported through the parent
+ * environment, so only this bundle's invocations change behavior.
+ */
+const LITERAL_PATHSPECS = '--literal-pathspecs'
 
 /** Exit code Git reported, a spawn error code, or undefined on success. */
 export type GitExitCode = number | string | undefined
@@ -50,7 +55,7 @@ export function runGit(
   return new Promise((resolveRun) => {
     execFile(
       'git',
-      [...args],
+      [LITERAL_PATHSPECS, ...args],
       {
         cwd,
         timeout: options.timeout ?? DEFAULT_TIMEOUT_MS,
@@ -123,78 +128,4 @@ export async function readGitDirectory(root: string): Promise<string | null> {
   if (!result.ok) return null
   const directory = result.stdout.trim()
   return directory === '' ? null : directory
-}
-
-/**
- * Resolve one repository-relative path, refusing escapes and option-shaped paths.
- * @param root - repository root.
- * @param input - wire path.
- * @returns absolute path inside the repository.
- */
-export function resolveRepositoryPath(root: string, input: unknown): string {
-  if (typeof input !== 'string' || input === '' || input.includes('\0')) {
-    throw new GitGraphError('bad-request', 'A file path is required.', 400)
-  }
-  if (isAbsolute(input))
-    throw new GitGraphError('bad-request', 'A repository-relative path is required.', 400)
-  const absolute = resolve(root, input)
-  const rel = relative(root, absolute)
-  if (rel === '' || rel.startsWith('..') || rel.includes('\0')) {
-    throw new GitGraphError('path-outside-repository', `"${input}" is outside the repository.`, 400)
-  }
-  if (rel.split(sep).some((part) => part === '..')) {
-    throw new GitGraphError('path-outside-repository', `"${input}" is outside the repository.`, 400)
-  }
-  return absolute
-}
-
-/**
- * Validate a list of repository-relative paths.
- * @param root - repository root.
- * @param input - wire paths.
- * @returns validated paths, relative as given.
- */
-export function resolveRepositoryPaths(root: string, input: unknown): string[] {
-  if (!Array.isArray(input) || input.length === 0) {
-    throw new GitGraphError('bad-request', 'At least one path is required.', 400)
-  }
-  if (input.length > 2000)
-    throw new GitGraphError('bad-request', 'Too many paths in one request.', 400)
-  const items: unknown[] = input
-  const paths: string[] = []
-  for (const item of items) {
-    resolveRepositoryPath(root, item)
-    if (typeof item !== 'string' || item.startsWith('-')) {
-      throw new GitGraphError('bad-request', `Invalid path "${String(item)}".`, 400)
-    }
-    paths.push(item)
-  }
-  return paths
-}
-
-/**
- * One parsed porcelain-v2 record.
- * @param kind - record kind.
- * @param x - index status character.
- * @param y - worktree status character.
- * @param path - path.
- * @param origPath - rename source.
- * @returns wire entry.
- */
-export function changeEntry(
-  kind: ChangeKind,
-  x: string,
-  y: string,
-  path: string,
-  origPath?: string,
-): ChangeEntry {
-  return {
-    kind,
-    x,
-    y,
-    path,
-    ...(origPath === undefined ? {} : { origPath }),
-    conflict: kind === 'unmerged',
-    untracked: kind === 'untracked',
-  }
 }
