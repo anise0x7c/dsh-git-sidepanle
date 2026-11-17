@@ -3,7 +3,10 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
-## Unreleased
+## 0.12.0
+
+Operation notices and prompts now use DSH's shared host presentation instead of
+the panel's own strip and shrinking forms:
 
 - Existing commit, ignore and reference-operation success notices now use DSH's
   shared Toast instead of a private green strip. Stale-target and busy menu
