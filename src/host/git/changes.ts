@@ -91,7 +91,12 @@ export async function discardPath(
   rawPath: unknown,
   untracked: boolean,
 ): Promise<void> {
+  // The one-element list keeps the helper's leading-dash rejection; the empty
+  // result is unreachable because that helper also rejects an empty list.
   const [path] = resolveRepositoryPaths(root, [rawPath])
+  if (path === undefined) {
+    throw new GitGraphError('bad-request', 'A file path is required.', 400)
+  }
   if (untracked) {
     await removeUntrackedPath(root, path)
     return
