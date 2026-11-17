@@ -30,7 +30,11 @@ const historyItemRefColor = 'ref'
 export interface OracleRef {
   id: string
   name: string
-  color?: string
+  /**
+   * VS Code models this field as `string | undefined`. It stays optional so
+   * inputs may omit it, while an explicit `undefined` survives the copy.
+   */
+  color?: string | undefined
 }
 
 /** VS Code `ISCMHistoryItem`, reduced. */

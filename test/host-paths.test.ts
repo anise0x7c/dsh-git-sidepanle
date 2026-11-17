@@ -154,23 +154,29 @@ test('working and commit diffs include only the literal pattern-shaped path', as
     const wildcard = await callAt(baseUrl, 'diff', { path: 'star*.txt', staged: false })
     assert.equal(wildcard.body.ok, true)
     assert.equal(wildcard.body.value.additions, 1)
+    const wildcardHunk = wildcard.body.value.hunks[0]
+    assert.ok(wildcardHunk, 'the working diff has no hunk')
     assert.deepEqual(
-      wildcard.body.value.hunks[0].lines.filter((line) => line.t === '+').map((line) => line.text),
+      wildcardHunk.lines.filter((line) => line.t === '+').map((line) => line.text),
       ['working star*.txt'],
     )
 
     const magic = await callAt(baseUrl, 'diff', { path: ':(glob)starONE.txt', staged: false })
     assert.equal(magic.body.ok, true)
+    const magicHunk = magic.body.value.hunks[0]
+    assert.ok(magicHunk, 'the magic-path diff has no hunk')
     assert.deepEqual(
-      magic.body.value.hunks[0].lines.filter((line) => line.t === '+').map((line) => line.text),
+      magicHunk.lines.filter((line) => line.t === '+').map((line) => line.text),
       ['working :(glob)starONE.txt'],
     )
 
     await callAt(baseUrl, 'stage', { paths: ['star*.txt', 'starONE.txt', ':(glob)starONE.txt'] })
     const staged = await callAt(baseUrl, 'diff', { path: 'star*.txt', staged: true })
     assert.equal(staged.body.value.additions, 1)
+    const stagedHunk = staged.body.value.hunks[0]
+    assert.ok(stagedHunk, 'the staged diff has no hunk')
     assert.deepEqual(
-      staged.body.value.hunks[0].lines.filter((line) => line.t === '+').map((line) => line.text),
+      stagedHunk.lines.filter((line) => line.t === '+').map((line) => line.text),
       ['working star*.txt'],
     )
 
@@ -180,20 +186,20 @@ test('working and commit diffs include only the literal pattern-shaped path', as
     const commitWildcard = await callAt(baseUrl, 'diff', { path: 'star*.txt', commit: oid })
     assert.equal(commitWildcard.body.ok, true)
     assert.equal(commitWildcard.body.value.additions, 1)
+    const commitWildcardHunk = commitWildcard.body.value.hunks[0]
+    assert.ok(commitWildcardHunk, 'the commit diff has no hunk')
     assert.deepEqual(
-      commitWildcard.body.value.hunks[0].lines
-        .filter((line) => line.t === '+')
-        .map((line) => line.text),
+      commitWildcardHunk.lines.filter((line) => line.t === '+').map((line) => line.text),
       ['working star*.txt'],
     )
     const commitMagic = await callAt(baseUrl, 'diff', {
       path: ':(glob)starONE.txt',
       commit: oid,
     })
+    const commitMagicHunk = commitMagic.body.value.hunks[0]
+    assert.ok(commitMagicHunk, 'the magic-path commit diff has no hunk')
     assert.deepEqual(
-      commitMagic.body.value.hunks[0].lines
-        .filter((line) => line.t === '+')
-        .map((line) => line.text),
+      commitMagicHunk.lines.filter((line) => line.t === '+').map((line) => line.text),
       ['working :(glob)starONE.txt'],
     )
     assert.notEqual(previous, oid)
@@ -359,7 +365,11 @@ test('ordinary untracked previews stay bounded and ordinary deletion works', asy
     const preview = await callAt(baseUrl, 'diff', { path: 'big.txt', untracked: true })
     assert.equal(preview.body.ok, true)
     assert.equal(preview.body.value.truncated, true)
-    assert.equal(preview.body.value.hunks[0].lines[0].text.length, 512 * 1024)
+    const previewHunk = preview.body.value.hunks[0]
+    assert.ok(previewHunk, 'the bounded preview has no hunk')
+    const previewLine = previewHunk.lines[0]
+    assert.ok(previewLine, 'the bounded preview has no rendered line')
+    assert.equal(previewLine.text.length, 512 * 1024)
 
     const removed = await callAt(baseUrl, 'discard', { path: 'temp.txt', untracked: true })
     assert.equal(removed.body.ok, true)

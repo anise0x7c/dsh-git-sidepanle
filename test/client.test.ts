@@ -218,10 +218,12 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   const icon = guide.icon as unknown as TestComponent
   const iconElement = element(icon({ size: 16 }))
   assert.equal(iconElement.type, 'svg')
-  assert.deepEqual(records.tabTypes[1], {
+  const diffType = records.tabTypes[1]
+  assert.ok(diffType)
+  assert.deepEqual(diffType, {
     id: '@local/dsh-git-graph/diff',
     kind: 'git-diff',
-    title: records.tabTypes[1].title,
+    title: diffType.title,
   })
 
   assert.equal(records.slots.length, 4)
@@ -374,6 +376,7 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
   const { contributions } = fake.menu
   assert.equal(contributions.length, 1)
   const contribution = contributions[0]
+  assert.ok(contribution, 'no context-menu contribution was registered')
   assert.equal(contribution.id, 'git-graph.actions')
   assert.equal(contribution.target, 'gitGraphItem')
   assert.equal(typeof contribution.resolve, 'function')
@@ -405,14 +408,21 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
     menuActionId('copy-relative'),
     menuActionId('copy-path'),
   ])
-  assert.equal(changes[0].label, 'menu.openDiff')
-  assert.equal(changes[1].label, 'actions.stage')
-  assert.equal(changes[1].separatorBefore, true)
-  assert.equal(changes[2].label, 'actions.discard')
-  assert.equal(changes[2].danger, true)
-  assert.equal(changes[3].label, 'menu.addToGitignore')
-  assert.equal(changes[4].label, 'menu.copyRelativePath')
-  assert.equal(changes[5].label, 'menu.copyPath')
+  const [openChange, stageChange, discardChange, ignoreChange, relativeChange, pathChange] = changes
+  assert.ok(openChange, 'the unstaged file menu has no open action')
+  assert.ok(stageChange, 'the unstaged file menu has no stage action')
+  assert.ok(discardChange, 'the unstaged file menu has no discard action')
+  assert.ok(ignoreChange, 'the unstaged file menu has no ignore action')
+  assert.ok(relativeChange, 'the unstaged file menu has no copy-relative action')
+  assert.ok(pathChange, 'the unstaged file menu has no copy-path action')
+  assert.equal(openChange.label, 'menu.openDiff')
+  assert.equal(stageChange.label, 'actions.stage')
+  assert.equal(stageChange.separatorBefore, true)
+  assert.equal(discardChange.label, 'actions.discard')
+  assert.equal(discardChange.danger, true)
+  assert.equal(ignoreChange.label, 'menu.addToGitignore')
+  assert.equal(relativeChange.label, 'menu.copyRelativePath')
+  assert.equal(pathChange.label, 'menu.copyPath')
 
   // Staged files offer unstaging instead of staging and discarding.
   assert.deepEqual(
@@ -460,7 +470,9 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
   ])
   const graphSection = resolve({ sessionId: 's1', kind: 'section', section: 'graph' })
   assert.deepEqual(MENU_IDS(graphSection), [menuActionId('refresh')])
-  assert.equal(graphSection[0].label, 'menu.refreshHistory')
+  const refreshHistory = graphSection[0]
+  assert.ok(refreshHistory, 'the graph section menu has no refresh action')
+  assert.equal(refreshHistory.label, 'menu.refreshHistory')
 
   // Ordinary commits group checkout and reference creation before the copies.
   const commit = resolve({
@@ -477,10 +489,15 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
     menuActionId('copy-id'),
     menuActionId('copy-message'),
   ])
-  assert.equal(commit[0].label, 'menu.checkoutDetached')
-  assert.equal(commit[1].separatorBefore, true)
-  assert.equal(commit[3].label, 'menu.copyCommitId')
-  assert.equal(commit[4].label, 'menu.copyCommitSubject')
+  const [checkoutDetached, createBranch, , copyCommitId, copyCommitSubject] = commit
+  assert.ok(checkoutDetached, 'the commit menu has no checkout action')
+  assert.ok(createBranch, 'the commit menu has no create-branch action')
+  assert.ok(copyCommitId, 'the commit menu has no copy-id action')
+  assert.ok(copyCommitSubject, 'the commit menu has no copy-subject action')
+  assert.equal(checkoutDetached.label, 'menu.checkoutDetached')
+  assert.equal(createBranch.separatorBefore, true)
+  assert.equal(copyCommitId.label, 'menu.copyCommitId')
+  assert.equal(copyCommitSubject.label, 'menu.copyCommitSubject')
   const branchHead = resolve({
     sessionId: 's1',
     kind: 'commit',
@@ -493,8 +510,12 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
   })
   const checkout = branchHead.find((action) => action.id === menuActionId('checkout'))
   const remove = branchHead.find((action) => action.id === menuActionId('delete-branch'))
-  assert.equal(checkout?.children?.[0].disabled, true)
-  assert.equal(remove?.children?.[0].id, `${menuActionId('delete-branch')}/feature`)
+  const checkoutChild = checkout?.children?.[0]
+  const removeChild = remove?.children?.[0]
+  assert.ok(checkoutChild, 'the checkout action has no branch entries')
+  assert.ok(removeChild, 'the delete-branch action has no branch entries')
+  assert.equal(checkoutChild.disabled, true)
+  assert.equal(removeChild.id, `${menuActionId('delete-branch')}/feature`)
 
   // The diff header copies the file's paths.
   assert.deepEqual(ids({ sessionId: 's1', kind: 'diff', path: 'src/app.js', cwd: '/repo' }), [
@@ -531,6 +552,8 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
   assert.ok(labelsRecord)
   const twoDictionaries = labelsRecord.dictionaries
   for (const locale of ['en', 'zh']) {
+    const dictionary = twoDictionaries[locale]
+    assert.ok(dictionary, `the ${locale} dictionary was not registered`)
     for (const key of [
       'menu.openDiff',
       'menu.copyRelativePath',
@@ -547,7 +570,7 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
       'menu.copiedCommitSubject',
       'menu.copyFailed',
     ]) {
-      assert.equal(typeof twoDictionaries[locale][key], 'string', `${locale} is missing ${key}`)
+      assert.equal(typeof dictionary[key], 'string', `${locale} is missing ${key}`)
     }
   }
 })
@@ -559,7 +582,9 @@ test('menu copy actions write the clipboard and report the result', async () => 
   module.apply(fake.ctx)
   const { contributions, notifications } = fake.menu
   assert.equal(contributions.length, 1, 'no context-menu contribution was registered')
-  assert.equal(typeof contributions[0].resolve, 'function')
+  const contribution = contributions[0]
+  assert.ok(contribution, 'no context-menu contribution was registered')
+  assert.equal(typeof contribution.resolve, 'function')
 
   // Each select reopens the menu occurrence, as the real overlay does.
   const runMenuAction = (value: CapturedTargetValue, id: string): Promise<void> =>

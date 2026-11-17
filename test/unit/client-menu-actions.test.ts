@@ -53,6 +53,15 @@ function fileValue(overrides: Partial<TestTargetValue> = {}): TestTargetValue {
 }
 
 /**
+ * A captured file row value whose panel has not resolved a repository root.
+ * @returns captured target value.
+ */
+function fileValueWithoutCwd(): TestTargetValue {
+  const { cwd: _cwd, ...value } = fileValue()
+  return value
+}
+
+/**
  * Published ids of resolved actions (`<contributionId>/<actionId>`).
  * @param actions - resolved actions.
  * @returns published command ids.
@@ -93,6 +102,18 @@ function actionById(
   assert.ok(action, `no action "${id}" in ${JSON.stringify(publishedIds(actions))}`)
   assert.equal(typeof action.run, 'function', `${id} must be an executable leaf`)
   return action as MenuAction & { readonly run: NonNullable<MenuAction['run']> }
+}
+
+/**
+ * Read one action at a known index after proving the index exists.
+ * @param actions - resolved actions.
+ * @param index - position in the resolved list.
+ * @returns the action at that position.
+ */
+function actionAt(actions: readonly MenuAction[], index: number): MenuAction {
+  const action = actions[index]
+  assert.ok(action, `no action at index ${index} in ${JSON.stringify(publishedIds(actions))}`)
+  return action
 }
 
 /**
@@ -275,13 +296,13 @@ describe('resolveMenuActions for files', () => {
       t('menu.copyRelativePath'),
       t('menu.copyPath'),
     ])
-    assert.equal(actions[0].separatorBefore, undefined)
-    assert.equal(actions[0].danger, undefined)
-    assert.equal(actions[1].separatorBefore, true)
-    assert.equal(actions[2].danger, true)
-    assert.equal(actions[3].separatorBefore, undefined)
-    assert.equal(actions[4].separatorBefore, true)
-    assert.equal(actions[5].separatorBefore, undefined)
+    assert.equal(actionAt(actions, 0).separatorBefore, undefined)
+    assert.equal(actionAt(actions, 0).danger, undefined)
+    assert.equal(actionAt(actions, 1).separatorBefore, true)
+    assert.equal(actionAt(actions, 2).danger, true)
+    assert.equal(actionAt(actions, 3).separatorBefore, undefined)
+    assert.equal(actionAt(actions, 4).separatorBefore, true)
+    assert.equal(actionAt(actions, 5).separatorBefore, undefined)
     for (const action of actions) assert.equal(typeof action.run, 'function')
   })
 
@@ -335,14 +356,18 @@ describe('resolveMenuActions for files', () => {
   })
 
   test('omits the absolute-path copy without a working directory', () => {
-    const actions = actionsFor(fileValue({ cwd: undefined }))
-    assert.deepEqual(publishedIds(actions), [
-      `${MENU_CONTRIBUTION_ID}/open`,
-      `${MENU_CONTRIBUTION_ID}/stage`,
-      `${MENU_CONTRIBUTION_ID}/discard`,
-      `${MENU_CONTRIBUTION_ID}/ignore`,
-      `${MENU_CONTRIBUTION_ID}/copy-relative`,
-    ])
+    // Both wire shapes reach the resolver: the field is absent, or present but
+    // undefined; neither may advertise the absolute-path copy.
+    for (const value of [fileValueWithoutCwd(), { ...fileValue(), cwd: undefined }]) {
+      const actions = actionsFor(value)
+      assert.deepEqual(publishedIds(actions), [
+        `${MENU_CONTRIBUTION_ID}/open`,
+        `${MENU_CONTRIBUTION_ID}/stage`,
+        `${MENU_CONTRIBUTION_ID}/discard`,
+        `${MENU_CONTRIBUTION_ID}/ignore`,
+        `${MENU_CONTRIBUTION_ID}/copy-relative`,
+      ])
+    }
   })
 
   test('resolves nothing for a file without a path', () => {
@@ -365,8 +390,8 @@ describe('resolveMenuActions for group headers', () => {
       t('actions.discardAll'),
       t('refresh'),
     ])
-    assert.equal(actions[1].danger, true)
-    assert.equal(actions[2].separatorBefore, true)
+    assert.equal(actionAt(actions, 1).danger, true)
+    assert.equal(actionAt(actions, 2).separatorBefore, true)
   })
 
   test('a staged header offers unstage-all and refresh', () => {
@@ -376,7 +401,7 @@ describe('resolveMenuActions for group headers', () => {
       `${MENU_CONTRIBUTION_ID}/refresh`,
     ])
     assert.deepEqual(labelsOf(actions), [t('actions.unstageAll'), t('refresh')])
-    assert.equal(actions[1].separatorBefore, true)
+    assert.equal(actionAt(actions, 1).separatorBefore, true)
   })
 
   test('a merge header offers stage-all only', () => {
@@ -453,8 +478,9 @@ describe('resolveMenuActions for commit and diff targets', () => {
       checkout?.children?.map((branch) => branch.id),
       ['main', 'feature', 'other'],
     )
-    assert.equal(checkout?.children?.[0].disabled, true)
-    assert.equal(checkout?.children?.[1].disabled, undefined)
+    assert.ok(checkout?.children, 'the checkout action should carry branch children')
+    assert.equal(actionAt(checkout.children, 0).disabled, true)
+    assert.equal(actionAt(checkout.children, 1).disabled, undefined)
     assert.equal(checkout?.run, undefined)
     assert.deepEqual(
       removal?.children?.map((branch) => branch.id),
@@ -591,7 +617,7 @@ describe('resolveMenuActions busy state', () => {
 
   test('adds no disabled flag when the panel is not busy', () => {
     for (const busy of [false, undefined]) {
-      const actions = actionsFor(fileValue({ busy }))
+      const actions = actionsFor({ ...fileValue(), busy })
       assert.ok(
         actions.every((action) => action.disabled === undefined),
         `busy ${String(busy)}`,

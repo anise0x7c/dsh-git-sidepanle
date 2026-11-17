@@ -306,7 +306,10 @@ async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
     panel: { id: 'pane-1', isFloating: false },
     tab,
   })
-  const components = loadComponents(harness, { contextMenus: options.menuService })
+  const components = loadComponents(
+    harness,
+    options.menuService === undefined ? {} : { contextMenus: options.menuService },
+  )
   const component = options.diff === true ? components.diff : components.git
   const menu = createMenuMock()
   harness.setComponent(component, {
@@ -342,7 +345,10 @@ function loadComponents(
     if (specifier === 'react') return harness.React
     throw new Error(`unexpected require("${specifier}")`)
   })
-  const fake = createFakeContext({ contextMenus: options.contextMenus })
+  const fake =
+    options.contextMenus === undefined
+      ? createFakeContext()
+      : createFakeContext({ contextMenus: options.contextMenus })
   // Register the bundle lifetime before applying it: a throw in `apply` still
   // leaves registered effects for the file-level cleanup to unwind.
   trackLifetime(() => fake.dispose())
@@ -1367,12 +1373,16 @@ test('nested changed files stay in one flat path-sorted layer', async () => {
     0,
   )
   const texts = fileRows.map(elementText)
+  const readmeRowText = texts[2]
+  const deepRowText = texts[4]
+  assert.ok(readmeRowText, 'the docs file row rendered no text')
+  assert.ok(deepRowText, 'the nested file row rendered no text')
   assert.ok(
-    texts[2].includes('readme.md') && texts[2].includes('docs'),
+    readmeRowText.includes('readme.md') && readmeRowText.includes('docs'),
     'the row shows the file name and its parent directory',
   )
   assert.ok(
-    texts[4].includes('deep.js') && texts[4].includes('src/z'),
+    deepRowText.includes('deep.js') && deepRowText.includes('src/z'),
     'a nested file keeps its whole parent path on one line',
   )
   for (const row of fileRows)
@@ -1388,11 +1398,15 @@ test('row actions stage and unstage through the Host', async () => {
       element.props?.title === 'src/app.js',
   )
   assert.equal(rows.length, 2, 'the file appears staged and again unstaged')
-  mounted.harness.click(buttonInside(rows[1], 'actions.stage'))
+  const stagedRow = rows[0]
+  const unstagedRow = rows[1]
+  assert.ok(stagedRow, 'the staged file row is missing')
+  assert.ok(unstagedRow, 'the unstaged file row is missing')
+  mounted.harness.click(buttonInside(unstagedRow, 'actions.stage'))
   await mounted.harness.flush()
   const stageCall = mounted.calls.find((call) => call.op === 'stage')
   assert.deepEqual(stageCall?.paths, ['src/app.js'])
-  mounted.harness.click(buttonInside(rows[0], 'actions.unstage'))
+  mounted.harness.click(buttonInside(stagedRow, 'actions.unstage'))
   await mounted.harness.flush()
   const unstageCall = mounted.calls.find((call) => call.op === 'unstage')
   assert.deepEqual(unstageCall?.paths, ['src/app.js'])
@@ -1846,6 +1860,7 @@ test('a changed file opens a diff tab with its addressing parameters', async () 
   assert.ok(rows.length >= 2)
   mounted.harness.click(rows[rows.length - 1])
   const opened = mounted.openedTabs[0]
+  assert.ok(opened, 'no diff tab was opened')
   assert.equal(opened.kind, 'git-diff')
   assert.equal(opened.options.params.path, 'src/app.js')
   assert.equal(opened.options.params.staged, false)
@@ -1987,7 +2002,9 @@ test('past-commit files offer copy-only context menus', async () => {
   assert.equal(fileRows.length, 1)
   mounted.harness.contextmenu(fileRows[0], { clientX: 7, clientY: 8 })
   assert.equal(mounted.menu.opens.length, 1, 'a past-commit file binds a menu target')
-  const target = mounted.menu.opens[0].target
+  const open = mounted.menu.opens[0]
+  assert.ok(open, 'no past-commit menu target was bound')
+  const target = open.target
   assert.equal(target.value.kind, 'commitFile')
   assert.equal(target.value.path, 'src/app.js')
   assert.equal(target.value.cwd, '/repo')
@@ -2286,8 +2303,10 @@ test('right-clicking a change binds its target without calling the Host', async 
   )
   mounted.harness.contextmenu(rows[rows.length - 1], { clientX: 40, clientY: 60 })
   assert.equal(mounted.menu.opens.length, 1)
-  assert.deepEqual(mounted.menu.opens[0].point, { x: 40, y: 60 })
-  const target = mounted.menu.opens[0].target
+  const open = mounted.menu.opens[0]
+  assert.ok(open, 'no context-menu target was bound')
+  assert.deepEqual(open.point, { x: 40, y: 60 })
+  const target = open.target
   assert.equal(target.kind, 'gitGraphItem')
   assert.equal(target.value.sessionId, 'session-1')
   assert.equal(target.value.kind, 'file')
@@ -2688,8 +2707,10 @@ test('the keyboard context-menu gesture binds the focused row', async () => {
   )
   mounted.harness.keydown(rows[rows.length - 1], { key: 'F10', shiftKey: true })
   assert.equal(mounted.menu.opens.length, 1)
-  assert.equal(mounted.menu.opens[0].target.value.path, 'src/app.js')
-  assert.equal(mounted.menu.opens[0].target.value.kind, 'file')
+  const open = mounted.menu.opens[0]
+  assert.ok(open, 'the keyboard gesture bound no menu target')
+  assert.equal(open.target.value.path, 'src/app.js')
+  assert.equal(open.target.value.kind, 'file')
   // Enter still opens the diff instead of a menu.
   mounted.harness.keydown(rows[rows.length - 1], { key: 'Enter' })
   assert.equal(mounted.menu.opens.length, 1)
@@ -2815,6 +2836,7 @@ test('without host context menus the inline controls keep working', async () => 
       element.props?.title === 'src/app.js',
   )
   const row = rows[rows.length - 1]
+  assert.ok(row, 'the unstaged file row is missing')
   assert.equal(row.props.onContextMenu, undefined)
   mounted.harness.click(buttonInside(row, 'actions.stage'))
   await mounted.harness.flush()
@@ -3012,6 +3034,7 @@ test('a group discard uses the group confirmation wording', async () => {
   const section = mounted.harness.findAll(
     (element) => element.props?.['data-section'] === 'changes',
   )[0]
+  assert.ok(section, 'the changes section did not render')
   mounted.harness.contextmenu(elementOf(section.children[0]))
   const target = lastTarget(mounted.menu)
   await runMenuAction(mounted.components, target, 'discard-all')
@@ -3026,11 +3049,14 @@ test('commit rows are keyboard focus stops with menu semantics', async () => {
   const graphRow = mounted.harness.findAll((element) =>
     String(element.props?.className ?? '').includes('dshgg-graphRow'),
   )[0]
+  assert.ok(graphRow, 'no graph row rendered')
   assert.equal(graphRow.props.tabIndex, 0)
   assert.equal(graphRow.props['aria-haspopup'], 'menu')
   mounted.harness.keydown(graphRow, { key: 'ContextMenu' })
   assert.equal(mounted.menu.opens.length, 1)
-  assert.equal(mounted.menu.opens[0].target.value.kind, 'commit')
+  const open = mounted.menu.opens[0]
+  assert.ok(open, 'the keyboard gesture bound no menu target')
+  assert.equal(open.target.value.kind, 'commit')
   await mounted.harness.dispose()
 })
 

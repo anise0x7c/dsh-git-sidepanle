@@ -253,7 +253,11 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
 
   const untrackedDiff = await call('diff', { path: 'beta.txt', untracked: true })
   assert.equal(untrackedDiff.body.value.additions, 1)
-  assert.equal(untrackedDiff.body.value.hunks[0].lines[0].t, '+')
+  const untrackedHunk = untrackedDiff.body.value.hunks[0]
+  assert.ok(untrackedHunk, 'the untracked diff has no hunk')
+  const untrackedLine = untrackedHunk.lines[0]
+  assert.ok(untrackedLine, 'the untracked diff has no rendered line')
+  assert.equal(untrackedLine.t, '+')
 
   await call('unstage', { paths: ['alpha.txt'] })
   status = (await call('status')).body.value
@@ -280,18 +284,22 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
   assert.equal(history.body.ok, true)
   assert.equal(history.body.value.commits.length, 2)
   assert.equal(history.body.value.hasMore, false)
-  assert.equal(history.body.value.commits[0].subject, 'change alpha and add beta')
-  assert.equal(history.body.value.commits[0].refs.includes('main'), true)
-  assert.deepEqual(history.body.value.commits[0].parents, [history.body.value.commits[1].oid])
-  assert.deepEqual(history.body.value.commits[1].parents, [])
-  assert.equal('graph' in history.body.value.commits[0], false)
+  const newestCommit = history.body.value.commits[0]
+  const rootCommit = history.body.value.commits[1]
+  assert.ok(newestCommit, 'the history has no newest commit')
+  assert.ok(rootCommit, 'the history has no root commit')
+  assert.equal(newestCommit.subject, 'change alpha and add beta')
+  assert.equal(newestCommit.refs.includes('main'), true)
+  assert.deepEqual(newestCommit.parents, [rootCommit.oid])
+  assert.deepEqual(rootCommit.parents, [])
+  assert.equal('graph' in newestCommit, false)
   assert.equal(
-    history.body.value.commits[0].refs,
+    newestCommit.refs,
     'HEAD -> refs/heads/main',
     'decorations carry full reference names',
   )
   assert.deepEqual(history.body.value.references, {
-    current: { id: 'refs/heads/main', name: 'main', revision: history.body.value.commits[0].oid },
+    current: { id: 'refs/heads/main', name: 'main', revision: newestCommit.oid },
     remote: null,
     base: null,
   })
@@ -316,18 +324,26 @@ test('history pages backwards by offset and reports when older commits remain', 
     assert.equal(first.body.ok, true)
     assert.equal(first.body.value.commits.length, 60)
     assert.equal(first.body.value.hasMore, true)
-    assert.equal(first.body.value.commits[0].subject, 'commit 60')
-    assert.equal(first.body.value.commits[59].subject, 'commit 1')
+    const firstPageHead = first.body.value.commits[0]
+    const firstPageTail = first.body.value.commits[59]
+    assert.ok(firstPageHead, 'the first history page has no head')
+    assert.ok(firstPageTail, 'the first history page has no tail')
+    assert.equal(firstPageHead.subject, 'commit 60')
+    assert.equal(firstPageTail.subject, 'commit 1')
 
     const second = await callAt(baseUrl, 'history', { offset: 60 })
     assert.equal(second.body.ok, true)
     assert.equal(second.body.value.commits.length, 1)
     assert.equal(second.body.value.hasMore, false)
-    assert.equal(second.body.value.commits[0].subject, 'commit 0')
-    assert.deepEqual(second.body.value.commits[0].parents, [])
+    const secondPageHead = second.body.value.commits[0]
+    assert.ok(secondPageHead, 'the second history page has no head')
+    assert.equal(secondPageHead.subject, 'commit 0')
+    assert.deepEqual(secondPageHead.parents, [])
+    const continuedParent = firstPageTail.parents[0]
+    assert.ok(continuedParent, 'the first page tail has no parent')
     assert.deepEqual(
-      second.body.value.commits[0].oid,
-      first.body.value.commits[59].parents[0],
+      secondPageHead.oid,
+      continuedParent,
       'the page continues below the previous one',
     )
 
@@ -786,18 +802,24 @@ test('an unborn repository stages, unstages, and takes its first commit', async 
     let status = await callAt(baseUrl, 'status')
     assert.equal(requireRepo(status.body.value).unborn, true)
     assert.equal(requireRepo(status.body.value).branch, 'main')
-    assert.equal(status.body.value.files[0].kind, 'untracked')
+    const firstUntracked = status.body.value.files[0]
+    assert.ok(firstUntracked, 'the unborn repository reports no untracked file')
+    assert.equal(firstUntracked.kind, 'untracked')
 
     const history = await callAt(baseUrl, 'history')
     assert.deepEqual(history.body.value.commits, [])
 
     await callAt(baseUrl, 'stage', { paths: ['first.txt'] })
     status = await callAt(baseUrl, 'status')
-    assert.equal(status.body.value.files[0].x, 'A')
+    const stagedFirst = status.body.value.files[0]
+    assert.ok(stagedFirst, 'staging the first file reports no change')
+    assert.equal(stagedFirst.x, 'A')
 
     await callAt(baseUrl, 'unstage', { paths: ['first.txt'] })
     status = await callAt(baseUrl, 'status')
-    assert.equal(status.body.value.files[0].kind, 'untracked')
+    const unstagedFirst = status.body.value.files[0]
+    assert.ok(unstagedFirst, 'unstaging the first file reports no change')
+    assert.equal(unstagedFirst.kind, 'untracked')
 
     const refused = await callAt(baseUrl, 'commit', { message: 'first commit' })
     assert.equal(refused.body.error.code, 'nothing-staged')
@@ -810,7 +832,9 @@ test('an unborn repository stages, unstages, and takes its first commit', async 
 
     const after = await callAt(baseUrl, 'history')
     assert.equal(after.body.value.commits.length, 1)
-    assert.equal(after.body.value.commits[0].subject, 'first commit')
+    const firstCommit = after.body.value.commits[0]
+    assert.ok(firstCommit, 'the first commit is missing from history')
+    assert.equal(firstCommit.subject, 'first commit')
 
     const branches = await callAt(baseUrl, 'branches')
     assert.deepEqual(branches.body.value.branches, [{ name: 'main', current: true }])

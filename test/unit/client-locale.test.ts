@@ -21,12 +21,40 @@ const ENGLISH_KEYS = Object.keys(ENGLISH)
 const CHINESE_KEYS = Object.keys(CHINESE)
 
 /**
+ * Read the first capture group of a match known to contain one.
+ * @param match - a regex match produced by a pattern with a capture group.
+ * @returns the captured text.
+ */
+function firstCapture(match: RegExpMatchArray): string {
+  const captured = match[1]
+  assert.ok(captured !== undefined, 'the pattern must capture one group')
+  return captured
+}
+
+/**
+ * Read one dictionary entry after proving the key exists.
+ * @param dictionary - one language dictionary.
+ * @param key - entry key.
+ * @param language - language label for the failure message.
+ * @returns the entry text.
+ */
+function dictionaryEntry(
+  dictionary: Readonly<Record<string, string>>,
+  key: string,
+  language: string,
+): string {
+  const value = dictionary[key]
+  assert.ok(value !== undefined, `${language} is missing ${key}`)
+  return value
+}
+
+/**
  * Interpolation names used by one dictionary entry.
  * @param text - dictionary value.
  * @returns sorted placeholder names.
  */
 function placeholders(text: string): string[] {
-  return [...text.matchAll(/\{([A-Za-z]+)\}/g)].map((match) => match[1]).sort()
+  return [...text.matchAll(/\{([A-Za-z]+)\}/g)].map(firstCapture).sort()
 }
 
 /**
@@ -46,18 +74,20 @@ describe('locale dictionaries', () => {
 
   test('every entry is a non-empty string in both languages', () => {
     for (const key of ENGLISH_KEYS) {
-      assert.equal(typeof ENGLISH[key], 'string', `en ${key}`)
-      assert.equal(typeof CHINESE[key], 'string', `zh ${key}`)
-      assert.notEqual(ENGLISH[key].trim(), '', `en ${key} is empty`)
-      assert.notEqual(CHINESE[key].trim(), '', `zh ${key} is empty`)
+      const english = dictionaryEntry(ENGLISH, key, 'en')
+      const chinese = dictionaryEntry(CHINESE, key, 'zh')
+      assert.equal(typeof english, 'string', `en ${key}`)
+      assert.equal(typeof chinese, 'string', `zh ${key}`)
+      assert.notEqual(english.trim(), '', `en ${key} is empty`)
+      assert.notEqual(chinese.trim(), '', `zh ${key} is empty`)
     }
   })
 
   test('both languages interpolate the same placeholder names for every key', () => {
     for (const key of ENGLISH_KEYS) {
       assert.deepEqual(
-        placeholders(CHINESE[key]),
-        placeholders(ENGLISH[key]),
+        placeholders(dictionaryEntry(CHINESE, key, 'zh')),
+        placeholders(dictionaryEntry(ENGLISH, key, 'en')),
         `placeholders for ${key}`,
       )
     }
@@ -77,10 +107,12 @@ describe('locale dictionaries', () => {
       'time.minutes': ['n'],
     }
     for (const [key, names] of Object.entries(expected)) {
-      assert.deepEqual(placeholders(ENGLISH[key]), names, `en ${key}`)
-      assert.deepEqual(placeholders(CHINESE[key]), names, `zh ${key}`)
+      assert.deepEqual(placeholders(dictionaryEntry(ENGLISH, key, 'en')), names, `en ${key}`)
+      assert.deepEqual(placeholders(dictionaryEntry(CHINESE, key, 'zh')), names, `zh ${key}`)
     }
-    const allNames = [...new Set(ENGLISH_KEYS.flatMap((key) => placeholders(ENGLISH[key])))].sort()
+    const allNames = [
+      ...new Set(ENGLISH_KEYS.flatMap((key) => placeholders(dictionaryEntry(ENGLISH, key, 'en')))),
+    ].sort()
     assert.deepEqual(allNames, ['branch', 'hash', 'n', 'name', 'path'])
   })
 
@@ -92,7 +124,7 @@ describe('locale dictionaries', () => {
     for (const source of ['git/format.ts', 'menu/actions.ts', 'menu/clipboard.ts']) {
       const text = moduleSource(source)
       for (const match of text.matchAll(/'([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+)'/g))
-        keys.add(match[1])
+        keys.add(firstCapture(match))
     }
     assert.ok(keys.size >= 30, `found only ${keys.size} locale keys in the pure modules`)
     for (const key of [

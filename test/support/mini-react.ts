@@ -270,7 +270,9 @@ export function createHarness(options: HarnessOptions): TestHarness {
       const previous = effectStore.get(key)
       if (typeof previous?.cleanup === 'function') previous.cleanup()
       const cleanup = next.callback()
-      effectStore.set(key, { cleanup: typeof cleanup === 'function' ? cleanup : undefined })
+      // An effect that returns no teardown has no `cleanup` property at all,
+      // matching the optional field of the stored record.
+      effectStore.set(key, typeof cleanup === 'function' ? { cleanup } : {})
     }
   }
 

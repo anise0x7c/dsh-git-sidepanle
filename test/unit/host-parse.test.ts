@@ -153,7 +153,9 @@ describe('parseStatus', () => {
   test('parses paths that contain spaces', () => {
     const output = porcelain(ordinaryRecord('.M', 'folder name/file name.txt'))
     const { files } = parseStatus(output)
-    assert.equal(files[0].path, 'folder name/file name.txt')
+    const first = files[0]
+    assert.ok(first, 'the status output should parse one row')
+    assert.equal(first.path, 'folder name/file name.txt')
   })
 
   test('consumes the second -z record of a rename as the original path', () => {
@@ -248,12 +250,14 @@ describe('parseUnifiedDiff', () => {
       parsed.hunks.map((hunk) => hunk.header),
       ['@@ -1,3 +1,4 @@ function name()', '@@ -10,2 +11,2 @@', '@@ -1 +1 @@'],
     )
+    const firstHunk = parsed.hunks[0]
+    assert.ok(firstHunk, 'the first hunk should be parsed')
     assert.deepEqual(
-      parsed.hunks[0].lines.map((line) => line.t),
+      firstHunk.lines.map((line) => line.t),
       [' ', '-', '+', '+', ' '],
     )
-    assert.deepEqual(parsed.hunks[0].lines[1], { t: '-', text: 'removed line' })
-    assert.deepEqual(parsed.hunks[0].lines[2], { t: '+', text: 'added line' })
+    assert.deepEqual(firstHunk.lines[1], { t: '-', text: 'removed line' })
+    assert.deepEqual(firstHunk.lines[2], { t: '+', text: 'added line' })
   })
 
   test('addresses the compared files without the a/ and b/ prefixes', () => {
@@ -264,10 +268,12 @@ describe('parseUnifiedDiff', () => {
     const single = parseUnifiedDiff('--- a/alpha.txt\n+++ b/alpha.txt\n@@ -1 +1 @@\n-a\n+b\n')
     assert.equal(single.oldPath, 'alpha.txt')
     assert.equal(single.newPath, 'alpha.txt')
-    assert.equal(single.hunks[0].oldStart, 1)
-    assert.equal(single.hunks[0].oldCount, 1)
-    assert.equal(single.hunks[0].newStart, 1)
-    assert.equal(single.hunks[0].newCount, 1)
+    const singleHunk = single.hunks[0]
+    assert.ok(singleHunk, 'the single-file diff should parse one hunk')
+    assert.equal(singleHunk.oldStart, 1)
+    assert.equal(singleHunk.oldCount, 1)
+    assert.equal(singleHunk.newStart, 1)
+    assert.equal(singleHunk.newCount, 1)
   })
 
   test('defaults omitted hunk counts to one and keeps the header text', () => {
@@ -300,7 +306,9 @@ describe('parseUnifiedDiff', () => {
     )
     assert.equal(parsed.additions, 1)
     assert.equal(parsed.deletions, 1)
-    assert.deepEqual(parsed.hunks[0].lines, [
+    const hunk = parsed.hunks[0]
+    assert.ok(hunk, 'the diff should parse one hunk')
+    assert.deepEqual(hunk.lines, [
       { t: ' ', text: 'keep' },
       { t: '-', text: 'gone' },
       { t: '+', text: 'added' },
@@ -340,8 +348,10 @@ describe('parseUnifiedDiff', () => {
     const parsed = parseUnifiedDiff('+not in a hunk\n@@ -1 +1 @@\n-a\n+b\n')
     assert.equal(parsed.additions, 1)
     assert.equal(parsed.deletions, 1)
+    const hunk = parsed.hunks[0]
+    assert.ok(hunk, 'the diff should parse one hunk')
     assert.deepEqual(
-      parsed.hunks[0].lines.map((line) => line.t),
+      hunk.lines.map((line) => line.t),
       ['-', '+'],
     )
   })
@@ -611,6 +621,7 @@ describe('parseHistory', () => {
   test('keeps a tab inside the subject in the subject field', () => {
     const payload = logLine({ oid: OID_A, parents: OID_B, subject: 'before\tafter' })
     const [commit] = parseHistory(payload)
+    assert.ok(commit, 'the history output should parse one commit')
     assert.equal(commit.subject, 'before\tafter')
     assert.deepEqual(commit.parents, [OID_B])
   })

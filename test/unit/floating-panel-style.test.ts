@@ -28,14 +28,26 @@ const css = sections
   .join('\n')
   .replace(/\/\*[\s\S]*?\*\//g, '')
 
+/**
+ * Read one capture group of a match known to contain it.
+ * @param match - regex match.
+ * @param group - capture group index.
+ * @returns the captured text.
+ */
+function capture(match: RegExpMatchArray, group: number): string {
+  const captured = match[group]
+  assert.ok(captured !== undefined, `the pattern must capture group ${group}`)
+  return captured
+}
+
 /** Leaf rules suffice for declarations, including rules nested in @supports. */
 function leafRules(source: string) {
   return [...source.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
-    selectors: match[1]
+    selectors: capture(match, 1)
       .trim()
       .split(',')
       .map((selector) => selector.trim()),
-    declarations: match[2],
+    declarations: capture(match, 2),
   }))
 }
 
