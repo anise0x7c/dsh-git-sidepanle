@@ -42,6 +42,7 @@ var DIFF_ID = "@local/dsh-git-graph/diff";
 var DIFF_KIND = "git-diff";
 var RPC_PATH = "api/dsh-git-graph/rpc";
 var POLL_INTERVAL_MS = 5e3;
+var LIVE_POLL_INTERVAL_MS = 700;
 var MAX_RENDERED_DIFF_LINES = 4e3;
 var MENU_TARGET = "gitGraphItem";
 var MENU_CONTRIBUTION_ID = "git-graph.actions";
@@ -454,6 +455,7 @@ function usePanelRefs() {
   const busy = (0, import_react4.useRef)(null);
   const confirm = (0, import_react4.useRef)(null);
   const mounted = (0, import_react4.useRef)(true);
+  const watching = (0, import_react4.useRef)(false);
   const wrap = (0, import_react4.useRef)(null);
   (0, import_react4.useEffect)(
     () => () => {
@@ -462,8 +464,8 @@ function usePanelRefs() {
     []
   );
   return (0, import_react4.useMemo)(
-    () => ({ inFlight, busy, confirm, mounted, wrap }),
-    [inFlight, busy, confirm, mounted, wrap]
+    () => ({ inFlight, busy, confirm, mounted, watching, wrap }),
+    [inFlight, busy, confirm, mounted, watching, wrap]
   );
 }
 function createMenuTargets(options) {
@@ -1134,7 +1136,7 @@ function resolveMenuActions(value, t, notify) {
 }
 
 // src/client/panel/GitPanel.ts
-var import_react22 = require("react");
+var import_react23 = require("react");
 
 // src/client/git/list.ts
 function sortChangeEntries(entries) {
@@ -1440,6 +1442,16 @@ function useHistory(options) {
       if (refs.mounted.current && generation.current === current) setGraphLoading(false);
     }
   }, [call, refs]);
+  const refreshReferences = (0, import_react10.useCallback)(async () => {
+    try {
+      const value = await call("references");
+      if (!refs.mounted.current) return null;
+      setReferences(value);
+      return value;
+    } catch {
+      return null;
+    }
+  }, [call, refs]);
   const loadMore = (0, import_react10.useCallback)(async () => {
     if (!refs.mounted.current || moreInFlight.current || graphLoading || !hasMore) return;
     const current = generation.current;
@@ -1478,15 +1490,109 @@ function useHistory(options) {
     moreLoading,
     moreFailure,
     loadGraph,
+    refreshReferences,
     loadMore
   };
 }
 
-// src/client/panel/hooks/useMenuCommands.ts
+// src/client/panel/hooks/useLiveUpdates.ts
 var import_react11 = require("react");
+function useLiveUpdates(options) {
+  const { call, panelId, visible, repoRoot, refs, onWorktreeChange, onReferencesChange } = options;
+  const [watching, setWatching] = (0, import_react11.useState)(false);
+  const baseline = (0, import_react11.useRef)(null);
+  const handlers = (0, import_react11.useRef)({ onWorktreeChange, onReferencesChange });
+  (0, import_react11.useEffect)(() => {
+    handlers.current = { onWorktreeChange, onReferencesChange };
+  });
+  refs.watching.current = watching;
+  const subscribe = (0, import_react11.useCallback)(async () => {
+    try {
+      const state = await call("watch", { panel: panelId });
+      if (!refs.mounted.current) return;
+      baseline.current = { worktree: state.worktree, references: state.references };
+      refs.watching.current = state.watching === true;
+      setWatching(state.watching === true);
+    } catch {
+      if (refs.mounted.current) {
+        baseline.current = null;
+        refs.watching.current = false;
+        setWatching(false);
+      }
+    }
+  }, [call, panelId, refs]);
+  (0, import_react11.useEffect)(() => {
+    void subscribe();
+    return () => {
+      if (!refs.mounted.current) refs.watching.current = false;
+      void call("unwatch", { panel: panelId }).catch(() => {
+      });
+    };
+  }, [subscribe, call, panelId, repoRoot, refs]);
+  (0, import_react11.useEffect)(() => {
+    if (!visible) return void 0;
+    let active = true;
+    const poll = async () => {
+      let state;
+      try {
+        state = await call("watch", { panel: panelId });
+      } catch {
+        if (active && refs.mounted.current) {
+          baseline.current = null;
+          refs.watching.current = false;
+          setWatching(false);
+        }
+        return;
+      }
+      if (!active || !refs.mounted.current) return;
+      if (state.watching !== true) {
+        baseline.current = null;
+        refs.watching.current = false;
+        setWatching(false);
+        return;
+      }
+      if (!watching) {
+        baseline.current = { worktree: state.worktree, references: state.references };
+        refs.watching.current = true;
+        setWatching(true);
+        await handlers.current.onReferencesChange();
+        return;
+      }
+      const previous = baseline.current;
+      if (previous === null) {
+        baseline.current = { worktree: state.worktree, references: state.references };
+        return;
+      }
+      const worktreeMoved = state.worktree !== previous.worktree;
+      const referencesMoved = state.references !== previous.references;
+      if (!worktreeMoved && !referencesMoved) return;
+      if (refs.inFlight.current || refs.busy.current !== null || refs.confirm.current !== null) {
+        return;
+      }
+      baseline.current = { worktree: state.worktree, references: state.references };
+      if (referencesMoved) await handlers.current.onReferencesChange();
+      else await handlers.current.onWorktreeChange();
+    };
+    const timer = setInterval(
+      () => {
+        if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+        void poll();
+      },
+      watching ? LIVE_POLL_INTERVAL_MS : POLL_INTERVAL_MS
+    );
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [visible, watching, call, panelId, refs]);
+  return { watching };
+}
+
+// src/client/panel/hooks/useMenuCommands.ts
+var import_react12 = require("react");
 function useMenuCommands() {
-  const optionsRef = (0, import_react11.useRef)(null);
-  (0, import_react11.useEffect)(
+  const optionsRef = (0, import_react12.useRef)(null);
+  (0, import_react12.useEffect)(
     () => panelCommands.subscribe((command) => {
       const options = optionsRef.current;
       if (options !== null) dispatch(options, command);
@@ -1579,14 +1685,14 @@ function dispatch(options, command) {
 }
 
 // src/client/panel/hooks/useRepoStatus.ts
-var import_react12 = require("react");
+var import_react13 = require("react");
 function useRepoStatus(options) {
   const { sessionId, useContextMenu, visible, refs } = options;
   const { call, menuTrigger, panelId } = usePanelMenu({ sessionId, useContextMenu });
-  const [status, setStatus] = (0, import_react12.useState)(null);
-  const [loading, setLoading] = (0, import_react12.useState)(true);
-  const [loadFailure, setLoadFailure] = (0, import_react12.useState)(null);
-  const loadStatus = (0, import_react12.useCallback)(
+  const [status, setStatus] = (0, import_react13.useState)(null);
+  const [loading, setLoading] = (0, import_react13.useState)(true);
+  const [loadFailure, setLoadFailure] = (0, import_react13.useState)(null);
+  const loadStatus = (0, import_react13.useCallback)(
     async (loadOptions = {}) => {
       if (refs.inFlight.current) return;
       refs.inFlight.current = true;
@@ -1606,13 +1712,14 @@ function useRepoStatus(options) {
     },
     [call, refs]
   );
-  (0, import_react12.useEffect)(() => {
+  (0, import_react13.useEffect)(() => {
     void loadStatus();
   }, [loadStatus]);
-  (0, import_react12.useEffect)(() => {
+  (0, import_react13.useEffect)(() => {
     if (!visible) return void 0;
     const timer = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (refs.watching.current) return;
       if (refs.inFlight.current || refs.busy.current !== null || refs.confirm.current !== null)
         return;
       void loadStatus({ silent: true });
@@ -1654,11 +1761,11 @@ function adjustSplitRatio(ratio, key) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var import_react14 = require("react");
+var import_react15 = require("react");
 
 // src/client/panel/BranchMenu.ts
-var import_react13 = require("react");
-var h6 = import_react13.createElement;
+var import_react14 = require("react");
+var h6 = import_react14.createElement;
 function BranchMenu(props) {
   const t = props.t;
   let content;
@@ -1708,7 +1815,7 @@ function BranchMenu(props) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var h7 = import_react14.createElement;
+var h7 = import_react15.createElement;
 function BranchHeader(props) {
   const t = props.t;
   const repo = props.repo;
@@ -1776,11 +1883,11 @@ function BranchHeader(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var import_react17 = require("react");
+var import_react18 = require("react");
 
 // src/client/panel/rows.ts
-var import_react15 = require("react");
-var h8 = import_react15.createElement;
+var import_react16 = require("react");
+var h8 = import_react16.createElement;
 function FileRow(props) {
   const entry = props.entry;
   const letter = props.letter;
@@ -1893,8 +2000,8 @@ function renderFileRows(entries, context) {
 }
 
 // src/client/panel/Section.ts
-var import_react16 = require("react");
-var h9 = import_react16.createElement;
+var import_react17 = require("react");
+var h9 = import_react17.createElement;
 function Section(props) {
   const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
@@ -1932,7 +2039,7 @@ function Section(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var h10 = import_react17.createElement;
+var h10 = import_react18.createElement;
 function ChangeGroups(props) {
   const t = props.t;
   const sectionActions = {
@@ -1992,7 +2099,7 @@ function ChangeGroups(props) {
     menuTarget: (entry) => props.rowTarget("file", { section: mode, path: entry.path })
   });
   return h10(
-    import_react17.Fragment,
+    import_react18.Fragment,
     null,
     props.mergeRows.length === 0 ? null : h10(
       Section,
@@ -2049,7 +2156,7 @@ function ChangeGroups(props) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var import_react18 = require("react");
+var import_react19 = require("react");
 
 // src/client/panel/autosize.ts
 var COMMIT_MESSAGE_MAX_LINES = 10;
@@ -2096,11 +2203,11 @@ function autoGrowTextArea(area) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var h11 = import_react18.createElement;
+var h11 = import_react19.createElement;
 function CommitBox(props) {
   const t = props.t;
-  const messageArea = (0, import_react18.useRef)(null);
-  (0, import_react18.useLayoutEffect)(() => {
+  const messageArea = (0, import_react19.useRef)(null);
+  (0, import_react19.useLayoutEffect)(() => {
     const area = messageArea.current;
     if (area === null) return;
     return autoGrowTextArea(area);
@@ -2144,8 +2251,8 @@ function CommitBox(props) {
 }
 
 // src/client/panel/views/CommitDetails.ts
-var import_react19 = require("react");
-var h12 = import_react19.createElement;
+var import_react20 = require("react");
+var h12 = import_react20.createElement;
 function CommitDetails(props) {
   const t = props.t;
   const summary = props.summary;
@@ -2234,7 +2341,7 @@ function CommitDetails(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var import_react20 = require("react");
+var import_react21 = require("react");
 
 // src/client/git/graph.ts
 var SWIMLANE_HEIGHT = 22;
@@ -2272,6 +2379,42 @@ function labelColor(refs, colors) {
     if (color !== void 0) return color;
   }
   return void 0;
+}
+function bindReferenceTargets(commits, references) {
+  const special = [
+    [references?.current, "head"],
+    [references?.remote, "remote"],
+    [references?.base, "branch"]
+  ];
+  const moving = /* @__PURE__ */ new Set();
+  const additions = /* @__PURE__ */ new Map();
+  for (const [reference, kind] of special) {
+    if (reference === null || reference === void 0 || !reference.id.startsWith("refs/")) continue;
+    moving.add(reference.id);
+    const ref = { id: reference.id, name: reference.name, kind };
+    const target = additions.get(reference.revision);
+    if (target === void 0) additions.set(reference.revision, [ref]);
+    else target.push(ref);
+  }
+  if (moving.size === 0) {
+    const currentId2 = references?.current?.id;
+    if (currentId2 === void 0) return commits.slice();
+    return commits.map((commit) => ({
+      ...commit,
+      refs: (commit.refs ?? []).map(
+        (ref) => ref.kind === "head" && ref.id !== currentId2 ? { ...ref, kind: "branch" } : ref
+      )
+    }));
+  }
+  const currentId = references?.current?.id;
+  return commits.map((commit) => {
+    const refs = (commit.refs ?? []).filter((ref) => !moving.has(ref.id)).map(
+      (ref) => ref.kind === "head" && ref.id !== currentId ? { ...ref, kind: "branch" } : ref
+    );
+    const added = additions.get(commit.oid);
+    if (added !== void 0) refs.push(...added);
+    return { ...commit, refs };
+  });
 }
 function cleanParents(parents) {
   if (!Array.isArray(parents)) return [];
@@ -2545,7 +2688,7 @@ function refBadges(refs) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var h13 = import_react20.createElement;
+var h13 = import_react21.createElement;
 function graphColorValue(color) {
   return `var(--dshgg-scm-${color})`;
 }
@@ -2553,20 +2696,23 @@ function GraphSection(props) {
   const t = props.t;
   const commits = Array.isArray(props.commits) ? props.commits : null;
   const references = props.references ?? null;
-  const rowsLayout = (0, import_react20.useMemo)(
+  const rowsLayout = (0, import_react21.useMemo)(
     () => computeGraph(
-      (commits ?? []).map((commit) => ({
-        oid: commit.oid,
-        parents: commit.parents,
-        refs: parseRefs(commit.refs)
-      })),
+      bindReferenceTargets(
+        (commits ?? []).map((commit) => ({
+          oid: commit.oid,
+          parents: commit.parents,
+          refs: parseRefs(commit.refs)
+        })),
+        references
+      ),
       references
     ),
     [commits, references]
   );
   const graphId = props.graphId ?? "git-graph";
-  const layer = (0, import_react20.useMemo)(() => graphLayer(rowsLayout), [rowsLayout]);
-  const [hovered, setHovered] = (0, import_react20.useState)(null);
+  const layer = (0, import_react21.useMemo)(() => graphLayer(rowsLayout), [rowsLayout]);
+  const [hovered, setHovered] = (0, import_react21.useState)(null);
   const menu = props.menu;
   const trigger = menu === void 0 ? null : menu.trigger;
   const rows = [];
@@ -2843,11 +2989,11 @@ function GraphRow(props) {
 }
 
 // src/client/panel/views/SplitView.ts
-var import_react21 = require("react");
-var h14 = import_react21.createElement;
+var import_react22 = require("react");
+var h14 = import_react22.createElement;
 function SplitView(props) {
-  const [dragging, setDragging] = (0, import_react21.useState)(false);
-  const dragStart = (0, import_react21.useRef)(null);
+  const [dragging, setDragging] = (0, import_react22.useState)(false);
+  const dragStart = (0, import_react22.useRef)(null);
   const ratio = clampSplitRatio(props.ratio);
   const percent = `${Math.round(ratio * 1e3) / 10}%`;
   const beginDrag = (event) => {
@@ -2920,7 +3066,7 @@ function SplitView(props) {
 }
 
 // src/client/panel/GitPanel.ts
-var h15 = import_react22.createElement;
+var h15 = import_react23.createElement;
 function GitPanel(props) {
   const t = props.t;
   const tab = props.useTabInfo().tab;
@@ -2935,35 +3081,35 @@ function GitPanel(props) {
   });
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const history = useHistory({ call, refs });
-  const { graph, references, graphLoading, graphFailure, loadGraph } = history;
-  const graphPane = (0, import_react22.useRef)(null);
-  const reloadHistory = (0, import_react22.useCallback)(async () => {
+  const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history;
+  const graphPane = (0, import_react23.useRef)(null);
+  const reloadHistory = (0, import_react23.useCallback)(async () => {
     await loadGraph();
     if (graphPane.current !== null) graphPane.current.scrollTop = 0;
   }, [loadGraph]);
-  const [openSections, setOpenSections] = (0, import_react22.useState)({
+  const [openSections, setOpenSections] = (0, import_react23.useState)({
     merge: true,
     staged: true,
     changes: true,
     graph: true
   });
-  const [splitRatio, setSplitRatio] = (0, import_react22.useState)(DEFAULT_SPLIT_RATIO);
+  const [splitRatio, setSplitRatio] = (0, import_react23.useState)(DEFAULT_SPLIT_RATIO);
   const repo = status?.repo ?? null;
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
   const files = status?.files ?? [];
-  const mergeFiles = (0, import_react22.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
-  const stagedFiles = (0, import_react22.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
-  const changedFiles = (0, import_react22.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
-  const mergeRows = (0, import_react22.useMemo)(
+  const mergeFiles = (0, import_react23.useMemo)(() => files.filter((entry) => entry.conflict === true), [files]);
+  const stagedFiles = (0, import_react23.useMemo)(() => files.filter((entry) => isStaged(entry)), [files]);
+  const changedFiles = (0, import_react23.useMemo)(() => files.filter((entry) => isUnstaged(entry)), [files]);
+  const mergeRows = (0, import_react23.useMemo)(
     () => sortChangeEntries(mergeFiles).map((entry) => ({ ...entry, letter: "!" })),
     [mergeFiles]
   );
-  const stagedRows = (0, import_react22.useMemo)(
+  const stagedRows = (0, import_react23.useMemo)(
     () => sortChangeEntries(stagedFiles).map((entry) => ({ ...entry, letter: statusLetter(entry.x) })),
     [stagedFiles]
   );
-  const changedRows = (0, import_react22.useMemo)(
+  const changedRows = (0, import_react23.useMemo)(
     () => sortChangeEntries(changedFiles).map((entry) => ({
       ...entry,
       letter: entry.untracked === true ? "U" : statusLetter(entry.y)
@@ -2971,6 +3117,26 @@ function GitPanel(props) {
     [changedFiles]
   );
   const clean = repo !== null && mergeFiles.length === 0 && stagedFiles.length === 0 && changedFiles.length === 0;
+  const handleWorktreeChange = (0, import_react23.useCallback)(() => {
+    void loadStatus({ silent: true });
+  }, [loadStatus]);
+  const handleReferencesChange = (0, import_react23.useCallback)(async () => {
+    const next = await refreshReferences();
+    await loadStatus({ silent: true });
+    const revision = next?.current?.revision;
+    if (revision === void 0 || graph === null) return;
+    if (graph.some((commit) => commit.oid === revision)) return;
+    await reloadHistory();
+  }, [refreshReferences, loadStatus, graph, reloadHistory]);
+  useLiveUpdates({
+    call,
+    panelId,
+    visible,
+    repoRoot: repo?.root ?? null,
+    refs,
+    onWorktreeChange: handleWorktreeChange,
+    onReferencesChange: handleReferencesChange
+  });
   const actions = useChangeActions({
     call,
     t,
@@ -3007,14 +3173,14 @@ function GitPanel(props) {
   } = useBranches({ call, refs, perform });
   const commitState = useCommitDetails({ call, refs });
   const selectedCommit = commitState.selected;
-  const commitRows = (0, import_react22.useMemo)(
+  const commitRows = (0, import_react23.useMemo)(
     () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
       ...file,
       kind: "commit"
     })),
     [commitState.details]
   );
-  const openDiff = (0, import_react22.useCallback)(
+  const openDiff = (0, import_react23.useCallback)(
     (entry, mode) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -3029,7 +3195,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openCommitDiff = (0, import_react22.useCallback)(
+  const openCommitDiff = (0, import_react23.useCallback)(
     (entry) => {
       if (selectedCommit === null) return;
       tab.actions.openTab(DIFF_KIND, {
@@ -3343,8 +3509,8 @@ function installStyles(target) {
 }
 
 // src/client/titles.ts
-var import_react23 = require("react");
-var h16 = import_react23.createElement;
+var import_react24 = require("react");
+var h16 = import_react24.createElement;
 function GitTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;

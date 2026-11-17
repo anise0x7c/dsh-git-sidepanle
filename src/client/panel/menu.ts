@@ -82,6 +82,8 @@ export interface PanelRefs {
   readonly confirm: MutableRefObject<ConfirmState | null>
   /** Whether the panel is still mounted. */
   readonly mounted: MutableRefObject<boolean>
+  /** Whether the Host is watching the repository for live updates. */
+  readonly watching: MutableRefObject<boolean>
   /** Branch chip wrapper used for menu dismissal. */
   readonly wrap: MutableRefObject<HTMLDivElement | null>
 }
@@ -96,6 +98,7 @@ export function usePanelRefs(): PanelRefs {
   const busy = useRef<string | null>(null)
   const confirm = useRef<ConfirmState | null>(null)
   const mounted = useRef(true)
+  const watching = useRef(false)
   const wrap = useRef<HTMLDivElement | null>(null)
   useEffect(
     () => () => {
@@ -104,8 +107,8 @@ export function usePanelRefs(): PanelRefs {
     [],
   )
   return useMemo(
-    () => ({ inFlight, busy, confirm, mounted, wrap }),
-    [inFlight, busy, confirm, mounted, wrap],
+    () => ({ inFlight, busy, confirm, mounted, watching, wrap }),
+    [inFlight, busy, confirm, mounted, watching, wrap],
   )
 }
 

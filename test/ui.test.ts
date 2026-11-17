@@ -12,8 +12,10 @@ import type {
   BranchesResult,
   ChangeEntry,
   CommitDetails,
+  GraphReferences,
   HistoryResult,
   StatusResult,
+  WatchState,
 } from '../src/shared/git.ts'
 import { createFakeContext, loadClientBundle, translate } from './support/fake-ctx.ts'
 import { createMenuMock } from './support/fake-menu.ts'
@@ -72,6 +74,10 @@ interface MountOptions {
   failHistoryPages?: number[]
   branches?: BranchesResult
   commitDetails?: CommitDetails
+  /** Current `watch` counters; defaults to a watching repository with zero counters. */
+  watchState?: () => WatchState
+  /** `references` responses in call order; the last repeats. */
+  referencePages?: GraphReferences[]
   failOp?: string
   diff?: boolean
   menus?: boolean
@@ -120,11 +126,38 @@ async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
   }
   const historyPages = options.historyPages ?? [options.history ?? HISTORY]
   const failedHistoryPages = new Set(options.failHistoryPages ?? [])
+  const referencePages = options.referencePages ?? [(options.history ?? HISTORY).references]
   let historyPage = 0
+  let referencePage = 0
   const harness = createHarness({
     fetch: async (_url: string, init: { body: string }): Promise<FetchResponseLike> => {
       const request = JSON.parse(init.body) as RpcRequestRecord
       calls.push(request)
+      if (request.op === 'watch') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            value: options.watchState?.() ?? { watching: true, worktree: 0, references: 0 },
+          }),
+        }
+      }
+      if (request.op === 'references') {
+        const index = referencePage
+        referencePage += 1
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            value: referencePages[Math.min(index, referencePages.length - 1)],
+          }),
+        }
+      }
+      if (request.op === 'unwatch') {
+        return { ok: true, status: 200, json: async () => ({ ok: true, value: { ok: true } }) }
+      }
       if (request.op === 'history') {
         const index = historyPage
         historyPage += 1
@@ -2037,4 +2070,153 @@ test('a menu command from another pane of the same Session is ignored', async ()
   await mounted.harness.flush()
   assert.deepEqual(mounted.calls.find((call) => call.op === 'stage')?.paths, ['src/app.js'])
   await mounted.harness.dispose()
+})
+
+/** Badge elements rendered inside one row. */
+function badgesIn(row: TestElement | undefined): TestElement[] {
+  assert.ok(row, 'the row is rendered')
+  return collectElements(row, (element) =>
+    String(element.props?.className ?? '')
+      .split(' ')
+      .includes('dshgg-graphBadge'),
+  )
+}
+
+/** Count recorded calls of one operation. */
+function opCount(mounted: MountedGit, op: string): number {
+  return mounted.calls.filter((call) => call.op === op).length
+}
+
+test('an external working-tree change refreshes the status without reloading the graph', async () => {
+  let counters: WatchState = { watching: true, worktree: 0, references: 0 }
+  const mounted = await mountGit({ watchState: () => counters })
+  assert.equal(opCount(mounted, 'status'), 1)
+  assert.equal(opCount(mounted, 'history'), 1)
+
+  mounted.harness.runIntervals()
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 1, 'an unchanged counter does not refresh')
+
+  counters = { watching: true, worktree: 1, references: 0 }
+  mounted.harness.runIntervals()
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 2, 'the working-tree counter refreshes the status')
+  assert.equal(opCount(mounted, 'history'), 1, 'the loaded graph is not reloaded')
+  assert.equal(opCount(mounted, 'references'), 0, 'a working-tree change is not a reference change')
+  assert.match(mounted.harness.text(), /Fix the sidebar/, 'the loaded commits stay visible')
+  await mounted.harness.dispose()
+})
+
+test('an external branch switch recolors and re-badges loaded rows in place', async () => {
+  const history: HistoryResult = {
+    commits: [
+      {
+        oid: 'a'.repeat(40),
+        shortOid: 'aaaaaaa',
+        author: 'Ann',
+        authoredAt: 1_700_000_000,
+        refs: 'HEAD -> refs/heads/main',
+        parents: ['b'.repeat(40)],
+        subject: 'Old tip',
+      },
+      {
+        oid: 'b'.repeat(40),
+        shortOid: 'bbbbbbb',
+        author: 'Bob',
+        authoredAt: 1_699_999_000,
+        refs: 'refs/heads/feature',
+        parents: [],
+        subject: 'Feature tip',
+      },
+    ],
+    hasMore: false,
+    references: {
+      current: { id: 'refs/heads/main', name: 'main', revision: 'a'.repeat(40) },
+      remote: null,
+      base: null,
+    },
+  }
+  let counters: WatchState = { watching: true, worktree: 0, references: 0 }
+  const mounted = await mountGit({
+    history,
+    watchState: () => counters,
+    referencePages: [
+      {
+        current: { id: 'refs/heads/feature', name: 'feature', revision: 'b'.repeat(40) },
+        remote: null,
+        base: null,
+      },
+    ],
+  })
+  const rowsBefore = mounted.harness.findAll(
+    (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
+  )
+  assert.equal(rowsBefore[0]?.props['data-current'], 'true')
+  assert.deepEqual(
+    badgesIn(rowsBefore[0]).map((badge) => badge.props['data-icon']),
+    ['target'],
+    'the checked-out branch starts on the old tip',
+  )
+
+  counters = { watching: true, worktree: 0, references: 1 }
+  mounted.harness.runIntervals()
+  await mounted.harness.flush()
+
+  assert.equal(opCount(mounted, 'references'), 1)
+  assert.equal(opCount(mounted, 'history'), 1, 'the loaded pages are kept')
+  assert.equal(opCount(mounted, 'status'), 2, 'the branch header follows the switch')
+  const rowsAfter = mounted.harness.findAll(
+    (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
+  )
+  assert.equal(rowsAfter[0]?.props['data-current'], undefined)
+  assert.equal(rowsAfter[1]?.props['data-current'], 'true')
+  assert.deepEqual(
+    badgesIn(rowsAfter[0]).map((badge) => badge.props['data-icon']),
+    ['branch'],
+    'the old tip keeps main as an ordinary branch badge',
+  )
+  const feature = badgesIn(rowsAfter[1])
+  assert.equal(feature.length, 1)
+  assert.equal(feature[0]?.props['data-icon'], 'target')
+  assert.equal(feature[0]?.props['data-color'], 'ref')
+  await mounted.harness.dispose()
+})
+
+test('a reference move outside the loaded rows reloads the newest graph page', async () => {
+  let counters: WatchState = { watching: true, worktree: 0, references: 0 }
+  const mounted = await mountGit({
+    watchState: () => counters,
+    referencePages: [
+      {
+        current: { id: 'refs/heads/main', name: 'main', revision: 'c'.repeat(40) },
+        remote: null,
+        base: null,
+      },
+    ],
+  })
+  counters = { watching: true, worktree: 0, references: 1 }
+  mounted.harness.runIntervals()
+  await mounted.harness.flush()
+
+  assert.equal(opCount(mounted, 'references'), 1)
+  assert.equal(opCount(mounted, 'status'), 2)
+  assert.equal(opCount(mounted, 'history'), 2, 'the newest page is reloaded for the new tip')
+  await mounted.harness.dispose()
+})
+
+test('a Host that cannot watch leaves the periodic status check in charge', async () => {
+  const mounted = await mountGit({
+    watchState: () => ({ watching: false, worktree: 0, references: 0 }),
+  })
+  assert.equal(opCount(mounted, 'status'), 1)
+  mounted.harness.runIntervals()
+  await mounted.harness.flush()
+  assert.equal(opCount(mounted, 'status'), 2, 'the fallback poll keeps the panel current')
+  assert.equal(opCount(mounted, 'references'), 0)
+  assert.doesNotMatch(mounted.harness.text(), /error\.title/)
+  await mounted.harness.dispose()
+  assert.ok(
+    mounted.calls.some((call) => call.op === 'unwatch'),
+    'unmounting releases the subscription',
+  )
 })

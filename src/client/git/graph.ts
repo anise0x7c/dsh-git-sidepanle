@@ -21,7 +21,7 @@
  * directly unit-testable.
  */
 
-import type { GraphReferences } from '../types/domain.ts'
+import type { GraphReference, GraphReferences } from '../types/domain.ts'
 import type { ParsedRef, RefKind } from './format.ts'
 
 /** Row height (VS Code `SWIMLANE_HEIGHT`). */
@@ -249,6 +249,64 @@ function labelColor(
     if (color !== undefined) return color
   }
   return undefined
+}
+
+/**
+ * Move the fixed-color references onto the commits they currently point at.
+ *
+ * A history read reports each commit's decoration as it was when the page was
+ * fetched. After an external checkout or fetch the checked-out, upstream and
+ * base references may point somewhere else, and re-reading those three is much
+ * cheaper than refetching every loaded commit. Re-binding their badges here
+ * keeps the loaded rows accurate in place; decorations of every other
+ * reference stay as read until the next history load.
+ * @param commits - loaded commits with their decoration refs.
+ * @param references - current checked-out, upstream and base references.
+ * @returns commits whose special-reference badges sit on the current targets.
+ */
+export function bindReferenceTargets(
+  commits: readonly GraphCommit[],
+  references: GraphReferences | null | undefined,
+): GraphCommit[] {
+  const special: readonly (readonly [GraphReference | null | undefined, RefKind])[] = [
+    [references?.current, 'head'],
+    [references?.remote, 'remote'],
+    [references?.base, 'branch'],
+  ]
+  const moving = new Set<string>()
+  const additions = new Map<string, ParsedRef[]>()
+  for (const [reference, kind] of special) {
+    // A detached HEAD names a commit, not a ref, and has no badge.
+    if (reference === null || reference === undefined || !reference.id.startsWith('refs/')) continue
+    moving.add(reference.id)
+    const ref: ParsedRef = { id: reference.id, name: reference.name, kind }
+    const target = additions.get(reference.revision)
+    if (target === undefined) additions.set(reference.revision, [ref])
+    else target.push(ref)
+  }
+  if (moving.size === 0) {
+    // A detached HEAD still has to demote the branch badge the previous read
+    // marked as checked out.
+    const currentId = references?.current?.id
+    if (currentId === undefined) return commits.slice()
+    return commits.map((commit) => ({
+      ...commit,
+      refs: (commit.refs ?? []).map((ref) =>
+        ref.kind === 'head' && ref.id !== currentId ? { ...ref, kind: 'branch' as const } : ref,
+      ),
+    }))
+  }
+  const currentId = references?.current?.id
+  return commits.map((commit) => {
+    const refs = (commit.refs ?? [])
+      .filter((ref) => !moving.has(ref.id))
+      .map((ref) =>
+        ref.kind === 'head' && ref.id !== currentId ? { ...ref, kind: 'branch' as const } : ref,
+      )
+    const added = additions.get(commit.oid)
+    if (added !== undefined) refs.push(...added)
+    return { ...commit, refs }
+  })
 }
 
 /**

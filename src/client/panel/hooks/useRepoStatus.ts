@@ -1,7 +1,7 @@
 /**
  * Repository status state: the panel's command caller and menu wiring, the
  * initial load, the silent refresh actions use, and the 5 s visibility-aware
- * poll. This is the only status loader in the panel.
+ * poll that remains as the fallback while the Host cannot watch the repository.
  */
 
 import type { Dispatch, SetStateAction } from 'react'
@@ -95,6 +95,9 @@ export function useRepoStatus(options: UseRepoStatusOptions): RepoStatusState {
     if (!visible) return undefined
     const timer = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      // The Host watches the repository: its change signal is the primary
+      // path, and this periodic check is only the fallback.
+      if (refs.watching.current) return
       if (refs.inFlight.current || refs.busy.current !== null || refs.confirm.current !== null)
         return
       void loadStatus({ silent: true })

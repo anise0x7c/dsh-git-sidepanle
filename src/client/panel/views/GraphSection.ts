@@ -16,7 +16,13 @@ import type {
   GraphRow as GraphRowLayout,
   RefBadge,
 } from '../../git/graph.ts'
-import { computeGraph, graphLayer, graphRowGeometry, refBadges } from '../../git/graph.ts'
+import {
+  bindReferenceTargets,
+  computeGraph,
+  graphLayer,
+  graphRowGeometry,
+  refBadges,
+} from '../../git/graph.ts'
 import { CloudIcon, GitBranchIcon, TagIcon, TargetIcon } from '../../icons.ts'
 import type { MenuTarget, MenuTriggerFactory } from '../../menu/trigger.ts'
 import type { CommitSummary, Failure, GraphReferences } from '../../types/domain.ts'
@@ -91,11 +97,14 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
   const rowsLayout = useMemo(
     () =>
       computeGraph(
-        (commits ?? []).map((commit) => ({
-          oid: commit.oid,
-          parents: commit.parents,
-          refs: parseRefs(commit.refs),
-        })),
+        bindReferenceTargets(
+          (commits ?? []).map((commit) => ({
+            oid: commit.oid,
+            parents: commit.parents,
+            refs: parseRefs(commit.refs),
+          })),
+          references,
+        ),
         references,
       ),
     [commits, references],

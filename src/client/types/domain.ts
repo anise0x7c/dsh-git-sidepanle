@@ -46,6 +46,7 @@ export type {
   RpcResponseBody,
   RpcSuccessBody,
   StatusResult,
+  WatchState,
   WorkingTreeDiff,
 } from '../../shared/git.ts'
 

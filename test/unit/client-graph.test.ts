@@ -16,6 +16,7 @@ import { parseRefs } from '../../src/client/git/format.ts'
 import type { GraphCommit, GraphRow } from '../../src/client/git/graph.ts'
 import {
   badgeIcon,
+  bindReferenceTargets,
   computeGraph,
   graphLayer,
   graphRowGeometry,
@@ -317,6 +318,65 @@ describe('computeGraph colors', () => {
     )
     assert.deepEqual([...referenceColors({ ...REFERENCES, current: null })], [])
     assert.deepEqual([...referenceColors(null)], [])
+  })
+})
+
+describe('bindReferenceTargets', () => {
+  test('moves the checked-out badge to the commit it currently points at', () => {
+    const commits = [commit('a', [], 'HEAD -> refs/heads/main'), commit('b')]
+    const bound = bindReferenceTargets(commits, {
+      current: { id: 'refs/heads/main', name: 'main', revision: 'b' },
+      remote: null,
+      base: null,
+    })
+    assert.deepEqual(bound[0]?.refs, [])
+    assert.deepEqual(bound[1]?.refs, [{ id: 'refs/heads/main', name: 'main', kind: 'head' }])
+  })
+
+  test('moves upstream and base badges and keeps their kinds', () => {
+    const commits = [
+      commit('a', [], 'refs/remotes/origin/main'),
+      commit('b', [], 'refs/remotes/origin/master'),
+    ]
+    const bound = bindReferenceTargets(commits, {
+      current: null,
+      remote: { id: 'refs/remotes/origin/main', name: 'origin/main', revision: 'b' },
+      base: { id: 'refs/remotes/origin/master', name: 'origin/master', revision: 'b' },
+    })
+    assert.deepEqual(bound[0]?.refs, [])
+    assert.deepEqual(
+      bound[1]?.refs?.map((ref) => `${ref.name}:${ref.kind}`),
+      ['origin/main:remote', 'origin/master:branch'],
+    )
+  })
+
+  test('demotes the previous checked-out badge when HEAD detaches', () => {
+    const commits = [commit('a', [], 'HEAD -> refs/heads/main')]
+    const bound = bindReferenceTargets(commits, {
+      current: { id: 'a', name: 'a', revision: 'a' },
+      remote: null,
+      base: null,
+    })
+    assert.deepEqual(
+      bound[0]?.refs?.map((ref) => ref.kind),
+      ['branch'],
+    )
+  })
+
+  test('drops a special badge whose target is outside the loaded commits', () => {
+    const commits = [commit('a', [], 'HEAD -> refs/heads/main')]
+    const bound = bindReferenceTargets(commits, {
+      current: { id: 'refs/heads/main', name: 'main', revision: 'b' },
+      remote: null,
+      base: null,
+    })
+    assert.deepEqual(bound[0]?.refs, [])
+  })
+
+  test('leaves the loaded refs untouched without references', () => {
+    const commits = [commit('a', [], 'HEAD -> refs/heads/main')]
+    assert.deepEqual(bindReferenceTargets(commits, null), commits)
+    assert.deepEqual(bindReferenceTargets(commits, undefined), commits)
   })
 })
 

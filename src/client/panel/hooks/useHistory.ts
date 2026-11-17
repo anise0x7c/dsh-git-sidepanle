@@ -35,6 +35,8 @@ export interface HistoryState {
   readonly moreFailure: Failure | null
   /** Reload the history from the newest page. */
   readonly loadGraph: () => Promise<void>
+  /** Reload only the checked-out, upstream and base references. */
+  readonly refreshReferences: () => Promise<GraphReferences | null>
   /** Append the next page of earlier commits. */
   readonly loadMore: () => Promise<void>
 }
@@ -100,6 +102,19 @@ export function useHistory(options: UseHistoryOptions): HistoryState {
     }
   }, [call, refs])
 
+  const refreshReferences = useCallback(async (): Promise<GraphReferences | null> => {
+    try {
+      const value = await call('references')
+      if (!refs.mounted.current) return null
+      setReferences(value)
+      return value
+    } catch {
+      // The fixed colors only; a failed read keeps the previous references and
+      // lets the next change or the manual refresh try again.
+      return null
+    }
+  }, [call, refs])
+
   const loadMore = useCallback(async (): Promise<void> => {
     if (!refs.mounted.current || moreInFlight.current || graphLoading || !hasMore) return
     const current = generation.current
@@ -140,6 +155,7 @@ export function useHistory(options: UseHistoryOptions): HistoryState {
     moreLoading,
     moreFailure,
     loadGraph,
+    refreshReferences,
     loadMore,
   }
 }

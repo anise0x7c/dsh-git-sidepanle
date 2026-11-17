@@ -234,6 +234,8 @@ export interface TestHarness {
     event?: Partial<TestEvent>,
   ): unknown
   scroll(element: TestElement | undefined, metrics: TestScrollMetrics): unknown
+  /** Run every pending interval callback once (one elapsed poll period). */
+  runIntervals(): void
   dispose(): Promise<void>
   setComponent(component: TestComponent, props: TestProps): void
   hookStoreSize(): number

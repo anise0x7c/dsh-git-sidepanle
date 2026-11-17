@@ -19,6 +19,7 @@ import { useBranches } from './hooks/useBranches.ts'
 import { useChangeActions } from './hooks/useChangeActions.ts'
 import { useCommitDetails } from './hooks/useCommitDetails.ts'
 import { useHistory } from './hooks/useHistory.ts'
+import { useLiveUpdates } from './hooks/useLiveUpdates.ts'
 import { useMenuCommands } from './hooks/useMenuCommands.ts'
 import { useRepoStatus } from './hooks/useRepoStatus.ts'
 import { createMenuTargets, usePanelRefs } from './menu.ts'
@@ -66,7 +67,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } =
     statusState
   const history = useHistory({ call, refs })
-  const { graph, references, graphLoading, graphFailure, loadGraph } = history
+  const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history
   const graphPane = useRef<HTMLDivElement | null>(null)
 
   // A history refresh starts a new first page and returns the pane to the top,
@@ -119,6 +120,31 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     mergeFiles.length === 0 &&
     stagedFiles.length === 0 &&
     changedFiles.length === 0
+
+  // Watched repository updates are scoped: a working-tree or index change only
+  // needs the status, while a reference move re-reads the fixed-color
+  // references and reloads the newest page only when the checked-out commit is
+  // not among the loaded rows.
+  const handleWorktreeChange = useCallback((): void => {
+    void loadStatus({ silent: true })
+  }, [loadStatus])
+  const handleReferencesChange = useCallback(async (): Promise<void> => {
+    const next = await refreshReferences()
+    await loadStatus({ silent: true })
+    const revision = next?.current?.revision
+    if (revision === undefined || graph === null) return
+    if (graph.some((commit) => commit.oid === revision)) return
+    await reloadHistory()
+  }, [refreshReferences, loadStatus, graph, reloadHistory])
+  useLiveUpdates({
+    call,
+    panelId,
+    visible,
+    repoRoot: repo?.root ?? null,
+    refs,
+    onWorktreeChange: handleWorktreeChange,
+    onReferencesChange: handleReferencesChange,
+  })
 
   const actions = useChangeActions({
     call,

@@ -408,6 +408,15 @@ export function createHarness(options: HarnessOptions): TestHarness {
     timerGlobals.fetch = originalGlobals.fetch
   }
 
+  /**
+   * Run every pending interval callback once, as one elapsed polling period
+   * would. Tests call this (and then `flush`) to drive the panel's pollers,
+   * whose delays are irrelevant to the behavior under test.
+   */
+  function runIntervals(): void {
+    for (const callback of [...intervals.values()]) callback()
+  }
+
   return {
     React: react,
     render,
@@ -421,6 +430,7 @@ export function createHarness(options: HarnessOptions): TestHarness {
     pointer,
     scroll,
     dispose,
+    runIntervals,
     setComponent(component, props) {
       options.component = component
       options.props = props

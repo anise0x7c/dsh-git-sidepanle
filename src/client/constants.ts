@@ -11,6 +11,12 @@ export const DIFF_ID = '@local/dsh-git-graph/diff'
 export const DIFF_KIND = 'git-diff'
 export const RPC_PATH = 'api/dsh-git-graph/rpc'
 export const POLL_INTERVAL_MS = 5000
+/**
+ * How often a panel asks the Host whether a watched repository changed. The
+ * Host answers from memory, so this only moves two counters over the loopback
+ * route; it does not run Git.
+ */
+export const LIVE_POLL_INTERVAL_MS = 700
 export const MAX_RENDERED_DIFF_LINES = 4000
 export const MENU_TARGET = 'gitGraphItem'
 export const MENU_CONTRIBUTION_ID = 'git-graph.actions'
