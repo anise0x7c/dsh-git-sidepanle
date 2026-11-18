@@ -2810,6 +2810,7 @@ var import_react26 = require("react");
 // src/client/git/graph.ts
 var SWIMLANE_HEIGHT = 22;
 var SWIMLANE_WIDTH = 11;
+var HIGHLIGHT_STROKE_WIDTH = 3;
 var SWIMLANE_CURVE_RADIUS = 5;
 var ROW_OVERHANG = 1;
 var LANE_COLORS = ["lane1", "lane2", "lane3", "lane4", "lane5"];
@@ -3083,18 +3084,37 @@ function graphRowGeometry(row, offset = 0) {
     }
   };
 }
-function graphLayer(rows) {
+function graphPlaceholderPaths(row, offset = 0) {
+  const paths = [];
+  for (let index = 0; index < row.output.length; index += 1) {
+    const lane = row.output[index];
+    if (lane === void 0) continue;
+    const d = verticalLine(laneX(index), offset, offset + SWIMLANE_HEIGHT);
+    paths.push(
+      index === row.lane ? { d, color: lane.color, width: HIGHLIGHT_STROKE_WIDTH } : { d, color: lane.color }
+    );
+  }
+  return paths;
+}
+function graphPlaceholderWidth(row) {
+  return SWIMLANE_WIDTH * (row.output.length + 1);
+}
+function graphLayer(rows, inserted = []) {
   const segments = /* @__PURE__ */ new Map();
   const gaps = [];
   let width = 0;
+  let top = 0;
+  const add = (path) => {
+    const key = `${path.color}:${path.width ?? 1}`;
+    const entry = segments.get(key);
+    if (entry === void 0)
+      segments.set(key, { color: path.color, width: path.width, d: [path.d] });
+    else entry.d.push(path.d);
+  };
   rows.forEach((row, index) => {
-    const geometry = graphRowGeometry(row, index * SWIMLANE_HEIGHT);
+    const geometry = graphRowGeometry(row, top);
     width = Math.max(width, geometry.width);
-    for (const path of [...geometry.bridge, ...geometry.paths]) {
-      const list = segments.get(path.color);
-      if (list === void 0) segments.set(path.color, [path.d]);
-      else list.push(path.d);
-    }
+    for (const path of [...geometry.bridge, ...geometry.paths]) add(path);
     gaps.push({
       row: index,
       cx: geometry.node.cx,
@@ -3102,12 +3122,21 @@ function graphLayer(rows) {
       gap: geometry.node.gap,
       hoverGap: geometry.node.hoverGap
     });
+    top += SWIMLANE_HEIGHT;
+    const count = inserted[index] ?? 0;
+    for (let child = 0; child < count; child += 1) {
+      for (const path of graphPlaceholderPaths(row, top)) add(path);
+      width = Math.max(width, graphPlaceholderWidth(row));
+      top += SWIMLANE_HEIGHT;
+    }
   });
   return {
-    paths: [...segments].map(([color, list]) => ({ d: list.join(" "), color })),
+    paths: [...segments.values()].map(
+      ({ color, width: stroke, d }) => stroke === void 0 ? { d: d.join(" "), color } : { d: d.join(" "), color, width: stroke }
+    ),
     gaps,
     width,
-    height: rows.length * SWIMLANE_HEIGHT
+    height: top
   };
 }
 function badgeIcon(kind) {
@@ -3206,11 +3235,12 @@ function GraphBody(props) {
         { className: "dshgg-graphLines", mask: `url(#${props.maskId})` },
         layer.paths.map(
           (path, index) => h15("path", {
-            key: `${path.color}:${index}`,
+            key: `${path.color}:${path.width ?? 1}:${index}`,
             className: "dshgg-graphEdge",
             "data-color": path.color,
+            "data-width": path.width === void 0 ? void 0 : String(path.width),
             d: path.d,
-            style: { stroke: graphColorValue(path.color) }
+            style: path.width === void 0 ? { stroke: graphColorValue(path.color) } : { stroke: graphColorValue(path.color), strokeWidth: `${path.width}px` }
           })
         )
       )

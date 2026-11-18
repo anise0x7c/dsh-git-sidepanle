@@ -4,7 +4,9 @@
  *
  * Source: microsoft/vscode `src/vs/workbench/contrib/scm/browser/scmHistory.ts`
  * (`toISCMHistoryItemViewModelArray`, `getLabelColorIdentifier`,
- * `renderSCMHistoryItemGraph`, `compareHistoryItemRefs`).
+ * `renderSCMHistoryItemGraph`, `renderSCMHistoryGraphPlaceholder`,
+ * `compareHistoryItemRefs`) and `scmHistoryViewPane.ts`
+ * (`HistoryItemChangeRenderer._renderGraphPlaceholder`).
  * Copyright (c) Microsoft Corporation. Licensed under the MIT License.
  *
  * Kept deliberately close to the original statement by statement, including
@@ -401,4 +403,50 @@ export function renderGraph(historyItemViewModel: OracleViewModel): OracleRender
     circleColor,
     width: SWIMLANE_WIDTH * (Math.max(inputSwimlanes.length, outputSwimlanes.length, 1) + 1),
   }
+}
+
+/** One rendered placeholder line, with VS Code's stroke width. */
+export interface OraclePlaceholderPath {
+  d: string
+  color: string
+  strokeWidth: number
+}
+
+/**
+ * VS Code `renderSCMHistoryGraphPlaceholder(columns, highlightIndex)`: the
+ * graph area of one row under an expanded history item.
+ * @param columns - the history item's output swimlanes.
+ * @param highlightIndex - the column drawn wider, if any.
+ * @returns the vertical lines in append order and the area width.
+ */
+export function renderGraphPlaceholder(
+  columns: OracleNode[],
+  highlightIndex?: number,
+): { paths: OraclePlaceholderPath[]; width: number } {
+  const paths: OraclePlaceholderPath[] = []
+
+  // Draw |
+  for (let index = 0; index < columns.length; index++) {
+    const strokeWidth = index === highlightIndex ? 3 : 1
+    paths.push({
+      d: `M ${SWIMLANE_WIDTH * (index + 1)} 0 V ${SWIMLANE_HEIGHT}`,
+      color: (columns[index] as OracleNode).color,
+      strokeWidth,
+    })
+  }
+
+  return { paths, width: SWIMLANE_WIDTH * (columns.length + 1) }
+}
+
+/**
+ * The highlight index `HistoryItemChangeRenderer` passes to the placeholder:
+ * the history item's position among its input swimlanes, or the input count.
+ * @param historyItemViewModel - expanded history item.
+ * @returns highlighted column.
+ */
+export function placeholderHighlightIndex(historyItemViewModel: OracleViewModel): number {
+  const historyItem = historyItemViewModel.historyItem
+  const inputSwimlanes = historyItemViewModel.inputSwimlanes
+  const inputIndex = inputSwimlanes.findIndex((node) => node.id === historyItem.id)
+  return inputIndex !== -1 ? inputIndex : inputSwimlanes.length
 }

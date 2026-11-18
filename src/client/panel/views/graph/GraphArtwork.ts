@@ -85,11 +85,15 @@ export function GraphBody(props: GraphBodyProps): React.ReactElement {
         { className: 'dshgg-graphLines', mask: `url(#${props.maskId})` },
         layer.paths.map((path, index) =>
           h('path', {
-            key: `${path.color}:${index}`,
+            key: `${path.color}:${path.width ?? 1}:${index}`,
             className: 'dshgg-graphEdge',
             'data-color': path.color,
+            'data-width': path.width === undefined ? undefined : String(path.width),
             d: path.d,
-            style: { stroke: graphColorValue(path.color) },
+            style:
+              path.width === undefined
+                ? { stroke: graphColorValue(path.color) }
+                : { stroke: graphColorValue(path.color), strokeWidth: `${path.width}px` },
           }),
         ),
       ),

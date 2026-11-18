@@ -1,8 +1,9 @@
 /**
  * Commit-graph layout and drawing, ported from VS Code's Source Control Graph:
  * microsoft/vscode `src/vs/workbench/contrib/scm/browser/scmHistory.ts`
- * (`toISCMHistoryItemViewModelArray`, `renderSCMHistoryItemGraph`) and
- * `scmHistoryViewPane.ts` (`HistoryItemRenderer._renderBadges`).
+ * (`toISCMHistoryItemViewModelArray`, `renderSCMHistoryItemGraph`,
+ * `renderSCMHistoryGraphPlaceholder`) and `scmHistoryViewPane.ts`
+ * (`HistoryItemRenderer._renderBadges`, `HistoryItemChangeRenderer`).
  * Copyright (c) Microsoft Corporation. Licensed under the MIT License.
  *
  * Every row carries the ordered swimlanes entering it from above (`input`) and
@@ -28,6 +29,11 @@ import type { ParsedRef, RefKind } from './format.ts'
 export const SWIMLANE_HEIGHT = 22
 /** Lane pitch; lane `i` is centered at `SWIMLANE_WIDTH * (i + 1)` (VS Code `SWIMLANE_WIDTH`). */
 export const SWIMLANE_WIDTH = 11
+/**
+ * Stroke of the node's own lane through an expanded commit's change rows (the
+ * `highlightIndex` stroke of VS Code `renderSCMHistoryGraphPlaceholder`).
+ */
+export const HIGHLIGHT_STROKE_WIDTH = 3
 /** Radius of the turns of a shifting lane (VS Code `SWIMLANE_CURVE_RADIUS`). */
 export const SWIMLANE_CURVE_RADIUS = 5
 /** Base node radius (VS Code `CIRCLE_RADIUS`). */
@@ -109,6 +115,8 @@ export interface GraphPath {
   readonly d: string
   /** Line color. */
   readonly color: GraphColor
+  /** Stroke width in pixels; omitted for VS Code's one-pixel lines. */
+  readonly width?: number
 }
 
 /** Node shape: filled dot, merge ring with center dot, or checked-out ring. */
@@ -623,41 +631,87 @@ export interface GraphGap {
   readonly hoverGap: number
 }
 
+/**
+ * Lines of one change row under an expanded commit (VS Code
+ * `renderSCMHistoryGraphPlaceholder(outputSwimlanes, highlightIndex)`): every
+ * lane leaving the commit runs vertically through the row in its own position
+ * and color, and the lane in the node's position is drawn wider. VS Code's
+ * highlight index is the node's input position, or the input count when no lane
+ * expected the commit, which is exactly the row's `lane`.
+ * @param row - laid-out commit row whose changes are listed.
+ * @param offset - distance of the change row from the top of the graph, in pixels.
+ * @returns one path per outgoing lane, in lane order.
+ */
+export function graphPlaceholderPaths(row: GraphRow, offset = 0): GraphPath[] {
+  const paths: GraphPath[] = []
+  for (let index = 0; index < row.output.length; index += 1) {
+    const lane = row.output[index]
+    if (lane === undefined) continue
+    const d = verticalLine(laneX(index), offset, offset + SWIMLANE_HEIGHT)
+    paths.push(
+      index === row.lane
+        ? { d, color: lane.color, width: HIGHLIGHT_STROKE_WIDTH }
+        : { d, color: lane.color },
+    )
+  }
+  return paths
+}
+
+/**
+ * Width of the graph area of a change row under an expanded commit (VS Code
+ * `SWIMLANE_WIDTH * (outputSwimlanes.length + 1)`); the row's icon begins
+ * right after it.
+ * @param row - laid-out commit row whose changes are listed.
+ * @returns graph area width in pixels.
+ */
+export function graphPlaceholderWidth(row: GraphRow): number {
+  return SWIMLANE_WIDTH * (row.output.length + 1)
+}
+
 /** All of a graph's lines, drawn as one layer. */
 export interface GraphLayer {
   /**
-   * One path per color, in the order the colors first appear. Every row's
-   * segments go into the same element, because a single element is rasterized
-   * once: a lane that crosses a row boundary keeps exactly the coverage it has
-   * anywhere else instead of being split into two antialiased strokes that
-   * leave a seam between them.
+   * One path per color and stroke width, in the order they first appear. Every
+   * row's segments go into the same element, because a single element is
+   * rasterized once: a lane that crosses a row boundary keeps exactly the
+   * coverage it has anywhere else instead of being split into two antialiased
+   * strokes that leave a seam between them.
    */
   readonly paths: readonly GraphPath[]
   /** Node gaps, top to bottom. */
   readonly gaps: readonly GraphGap[]
   /** Layer width; the widest row's cell. */
   readonly width: number
-  /** Layer height; one row height per row. */
+  /** Layer height; one row height per commit row and per inserted change row. */
   readonly height: number
 }
 
 /**
  * Collect every row's lines into one layer for the whole graph.
  * @param rows - laid-out rows, top to bottom.
+ * @param inserted - number of change rows listed below each commit row, by row
+ *   index; a missing or non-positive entry inserts none.
  * @returns the layer's paths, node gaps and size.
  */
-export function graphLayer(rows: readonly GraphRow[]): GraphLayer {
-  const segments = new Map<GraphColor, string[]>()
+export function graphLayer(
+  rows: readonly GraphRow[],
+  inserted: readonly number[] = [],
+): GraphLayer {
+  const segments = new Map<string, { color: GraphColor; width: number | undefined; d: string[] }>()
   const gaps: GraphGap[] = []
   let width = 0
+  let top = 0
+  const add = (path: GraphPath): void => {
+    const key = `${path.color}:${path.width ?? 1}`
+    const entry = segments.get(key)
+    if (entry === undefined)
+      segments.set(key, { color: path.color, width: path.width, d: [path.d] })
+    else entry.d.push(path.d)
+  }
   rows.forEach((row, index) => {
-    const geometry = graphRowGeometry(row, index * SWIMLANE_HEIGHT)
+    const geometry = graphRowGeometry(row, top)
     width = Math.max(width, geometry.width)
-    for (const path of [...geometry.bridge, ...geometry.paths]) {
-      const list = segments.get(path.color)
-      if (list === undefined) segments.set(path.color, [path.d])
-      else list.push(path.d)
-    }
+    for (const path of [...geometry.bridge, ...geometry.paths]) add(path)
     gaps.push({
       row: index,
       cx: geometry.node.cx,
@@ -665,12 +719,21 @@ export function graphLayer(rows: readonly GraphRow[]): GraphLayer {
       gap: geometry.node.gap,
       hoverGap: geometry.node.hoverGap,
     })
+    top += SWIMLANE_HEIGHT
+    const count = inserted[index] ?? 0
+    for (let child = 0; child < count; child += 1) {
+      for (const path of graphPlaceholderPaths(row, top)) add(path)
+      width = Math.max(width, graphPlaceholderWidth(row))
+      top += SWIMLANE_HEIGHT
+    }
   })
   return {
-    paths: [...segments].map(([color, list]) => ({ d: list.join(' '), color })),
+    paths: [...segments.values()].map(({ color, width: stroke, d }) =>
+      stroke === undefined ? { d: d.join(' '), color } : { d: d.join(' '), color, width: stroke },
+    ),
     gaps,
     width,
-    height: rows.length * SWIMLANE_HEIGHT,
+    height: top,
   }
 }
 
