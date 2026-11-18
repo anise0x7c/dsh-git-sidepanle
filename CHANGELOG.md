@@ -26,10 +26,12 @@ is the `engines.dsh` range in `package.json`.
 - The commit-details view now opens from a new first commit-menu action,
   **View Details** (查看详情), which stays available while another operation
   runs; a stale target is reported instead of opening an empty view.
-- The commit-details view now opens as a bordered, shadowed card above the
-  still-mounted change list, graph and commit box, so sliding it back out
-  reveals that content instead of leaving a blank pane. Escape closes the card
-  through the same transition while no operation prompt or branch menu owns it.
+- The commit-details view now opens as a bordered, frosted card above the
+  still-mounted change list, graph and commit box, using the same theme-derived
+  translucency and backdrop blur as the bottom operation prompt with a solid
+  fallback where filtering is unavailable, so sliding it back out reveals that
+  content instead of leaving a blank pane. Escape closes the card through the
+  same transition while no operation prompt or branch menu owns it.
 - The bottom operation prompt now rises from the pane's bottom edge when it
   opens and lowers out of view before it is removed, and the commit-details
   view slides in from the right edge and slides back out before the change

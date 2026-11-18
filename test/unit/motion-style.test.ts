@@ -17,10 +17,11 @@ const css = [readSheet('motion.css'), readSheet('commit-detail.css')].join('\n')
 /**
  * Read the declarations of one leaf rule.
  * @param selector - the exact selector text of the rule.
+ * @param source - stylesheet text; defaults to both searched sheets.
  * @returns its declarations joined across repeats in source order.
  */
-function declarations(selector: string): string {
-  const found = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+function declarations(selector: string, source = css): string {
+  const found = [...source.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .filter((match) => (match[1] ?? '').trim() === selector)
     .map((match) => match[2] ?? '')
   assert.ok(found.length > 0, `missing motion rule for ${selector}`)
@@ -79,7 +80,7 @@ test('the commit details view travels in from the right edge and back out', () =
   const card = declarations('.dshgg-root .dshgg-commitCard')
   assert.match(card, /\bbackground:\s*var\(--dsw-alias-bg-layer-1\)\s*;/)
   assert.match(card, /\bborder:\s*0\.5px\s+solid\s+var\(--dsw-alias-border-l1\)\s*;/)
-  assert.match(card, /\bbox-shadow:\s*var\(--dsw-elevation-prominent\)\s*;/)
+  assert.doesNotMatch(card, /\bbox-shadow\s*:/, 'the card no longer paints a shadow')
   assert.match(card, /\bpointer-events:\s*auto\s*;/)
   const leaveCard = declarations(
     '.dshgg-root .dshgg-commitMotion[data-phase="leave"] .dshgg-commitCard',
@@ -87,6 +88,25 @@ test('the commit details view travels in from the right edge and back out', () =
   assert.match(leaveCard, /\bpointer-events:\s*none\s*;/, 'a leaving card takes no input')
   assert.match(keyframes('dshgg-details-enter'), /translateX\(calc\(100% \+ \d+px\)\)/)
   assert.match(keyframes('dshgg-details-leave'), /translateX\(calc\(100% \+ \d+px\)\)/)
+})
+
+test('the details card borrows the operation prompt native frosted material', () => {
+  const supportsAt = css.indexOf('@supports (backdrop-filter: blur(1px))')
+  assert.ok(supportsAt !== -1, 'frosting is a progressive enhancement behind feature detection')
+  const fallback = css.slice(0, supportsAt)
+  const card = declarations('.dshgg-root .dshgg-commitCard', fallback)
+  assert.match(card, /\bbackground:\s*var\(--dsw-alias-bg-layer-1\)\s*;/, 'a solid theme surface')
+  assert.doesNotMatch(card, /\bbackdrop-filter\s*:/, 'the fallback needs no filtering')
+
+  const filtered = css.slice(supportsAt)
+  const frosted = declarations('.dshgg-root .dshgg-commitCard', filtered)
+  assert.match(
+    frosted,
+    /\bbackground:\s*var\(--dsw-specific-menu, var\(--dsw-alias-bg-layer-1\)\)\s*;/,
+    'the card uses the shared translucent menu surface',
+  )
+  assert.match(frosted, /\bbackdrop-filter:\s*var\(--dsw-menu-backdrop-filter\)\s*;/)
+  assert.match(frosted, /-webkit-backdrop-filter:\s*var\(--dsw-menu-backdrop-filter\)\s*;/)
 })
 
 test('reduced motion keeps both surfaces still', () => {

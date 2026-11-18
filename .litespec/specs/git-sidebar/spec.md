@@ -419,9 +419,10 @@ diff for the commit. A commit that changed no files SHALL be presented as such
 rather than as an empty list, a failed read SHALL be reported with a retry path,
 and returning from the details view SHALL restore the change list and graph
 without changing the repository. The details view SHALL open as a card above
-the panel's content, with its own theme surface, a separating border and a
-shadow, so the change list, graph and commit box stay mounted beneath it and
-are already in place when the card leaves. The card SHALL slide in from the
+the panel's content, with its own separating border and a translucent,
+backdrop-blurred theme surface with a readable solid fallback where filtering
+is unavailable, so the change list, graph and commit box stay mounted beneath
+it and are already in place when the card leaves. The card SHALL slide in from the
 panel's right edge when it opens and SHALL slide back out to that edge, and the
 content beneath it SHALL accept no pointer or keyboard input while the card is
 present. Pressing Escape in the Git panel while the card is open SHALL dismiss it
@@ -438,6 +439,18 @@ without moving.
 - **THEN** the panel shows that commit's short identifier, subject, author,
   relative time and changed files with their status letters and paths, as a
   card above the change list and graph, which stay mounted beneath it
+
+#### Scenario: The card matches the operation prompt's material
+
+- **GIVEN** the details card is open
+- **WHEN** the browser can filter the background behind the card
+- **THEN** the card uses the same translucent menu surface and backdrop blur as
+  the bottom operation prompt, with its separating border and no shadow
+
+#### Scenario: Frosting unavailable
+
+- **WHEN** the browser cannot filter the background behind the card
+- **THEN** the card remains readable on the solid theme surface
 
 #### Scenario: The content beneath the card stays in place
 

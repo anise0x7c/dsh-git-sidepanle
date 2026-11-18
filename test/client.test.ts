@@ -152,6 +152,22 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /\.dshgg-splitterLine\s*\{[^}]*background: var\(--dsw-alias-border-l3\);/,
   )
+  // The details card borrows the operation prompt's frosted menu surface and
+  // keeps the solid layer as its fallback; its clipped shadow was removed.
+  assert.match(
+    graphStyles,
+    /\.dshgg-root \.dshgg-commitCard\s*\{[^}]*background: var\(--dsw-alias-bg-layer-1\);[^}]*border: 0\.5px solid var\(--dsw-alias-border-l1\);/,
+  )
+  assert.doesNotMatch(
+    graphStyles,
+    /\.dshgg-root \.dshgg-commitCard\s*\{[^}]*box-shadow:/,
+    'the details card paints no shadow',
+  )
+  assert.match(
+    graphStyles,
+    /@supports \(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\) \{[\s\S]*?\.dshgg-root \.dshgg-commitCard/,
+    'the frosted enhancement reaches the built stylesheet',
+  )
   assert.match(
     graphStyles,
     /\.dshgg-sectionToggle\s*\{[^}]*font: var\(--dsw-font-s-strong-14\);[^}]*font-weight: 600;/,
