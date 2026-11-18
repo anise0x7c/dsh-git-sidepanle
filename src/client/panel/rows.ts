@@ -155,7 +155,6 @@ export function FileRow<Entry extends FileRowEntry>(
       onClick: () => props.onOpen(entry),
       ...rowProps,
     },
-    h('span', { className: 'dshgg-status', 'data-status': letter }, letter),
     h('span', { className: 'dshgg-rowIcon' }, h(HostFileIcon, { path: entry.path, size: 16 })),
     h('span', { className: 'dshgg-fileName' }, name),
     entry.origPath === undefined
@@ -167,6 +166,7 @@ export function FileRow<Entry extends FileRowEntry>(
         ),
     dir === '' ? null : h('span', { className: 'dshgg-fileDir', title: entry.path }, dir),
     h('span', { className: 'dshgg-fileActions' }, actionButtons),
+    h('span', { className: 'dshgg-status', 'data-status': letter }, letter),
   )
 }
 

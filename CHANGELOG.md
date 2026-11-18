@@ -23,6 +23,11 @@ is the `engines.dsh` range in `package.json`.
 - A commit's details view now shows the same per-type file icon before each
   changed file's name, with the plain document icon as the fallback when the
   host provides no file-type icon set.
+- The merge-conflicts, staged and changes lists and the commit-details file
+  list now put each file's status letter at the row's end in that status's
+  color, matching the files listed under an expanded commit; file icons,
+  names, dimmed directories, rename arrows and hover actions keep their
+  places.
 - The commit-details view now opens from a new first commit-menu action,
   **View Details** (查看详情), which stays available while another operation
   runs; a stale target is reported instead of opening an empty view.

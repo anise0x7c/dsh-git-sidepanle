@@ -997,6 +997,56 @@ test('the change lists and commit details draw the host file-type icon for every
   await mounted.harness.dispose()
 })
 
+test('every flat file row puts its status letter at the row end', async () => {
+  const mounted = await mountGit()
+  const fileRows = (scope?: TestElement): TestElement[] =>
+    scope === undefined
+      ? mounted.harness.findAll((element) => hasClass(element, 'dshgg-fileRow'))
+      : collectElements(scope, (element) => hasClass(element, 'dshgg-fileRow'))
+  const assertStatusTrails = (row: TestElement, label: string): TestElement => {
+    const children = row.children.filter(isElement)
+    const first = children[0]
+    assert.ok(first, `${label} renders element children`)
+    assert.ok(hasClass(first, 'dshgg-rowIcon'), `${label} starts with its file icon`)
+    const last = children[children.length - 1]
+    assert.ok(last, `${label} renders a final element`)
+    assert.ok(hasClass(last, 'dshgg-status'), `${label} ends with its status letter`)
+    const actions = children.findIndex((child) => hasClass(child, 'dshgg-fileActions'))
+    assert.ok(actions >= 0, `${label} renders its action slot`)
+    assert.ok(actions < children.length - 1, `${label} keeps its actions before the status letter`)
+    return last
+  }
+
+  const rows = fileRows()
+  assert.equal(rows.length, 4, 'the three change groups render one row per file')
+  for (const [index, row] of rows.entries()) {
+    const status = assertStatusTrails(row, `change row ${index}`)
+    assert.equal(
+      status.props['data-status'],
+      elementText(status),
+      `change row ${index} keeps its status letter in the data attribute and the text`,
+    )
+  }
+
+  await openCommitDetails(mounted)
+  const details = fileRows(commitCard(mounted.harness))
+  assert.equal(details.length, 4, 'the commit details list one row per file')
+  for (const [index, row] of details.entries()) {
+    const status = assertStatusTrails(row, `details row ${index}`)
+    assert.equal(
+      status.props['data-status'],
+      elementText(status),
+      `details row ${index} keeps its status letter in the data attribute and the text`,
+    )
+  }
+  const app = details.find((row) => row.props.title === 'src/app.js')
+  assert.ok(app, 'the modified app.js details row is rendered')
+  const appStatus = assertStatusTrails(app, 'the app.js details row')
+  assert.equal(appStatus.props['data-status'], 'M')
+  assert.equal(elementText(appStatus), 'M')
+  await mounted.harness.dispose()
+})
+
 test('the change lists and commit details keep the plain icon without a usable host icon', async () => {
   const mounted = await mountGit()
   const plainIcons = (scope?: TestElement): number => {

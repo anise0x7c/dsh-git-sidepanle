@@ -2451,7 +2451,6 @@ function FileRow(props) {
       onClick: () => props.onOpen(entry),
       ...rowProps
     },
-    h9("span", { className: "dshgg-status", "data-status": letter }, letter),
     h9("span", { className: "dshgg-rowIcon" }, h9(HostFileIcon, { path: entry.path, size: 16 })),
     h9("span", { className: "dshgg-fileName" }, name),
     entry.origPath === void 0 ? null : h9(
@@ -2460,7 +2459,8 @@ function FileRow(props) {
       `← ${splitPath(entry.origPath).name}`
     ),
     dir === "" ? null : h9("span", { className: "dshgg-fileDir", title: entry.path }, dir),
-    h9("span", { className: "dshgg-fileActions" }, actionButtons)
+    h9("span", { className: "dshgg-fileActions" }, actionButtons),
+    h9("span", { className: "dshgg-status", "data-status": letter }, letter)
   );
 }
 function renderFileRows(entries, context) {
