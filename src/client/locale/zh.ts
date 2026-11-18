@@ -56,6 +56,7 @@ export const zh: Record<GitGraphLocaleKey, string> = {
   'menu.addToGitignore': '添加到 .gitignore',
   'menu.ignored': '已将 {path} 添加到 .gitignore',
   'menu.ignoredTracked': '已将 {path} 添加到 .gitignore；已跟踪文件仍会被 Git 跟踪。',
+  'menu.viewDetails': '查看详情',
   'menu.checkout': '签出',
   'menu.checkoutDetached': '签出(已分离)',
   'menu.detached': '已以分离头指针方式签出',

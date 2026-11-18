@@ -243,6 +243,15 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     [tab.actions, repoRoot, selectedCommit],
   )
 
+  // The details view opens from the commit row's menu; the command names the
+  // commit by id, so it resolves against the rows the graph currently lists.
+  const viewCommit = (oid: string): boolean => {
+    const commit = graph?.find((candidate) => candidate.oid === oid)
+    if (commit === undefined) return false
+    commitState.selectCommit(commit)
+    return true
+  }
+
   const toggleSection = (id: string): void =>
     setOpenSections((current) => ({ ...current, [id]: current[id] !== true }))
 
@@ -307,6 +316,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     createBranch: (oid) => requestReference(() => commitMenuActions.createBranch(oid)),
     createTag: (oid) => requestReference(() => commitMenuActions.createTag(oid)),
     deleteBranch: (branch) => requestReference(() => commitMenuActions.deleteBranch(branch)),
+    viewCommit,
     setConfirm: requestConfirmation,
     notify: props.notify,
     openDiff,

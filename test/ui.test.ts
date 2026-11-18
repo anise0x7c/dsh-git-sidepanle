@@ -2751,6 +2751,7 @@ test('commit rows and the diff header bind their copy targets', async () => {
   assert.deepEqual(
     menuActions(mounted.components, commitTarget).map((action) => action.id),
     [
+      menuActionId('view-details'),
       menuActionId('checkout'),
       menuActionId('checkout-detached'),
       menuActionId('create-branch'),

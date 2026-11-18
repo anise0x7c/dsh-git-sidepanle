@@ -222,6 +222,12 @@ export function resolveMenuActions(
   if (target.kind === 'commit') {
     const actions: MenuAction[] = []
     const oid = target.oid
+    // View Details leads the menu and only reads, so it stays enabled while
+    // another operation runs; the next group starts after a separator.
+    const details =
+      typeof oid === 'string' && oid !== ''
+        ? menuAction('view-details', t('menu.viewDetails'), command({ type: 'viewCommit', oid }))
+        : null
     const canMutate = typeof oid === 'string' && /^[0-9a-f]{40}$/.test(oid)
     const branchHeads = Array.isArray(target.branchHeads)
       ? target.branchHeads.filter(
@@ -305,7 +311,9 @@ export function resolveMenuActions(
         ),
       )
     }
-    return actions
+    if (details === null) return actions
+    const [first, ...rest] = actions
+    return first === undefined ? [details] : [details, { ...first, separatorBefore: true }, ...rest]
   }
 
   if (target.kind === 'commitFile' || target.kind === 'diff') {

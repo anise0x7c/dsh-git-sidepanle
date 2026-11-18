@@ -51,6 +51,8 @@ export interface MenuCommandOptions {
   readonly createTag: (oid: string) => void
   /** Open the branch-deletion confirmation. */
   readonly deleteBranch: (branch: string) => void
+  /** Open a listed commit's details view; false when the graph no longer lists it. */
+  readonly viewCommit: (oid: string) => boolean
   /** Open the confirmation dialog. */
   readonly setConfirm: (confirm: ConfirmState | null) => void
   /** Report a stale or busy command through the host's shared feedback. */
@@ -99,6 +101,7 @@ function dispatch(options: MenuCommandOptions, command: PanelCommand): void {
     createBranch,
     createTag,
     deleteBranch,
+    viewCommit,
     setConfirm,
     notify,
     openDiff,
@@ -114,6 +117,14 @@ function dispatch(options: MenuCommandOptions, command: PanelCommand): void {
   const reportStale = (): void => notify(t('menu.stale'), false)
   if (command.type === 'refresh') {
     refreshAll()
+    return
+  }
+  // Viewing a commit's details reads only, so a running operation does not
+  // block it; a commit the graph no longer lists is a stale target.
+  if (command.type === 'viewCommit') {
+    if (typeof command.oid !== 'string' || command.oid === '' || !viewCommit(command.oid)) {
+      reportStale()
+    }
     return
   }
   if (busyRef.current !== null) {

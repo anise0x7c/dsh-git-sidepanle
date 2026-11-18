@@ -17,6 +17,7 @@ export type PanelCommandType =
   | 'createBranch'
   | 'createTag'
   | 'deleteBranch'
+  | 'viewCommit'
   | 'refresh'
 
 /** One command envelope emitted by a context-menu action. */
@@ -35,7 +36,7 @@ export interface PanelCommand {
   readonly paths?: readonly string[]
   /** A single-entry discard needs one confirmation. */
   readonly single?: boolean
-  /** Full commit id for checkout or reference creation. */
+  /** Full commit id for checkout, reference creation or the details view. */
   readonly oid?: string
   /** Local branch for a checkout or deletion. */
   readonly branch?: string

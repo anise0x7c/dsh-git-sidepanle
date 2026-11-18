@@ -474,7 +474,8 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
   assert.ok(refreshHistory, 'the graph section menu has no refresh action')
   assert.equal(refreshHistory.label, 'menu.refreshHistory')
 
-  // Ordinary commits group checkout and reference creation before the copies.
+  // Ordinary commits lead with View Details, then group checkout and reference
+  // creation before the copies.
   const commit = resolve({
     sessionId: 's1',
     kind: 'commit',
@@ -483,14 +484,18 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
     subject: 'Fix it',
   })
   assert.deepEqual(MENU_IDS(commit), [
+    menuActionId('view-details'),
     menuActionId('checkout-detached'),
     menuActionId('create-branch'),
     menuActionId('create-tag'),
     menuActionId('copy-id'),
     menuActionId('copy-message'),
   ])
-  const [checkoutDetached, createBranch, , copyCommitId, copyCommitSubject] = commit
+  const [viewDetails, checkoutDetached, createBranch, , copyCommitId, copyCommitSubject] = commit
+  assert.ok(viewDetails, 'the commit menu has no view-details action')
+  assert.equal(viewDetails.label, 'menu.viewDetails')
   assert.ok(checkoutDetached, 'the commit menu has no checkout action')
+  assert.equal(checkoutDetached.separatorBefore, true)
   assert.ok(createBranch, 'the commit menu has no create-branch action')
   assert.ok(copyCommitId, 'the commit menu has no copy-id action')
   assert.ok(copyCommitSubject, 'the commit menu has no copy-subject action')

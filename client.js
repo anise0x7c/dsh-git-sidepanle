@@ -714,6 +714,7 @@ var en = {
   "menu.addToGitignore": "Add to .gitignore",
   "menu.ignored": "Added {path} to .gitignore",
   "menu.ignoredTracked": "Added {path} to .gitignore; tracked files remain tracked.",
+  "menu.viewDetails": "View Details",
   "menu.checkout": "Checkout",
   "menu.checkoutDetached": "Checkout (Detached)",
   "menu.detached": "Checked out with detached HEAD",
@@ -852,6 +853,7 @@ var zh = {
   "menu.addToGitignore": "添加到 .gitignore",
   "menu.ignored": "已将 {path} 添加到 .gitignore",
   "menu.ignoredTracked": "已将 {path} 添加到 .gitignore；已跟踪文件仍会被 Git 跟踪。",
+  "menu.viewDetails": "查看详情",
   "menu.checkout": "签出",
   "menu.checkoutDetached": "签出(已分离)",
   "menu.detached": "已以分离头指针方式签出",
@@ -1142,6 +1144,7 @@ function resolveMenuActions(value, t, notify) {
   if (target.kind === "commit") {
     const actions = [];
     const oid = target.oid;
+    const details = typeof oid === "string" && oid !== "" ? menuAction("view-details", t("menu.viewDetails"), command({ type: "viewCommit", oid })) : null;
     const canMutate = typeof oid === "string" && /^[0-9a-f]{40}$/.test(oid);
     const branchHeads = Array.isArray(target.branchHeads) ? target.branchHeads.filter(
       (branch) => typeof branch === "object" && branch !== null && typeof branch.name === "string" && branch.name !== ""
@@ -1219,7 +1222,9 @@ function resolveMenuActions(value, t, notify) {
         )
       );
     }
-    return actions;
+    if (details === null) return actions;
+    const [first, ...rest] = actions;
+    return first === void 0 ? [details] : [details, { ...first, separatorBefore: true }, ...rest];
   }
   if (target.kind === "commitFile" || target.kind === "diff") {
     const path = target.path;
@@ -1908,6 +1913,7 @@ function dispatch(options, command) {
     createBranch,
     createTag,
     deleteBranch,
+    viewCommit,
     setConfirm,
     notify,
     openDiff
@@ -1921,6 +1927,12 @@ function dispatch(options, command) {
   const reportStale = () => notify(t("menu.stale"), false);
   if (command.type === "refresh") {
     refreshAll();
+    return;
+  }
+  if (command.type === "viewCommit") {
+    if (typeof command.oid !== "string" || command.oid === "" || !viewCommit(command.oid)) {
+      reportStale();
+    }
     return;
   }
   if (busyRef.current !== null) {
@@ -3690,6 +3702,12 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot, selectedCommit]
   );
+  const viewCommit = (oid) => {
+    const commit = graph?.find((candidate) => candidate.oid === oid);
+    if (commit === void 0) return false;
+    commitState.selectCommit(commit);
+    return true;
+  };
   const toggleSection = (id) => setOpenSections((current) => ({ ...current, [id]: current[id] !== true }));
   const handleGraphScroll = (event) => {
     if (!isNearEnd(event.currentTarget)) return;
@@ -3736,6 +3754,7 @@ function GitPanel(props) {
     createBranch: (oid) => requestReference(() => commitMenuActions.createBranch(oid)),
     createTag: (oid) => requestReference(() => commitMenuActions.createTag(oid)),
     deleteBranch: (branch) => requestReference(() => commitMenuActions.deleteBranch(branch)),
+    viewCommit,
     setConfirm: requestConfirmation,
     notify: props.notify,
     openDiff
