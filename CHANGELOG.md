@@ -3,7 +3,11 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
-## Unreleased
+## 0.13.0
+
+Commits now expand inline to list the files they changed, a new commit-details
+card shows a commit above the still-mounted panel, and every file list matches
+the host explorer's file-type icons and VS Code's right-aligned status letters:
 
 - Activating a commit row in the graph now expands the commit's changed files
   inline below it, as VS Code's Source Control Graph does: 22px file rows with
@@ -42,6 +46,8 @@ is the `engines.dsh` range in `package.json`.
   view slides in from the right edge and slides back out before the change
   list returns. Both respect reduced motion. The prompt's motion box clips the
   card itself, so its travel never scrolls the pane or shifts its content.
+- This is a browser-only change; refresh the existing Web page to load the
+  rebuilt client artifact. No Host restart is required.
 
 ## 0.12.1
 
