@@ -905,12 +905,7 @@ test('commit details replace the split and return with the chosen ratio', async 
   mounted.harness.keydown(divider(), { key: 'PageDown' })
   await mounted.harness.flush()
   assert.equal(divider().props['aria-valuenow'], 60)
-  const graphRow = mounted.harness.findAll((element) =>
-    String(element.props?.className ?? '').includes('dshgg-graphRow'),
-  )[0]
-  assert.ok(graphRow)
-  mounted.harness.click(graphRow)
-  await mounted.harness.flush()
+  await openCommitDetails(mounted)
   assert.equal(mounted.harness.findAll((element) => element.props.role === 'separator').length, 0)
   assert.match(mounted.harness.text(), /commitDetails\.files/)
   mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
@@ -1867,14 +1862,35 @@ test('a changed file opens a diff tab with its addressing parameters', async () 
   await mounted.harness.dispose()
 })
 
-test('clicking a commit shows its files and a file opens the commit diff', async () => {
-  const mounted = await mountGit()
-  const graphRow = mounted.harness.findAll((element) =>
+/** Find the rendered commit rows of the graph. */
+function graphRows(harness: TestHarness): TestElement[] {
+  return harness.findAll((element) =>
     String(element.props?.className ?? '').includes('dshgg-graphRow'),
-  )[0]
-  assert.ok(graphRow, 'no graph row rendered')
-  mounted.harness.click(graphRow)
+  )
+}
+
+/** Find the rows an expanded commit lists below itself. */
+function changeRows(harness: TestHarness): TestElement[] {
+  return harness.findAll((element) =>
+    String(element.props?.className ?? '')
+      .split(' ')
+      .includes('dshgg-graphChange'),
+  )
+}
+
+/** Open one commit's details view through its row's View Details menu action. */
+async function openCommitDetails(mounted: MountedGit, index = 0): Promise<void> {
+  const row = graphRows(mounted.harness)[index]
+  assert.ok(row, 'no graph row rendered')
+  mounted.harness.contextmenu(row, { clientX: 1, clientY: 2 })
   await mounted.harness.flush()
+  await runMenuAction(mounted.components, lastTarget(mounted.menu), 'view-details')
+  await mounted.harness.flush()
+}
+
+test('View Details shows a commit and a file opens the commit diff', async () => {
+  const mounted = await mountGit()
+  await openCommitDetails(mounted)
 
   const detailsCall = mounted.calls.find((call) => call.op === 'commit-details')
   assert.equal(detailsCall?.oid, 'a'.repeat(40))
@@ -1934,30 +1950,195 @@ test('clicking a commit shows its files and a file opens the commit diff', async
   await mounted.harness.dispose()
 })
 
-test('a commit row opens its details with the keyboard', async () => {
-  const mounted = await mountGit()
-  const graphRow = mounted.harness.findAll((element) =>
-    String(element.props?.className ?? '').includes('dshgg-graphRow'),
-  )[0]
-  mounted.harness.keydown(graphRow, { key: 'Enter' })
+test('View Details stays available while an operation runs', async () => {
+  let release = (): void => {}
+  const until = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const mounted = await mountGit({ pending: { op: 'stage', until } })
+  const row = mounted.harness.findAll(
+    (element) =>
+      String(element.props?.className ?? '').includes('dshgg-fileRow') &&
+      element.props?.title === 'src/app.js',
+  )
+  mounted.harness.contextmenu(row[row.length - 1], { clientX: 1, clientY: 2 })
+  await runMenuAction(mounted.components, lastTarget(mounted.menu), 'stage')
   await mounted.harness.flush()
-  assert.equal(mounted.calls.filter((call) => call.op === 'commit-details').length, 1)
+  const graphRow = graphRows(mounted.harness)[0]
+  assert.ok(graphRow)
+  mounted.harness.contextmenu(graphRow, { clientX: 1, clientY: 2 })
+  const target = lastTarget(mounted.menu)
+  assert.equal(target.value.busy, true)
+  const actions = menuActions(mounted.components, target)
+  assert.equal(actions[0]?.id, menuActionId('view-details'))
+  assert.notEqual(actions[0]?.disabled, true)
+  assert.equal(
+    actions.find((action) => action.id === menuActionId('checkout-detached'))?.disabled,
+    true,
+  )
+  await runMenuAction(mounted.components, target, 'view-details')
+  await mounted.harness.flush()
   assert.match(mounted.harness.text(), /commitDetails\.files/)
+  release()
+  await mounted.harness.flush()
   await mounted.harness.dispose()
 })
 
-test('a commit without file changes says so', async () => {
+test('a stale View Details reports the target instead of opening', async () => {
+  const mounted = await mountGit()
+  const graphRow = graphRows(mounted.harness)[0]
+  assert.ok(graphRow)
+  mounted.harness.contextmenu(graphRow, { clientX: 1, clientY: 2 })
+  const target = lastTarget(mounted.menu)
+  const stale = { ...target, value: { ...target.value, oid: 'c'.repeat(40) } }
+  await runMenuAction(mounted.components, stale, 'view-details')
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'commit-details').length, 0)
+  assert.doesNotMatch(mounted.harness.text(), /commitDetails\.files/)
+  assert.deepEqual(mounted.components.notifications.pop(), { text: 'menu.stale', success: false })
+  await mounted.harness.dispose()
+})
+
+test('clicking a commit expands its files inline and a file opens the commit diff', async () => {
+  const mounted = await mountGit()
+  const graphRow = graphRows(mounted.harness)[0]
+  assert.ok(graphRow, 'no graph row rendered')
+  assert.equal(graphRow.props['aria-expanded'], false)
+  mounted.harness.click(graphRow)
+  await mounted.harness.flush()
+
+  assert.equal(mounted.calls.find((call) => call.op === 'commit-details')?.oid, 'a'.repeat(40))
+  const text = mounted.harness.text()
+  assert.doesNotMatch(text, /commitDetails\.files/, 'the details view does not open')
+  assert.ok(
+    mounted.harness.findAll((element) => element.props.role === 'separator').length > 0,
+    'the split stays in place',
+  )
+  assert.equal(mounted.harness.findAll((element) => element.type === 'textarea').length, 1)
+  assert.equal(graphRows(mounted.harness)[0]?.props['aria-expanded'], true)
+  const rows = changeRows(mounted.harness)
+  assert.deepEqual(
+    rows.map((row) => row.props.title),
+    ['docs/gone.md', 'src/added.js', 'src/app.js', 'src/old.js → src/renamed.js'],
+    'the changed files follow the commit row in path order',
+  )
+  const app = rows[2]
+  assert.ok(app)
+  assert.match(elementText(app), /app\.js/)
+  assert.match(elementText(app), /src/)
+  assert.match(elementText(app), /M/)
+  assert.equal(
+    collectElements(app, (element) =>
+      String(element.props?.className ?? '').includes('dshgg-graphChangeIcon'),
+    ).length,
+    1,
+    'every file row carries its file icon',
+  )
+  const statuses = collectElements(app, (element) =>
+    String(element.props?.className ?? '').includes('dshgg-graphChangeStatus'),
+  )
+  assert.equal(statuses[0]?.props['data-status'], 'M')
+
+  // Rows render in document order: the first commit, its files, then the next commit.
+  const order = mounted.harness
+    .findAll((element) => {
+      const name = String(element.props?.className ?? '')
+      return name
+        .split(' ')
+        .some((token) => ['dshgg-graphRow', 'dshgg-graphChange'].includes(token))
+    })
+    .map((element) =>
+      String(element.props.className).includes('dshgg-graphRow') ? 'commit' : 'file',
+    )
+  assert.deepEqual(order, ['commit', 'file', 'file', 'file', 'file', 'commit'])
+
+  mounted.harness.click(app)
+  const opened = mounted.openedTabs.at(-1)
+  assert.ok(opened)
+  assert.equal(opened.kind, 'git-diff')
+  assert.equal(opened.options.params.path, 'src/app.js')
+  assert.equal(opened.options.params.commit, 'a'.repeat(40))
+  assert.equal(opened.options.params.shortOid, 'aaaaaaa')
+  assert.equal(opened.options.params.status, 'M')
+
+  const renamed = changeRows(mounted.harness)[3]
+  assert.ok(renamed)
+  mounted.harness.keydown(renamed, { key: 'Enter' })
+  assert.equal(mounted.openedTabs.at(-1)?.options.params.origPath, 'src/old.js')
+
+  mounted.harness.click(graphRows(mounted.harness)[0])
+  await mounted.harness.flush()
+  assert.equal(changeRows(mounted.harness).length, 0, 'activating again collapses the list')
+  assert.equal(graphRows(mounted.harness)[0]?.props['aria-expanded'], false)
+  assert.equal(
+    mounted.calls.filter((call) => call.op === 'commit-details').length,
+    1,
+    'collapsing reads nothing',
+  )
+  await mounted.harness.dispose()
+})
+
+test('the line layer runs the expanded commit lanes through its file rows', async () => {
+  const mounted = await mountGit()
+  const layer = (): TestElement => {
+    const [element] = mounted.harness.findAll(
+      (candidate) => candidate.props?.className === 'dshgg-graphLayer',
+    )
+    assert.ok(element, 'no line layer rendered')
+    return element
+  }
+  assert.equal(layer().props.height, 44)
+  mounted.harness.click(graphRows(mounted.harness)[0])
+  await mounted.harness.flush()
+  assert.equal(layer().props.height, 44 + 4 * 22, 'every file row adds one row height')
+  const wide = collectElements(layer(), (element) => element.props?.['data-width'] === '3')
+  assert.equal(wide.length, 1, 'the node lane is drawn wider through the file rows')
+  assert.match(String(wide[0]?.props.d), /^M 11 22 V 44 M 11 44 V 66/)
+  const lanes = collectElements(changeRows(mounted.harness)[0] as TestElement, (element) =>
+    String(element.props?.className ?? '').includes('dshgg-graphChangeLanes'),
+  )
+  assert.equal(lanes[0]?.props.style?.width, '22px', 'one lane leaves the commit')
+  await mounted.harness.dispose()
+})
+
+test('several commits stay expanded and the keyboard toggles a row', async () => {
+  const mounted = await mountGit()
+  const [first] = graphRows(mounted.harness)
+  assert.ok(first)
+  mounted.harness.keydown(first, { key: 'Enter' })
+  await mounted.harness.flush()
+  assert.equal(changeRows(mounted.harness).length, 4)
+  const second = graphRows(mounted.harness)[1]
+  assert.ok(second)
+  mounted.harness.keydown(second, { key: ' ' })
+  await mounted.harness.flush()
+  assert.equal(changeRows(mounted.harness).length, 8, 'both commits list their files')
+  assert.deepEqual(
+    mounted.calls.filter((call) => call.op === 'commit-details').map((call) => call.oid),
+    ['a'.repeat(40), 'b'.repeat(40)],
+  )
+  mounted.harness.keydown(graphRows(mounted.harness)[0] as TestElement, { key: 'Enter' })
+  await mounted.harness.flush()
+  assert.equal(changeRows(mounted.harness).length, 4, 'only the toggled commit collapses')
+  assert.doesNotMatch(mounted.harness.text(), /commitDetails\.files/)
+  await mounted.harness.dispose()
+})
+
+test('a commit without file changes says so in its expanded row and its details', async () => {
   const commitDetails = {
     commit: COMMIT_DETAILS.commit,
     files: [],
     truncated: false,
   }
   const mounted = await mountGit({ commitDetails })
-  const graphRow = mounted.harness.findAll((element) =>
-    String(element.props?.className ?? '').includes('dshgg-graphRow'),
-  )[0]
-  mounted.harness.click(graphRow)
+  mounted.harness.click(graphRows(mounted.harness)[0] as TestElement)
   await mounted.harness.flush()
+  const rows = changeRows(mounted.harness)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0]?.props['data-note'], 'empty')
+  assert.match(elementText(rows[0] as TestElement), /commitDetails\.empty/)
+
+  await openCommitDetails(mounted)
   assert.match(mounted.harness.text(), /commitDetails\.empty/)
   assert.equal(
     mounted.harness.findAll((element) =>
@@ -1968,13 +2149,34 @@ test('a commit without file changes says so', async () => {
   await mounted.harness.dispose()
 })
 
+test('a capped commit list ends with a note row', async () => {
+  const mounted = await mountGit({ commitDetails: { ...COMMIT_DETAILS, truncated: true } })
+  mounted.harness.click(graphRows(mounted.harness)[0] as TestElement)
+  await mounted.harness.flush()
+  const rows = changeRows(mounted.harness)
+  assert.equal(rows.length, 5)
+  assert.equal(rows.at(-1)?.props['data-note'], 'truncated')
+  await mounted.harness.dispose()
+})
+
+test('a failed expanded read reports the failure and retries in place', async () => {
+  const mounted = await mountGit({ failOp: 'commit-details' })
+  mounted.harness.click(graphRows(mounted.harness)[0] as TestElement)
+  await mounted.harness.flush()
+  const rows = changeRows(mounted.harness)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0]?.props['data-note'], 'failure')
+  assert.match(elementText(rows[0] as TestElement), /git said no/)
+  mounted.harness.click(buttonByText(mounted.harness, 'retry'))
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'commit-details').length, 2)
+  assert.doesNotMatch(mounted.harness.text(), /commitDetails\.files/)
+  await mounted.harness.dispose()
+})
+
 test('a failed commit read reports the failure and retries', async () => {
   const mounted = await mountGit({ failOp: 'commit-details' })
-  const graphRow = mounted.harness.findAll((element) =>
-    String(element.props?.className ?? '').includes('dshgg-graphRow'),
-  )[0]
-  mounted.harness.click(graphRow)
-  await mounted.harness.flush()
+  await openCommitDetails(mounted)
   assert.match(mounted.harness.text(), /error\.title/)
   assert.match(mounted.harness.text(), /git said no/)
   const before = mounted.calls.filter((call) => call.op === 'commit-details').length
@@ -1987,13 +2189,23 @@ test('a failed commit read reports the failure and retries', async () => {
   await mounted.harness.dispose()
 })
 
+test('returning from details keeps the expanded commits', async () => {
+  const mounted = await mountGit()
+  mounted.harness.click(graphRows(mounted.harness)[0] as TestElement)
+  await mounted.harness.flush()
+  assert.equal(changeRows(mounted.harness).length, 4)
+  await openCommitDetails(mounted, 1)
+  assert.equal(mounted.calls.at(-1)?.oid, 'b'.repeat(40))
+  mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
+  await mounted.harness.flush()
+  assert.equal(changeRows(mounted.harness).length, 4)
+  assert.equal(graphRows(mounted.harness)[0]?.props['aria-expanded'], true)
+  await mounted.harness.dispose()
+})
+
 test('past-commit files offer copy-only context menus', async () => {
   const mounted = await mountGit()
-  const graphRow = mounted.harness.findAll((element) =>
-    String(element.props?.className ?? '').includes('dshgg-graphRow'),
-  )[0]
-  mounted.harness.click(graphRow)
-  await mounted.harness.flush()
+  await openCommitDetails(mounted)
   const fileRows = mounted.harness.findAll(
     (element) =>
       String(element.props?.className ?? '').includes('dshgg-fileRow') &&
@@ -2001,8 +2213,7 @@ test('past-commit files offer copy-only context menus', async () => {
   )
   assert.equal(fileRows.length, 1)
   mounted.harness.contextmenu(fileRows[0], { clientX: 7, clientY: 8 })
-  assert.equal(mounted.menu.opens.length, 1, 'a past-commit file binds a menu target')
-  const open = mounted.menu.opens[0]
+  const open = mounted.menu.opens.at(-1)
   assert.ok(open, 'no past-commit menu target was bound')
   const target = open.target
   assert.equal(target.value.kind, 'commitFile')
@@ -2012,6 +2223,25 @@ test('past-commit files offer copy-only context menus', async () => {
     menuActions(mounted.components, target).map((action) => action.id),
     [menuActionId('copy-relative'), menuActionId('copy-path')],
   )
+  mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
+  await mounted.harness.flush()
+
+  mounted.harness.click(graphRows(mounted.harness)[0] as TestElement)
+  await mounted.harness.flush()
+  const inline = changeRows(mounted.harness).find((row) => row.props.title === 'src/app.js')
+  assert.ok(inline)
+  assert.equal(inline.props['aria-haspopup'], 'menu')
+  const before = mounted.calls.length
+  mounted.harness.contextmenu(inline, { clientX: 3, clientY: 4 })
+  const inlineTarget = lastTarget(mounted.menu)
+  assert.equal(inlineTarget.value.kind, 'commitFile')
+  assert.equal(inlineTarget.value.path, 'src/app.js')
+  assert.equal(inlineTarget.value.cwd, '/repo')
+  assert.deepEqual(
+    menuActions(mounted.components, inlineTarget).map((action) => action.id),
+    [menuActionId('copy-relative'), menuActionId('copy-path')],
+  )
+  assert.equal(mounted.calls.length, before, 'opening the menu calls nothing')
   await mounted.harness.dispose()
 })
 

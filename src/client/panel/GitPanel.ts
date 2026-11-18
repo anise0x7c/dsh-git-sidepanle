@@ -11,7 +11,7 @@ import { DIFF_KIND } from '../constants.ts'
 import { errorText } from '../git/format.ts'
 import { sortChangeEntries } from '../git/list.ts'
 import { AlertIcon, GitBranchIcon } from '../icons.ts'
-import type { ChangeEntry, CommitFileRow } from '../types/domain.ts'
+import type { ChangeEntry, CommitFileRow, CommitSummary } from '../types/domain.ts'
 import type {
   ContextMenusService,
   LocaleBinder,
@@ -26,6 +26,7 @@ import { Banner, EmptyState } from './feedback.ts'
 import { useBranches } from './hooks/useBranches.ts'
 import { useChangeActions } from './hooks/useChangeActions.ts'
 import { useCommitDetails } from './hooks/useCommitDetails.ts'
+import { useCommitExpansion } from './hooks/useCommitExpansion.ts'
 import { useCommitMenuActions } from './hooks/useCommitMenuActions.ts'
 import { useHistory } from './hooks/useHistory.ts'
 import { useLiveUpdates } from './hooks/useLiveUpdates.ts'
@@ -200,6 +201,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     rawRequestCommit()
   }
   const commitState = useCommitDetails({ call, refs })
+  const expansion = useCommitExpansion({ call, refs })
   const selectedCommit = commitState.selected
   const commitRows = useMemo<CommitFileRow[]>(
     () =>
@@ -226,23 +228,27 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     [tab.actions, repoRoot],
   )
 
-  const openCommitDiff = useCallback(
-    (entry: CommitFileRow): void => {
-      if (selectedCommit === null) return
+  const openFileAtCommit = useCallback(
+    (commit: Pick<CommitSummary, 'oid' | 'shortOid'>, entry: CommitFileRow): void => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
           path: entry.path,
-          commit: selectedCommit.oid,
-          shortOid: selectedCommit.shortOid,
+          commit: commit.oid,
+          shortOid: commit.shortOid,
           status: entry.letter,
           origPath: entry.origPath,
           cwd: repoRoot ?? undefined,
         },
       })
     },
-    [tab.actions, repoRoot, selectedCommit],
+    [tab.actions, repoRoot],
   )
-
+  const openCommitDiff = useCallback(
+    (entry: CommitFileRow): void => {
+      if (selectedCommit !== null) openFileAtCommit(selectedCommit, entry)
+    },
+    [openFileAtCommit, selectedCommit],
+  )
   // The details view opens from the commit row's menu; the command names the
   // commit by id, so it resolves against the rows the graph currently lists.
   const viewCommit = (oid: string): boolean => {
@@ -293,6 +299,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     trigger: menuTrigger,
     sectionTarget: targets.sectionTarget,
     commitTarget: targets.commitTarget,
+    fileTarget: (path: string) => targets.rowTarget('commitFile', { section: 'commit', path }),
     onInvoke: commitMenuActions.rememberTrigger,
   }
   // The command bus subscription mounts before the handlers exist, so the
@@ -441,7 +448,10 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
               void history.loadMore()
             },
             open: openSections.graph === true,
-            onSelect: commitState.selectCommit,
+            onActivate: expansion.toggleCommit,
+            expanded: expansion.expanded,
+            onOpenChange: openFileAtCommit,
+            onRetryChanges: expansion.retryCommit,
             onToggle: () => toggleSection('graph'),
             onRetry: () => {
               void reloadHistory()
