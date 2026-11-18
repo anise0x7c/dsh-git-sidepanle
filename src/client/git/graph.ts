@@ -520,8 +520,8 @@ const NODE_SHAPES: Record<
  * be built by calling this once per row with the row's offset.
  * @param row - laid-out row.
  * @param offset - distance from the top of the graph, in pixels, added to every y.
- * @param expanded - whether the row's changes are listed below it; the row then
- *   carries its node's lane at the wide stroke into those rows.
+ * @param expanded - whether the row's changes are listed below it; the lane
+ *   from its node down into those rows is then drawn at the wide stroke.
  * @returns geometry for the row.
  */
 export function graphRowGeometry(row: GraphRow, offset = 0, expanded = false): GraphRowGeometry {
@@ -594,20 +594,16 @@ export function graphRowGeometry(row: GraphRow, offset = 0, expanded = false): G
 
   const inputIndex = input.findIndex((lane) => lane.id === row.oid)
   const incoming = input[inputIndex]
-  /** The node's own lane; it joins the wide line of listed changes from above. */
-  const nodeLane = (from: number, to: number, color: GraphPath['color']): GraphPath =>
-    expanded
-      ? {
-          d: verticalLine(laneX(circleIndex), y(from), y(to)),
-          color,
-          width: HIGHLIGHT_STROKE_WIDTH,
-        }
-      : { d: verticalLine(laneX(circleIndex), y(from), y(to)), color }
   if (incoming !== undefined) {
-    paths.push(nodeLane(0, H / 2, incoming.color))
+    // The line arriving from the commit above stays one pixel wide; the node
+    // below it is what widens, so the wide line begins at the node itself.
+    paths.push({ d: verticalLine(laneX(circleIndex), y(0), y(H / 2)), color: incoming.color })
   }
   if (parents.length > 0) {
-    paths.push(nodeLane(H / 2, H, row.color))
+    const d = verticalLine(laneX(circleIndex), y(H / 2), y(H))
+    paths.push(
+      expanded ? { d, color: row.color, width: HIGHLIGHT_STROKE_WIDTH } : { d, color: row.color },
+    )
   }
 
   const shape: GraphNodeShape = row.kind === 'HEAD' ? 'head' : parents.length > 1 ? 'merge' : 'node'

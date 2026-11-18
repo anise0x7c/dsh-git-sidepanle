@@ -9,7 +9,7 @@ is the `engines.dsh` range in `package.json`.
   inline below it, as VS Code's Source Control Graph does: 22px file rows with
   an icon, the name, the dimmed directory and the status letter, the commit's
   outgoing lanes running through them (its own lane three pixels wide from the
-  commit row down), several
+  commit's node down), several
   commits expandable at once, and inline loading, empty, failure/retry and
   capped-list rows.
 - Files listed under an expanded commit now carry the Web application's

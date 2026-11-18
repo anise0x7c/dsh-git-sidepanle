@@ -707,7 +707,7 @@ describe('graphLayer', () => {
     )
   })
 
-  test("widens the expanded commit row's own lane above and below its node", () => {
+  test("widens the expanded commit row's lane below its node only", () => {
     const rows = computeGraph([commit('c3', ['c2']), commit('c2', ['c1']), commit('c1')])
     const row = rows[1]
     assert.ok(row)
@@ -718,10 +718,10 @@ describe('graphLayer', () => {
     assert.deepEqual(
       graphRowGeometry(row, 22, true).paths,
       [
-        { d: 'M 11 22 V 33', color: 'lane1', width: HIGHLIGHT_STROKE_WIDTH },
+        { d: 'M 11 22 V 33', color: 'lane1' },
         { d: 'M 11 33 V 44', color: 'lane1', width: HIGHLIGHT_STROKE_WIDTH },
       ],
-      'the wide line runs from the row top edge through the node position',
+      'the wide line starts at the node and runs into the listed rows; the segment arriving from the commit above stays one pixel wide',
     )
   })
 

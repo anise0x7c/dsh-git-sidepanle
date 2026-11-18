@@ -3141,16 +3141,14 @@ function graphRowGeometry(row, offset = 0, expanded = false) {
   }
   const inputIndex = input.findIndex((lane) => lane.id === row.oid);
   const incoming = input[inputIndex];
-  const nodeLane = (from, to, color) => expanded ? {
-    d: verticalLine(laneX(circleIndex), y(from), y(to)),
-    color,
-    width: HIGHLIGHT_STROKE_WIDTH
-  } : { d: verticalLine(laneX(circleIndex), y(from), y(to)), color };
   if (incoming !== void 0) {
-    paths.push(nodeLane(0, H / 2, incoming.color));
+    paths.push({ d: verticalLine(laneX(circleIndex), y(0), y(H / 2)), color: incoming.color });
   }
   if (parents.length > 0) {
-    paths.push(nodeLane(H / 2, H, row.color));
+    const d = verticalLine(laneX(circleIndex), y(H / 2), y(H));
+    paths.push(
+      expanded ? { d, color: row.color, width: HIGHLIGHT_STROKE_WIDTH } : { d, color: row.color }
+    );
   }
   const shape = row.kind === "HEAD" ? "head" : parents.length > 1 ? "merge" : "node";
   const shapeSpec = NODE_SHAPES[shape];
