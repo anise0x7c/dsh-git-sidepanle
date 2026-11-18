@@ -85,8 +85,9 @@
   text-overflow: ellipsis;
 }
 
-/* The dimmed parent directory trails the file name: it disambiguates equally
-   named files without turning the flat list back into a hierarchy. */
+/* The dimmed parent directory trails the file name in the flat lists: it
+   disambiguates equally named files without turning those lists into a
+   hierarchy. The commit-details tree omits it in favour of folder rows. */
 .dshgg-fileDir {
   flex: 1 1 0;
   min-width: 0;
@@ -100,6 +101,40 @@
 .dshgg-fileName[data-obsolete="true"] {
   color: var(--dsw-alias-label-secondary);
   text-decoration: line-through;
+}
+
+/* Commit-details folder tree: a collapsed chain is one non-interactive label.
+ * The inline left padding adds the nesting depth while the right padding stays
+ * compact. */
+.dshgg-folderRow {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-md);
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  cursor: default;
+}
+
+.dshgg-folderIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dshgg-folderName {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .dshgg-fileArrow {

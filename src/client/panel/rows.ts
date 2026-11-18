@@ -1,13 +1,14 @@
 /**
- * One changed-file row and the flat-list renderer shared by the change groups
- * and the commit-details view.
+ * One changed-file row plus the flat-list and tree renderers shared by the
+ * change groups and the commit-details view.
  */
 
 import type React from 'react'
 import { createElement } from 'react'
 import { splitPath, statusKey } from '../git/format.ts'
+import type { FileTreeFolderRow, FileTreeRow } from '../git/tree.ts'
 import { HostFileIcon } from '../host-file-icon.ts'
-import { MinusIcon, PlusIcon, UndoIcon } from '../icons.ts'
+import { FolderIcon, MinusIcon, PlusIcon, UndoIcon } from '../icons.ts'
 import type { MenuTarget, MenuTriggerFactory } from '../menu/trigger.ts'
 import type { LocaleBinder } from '../types/dsh.ts'
 import { IconButton } from './controls.ts'
@@ -57,12 +58,17 @@ export interface FileRowProps<Entry extends FileRowEntry = FileRowEntry> {
   readonly menuTrigger?: MenuTriggerFactory | null
   /** Captured menu target for this row. */
   readonly menuTarget?: MenuTarget
+  /** Rendered nesting level; omitted for flat lists. */
+  readonly depth?: number
+  /** Whether to show the trailing dimmed directory; defaults to true. */
+  readonly showDirectory?: boolean
 }
 
 /**
  * Render the file name with its parent directory on one line: the name keeps
  * the primary weight, and the dimmed directory keeps two equally named files
- * distinguishable without reintroducing folder rows. The full path stays in
+ * distinguishable in a flat list. The commit-details tree hides that directory
+ * because its folder rows already carry the structure. The full path stays in
  * the row tooltip and in its accessible label.
  * @param props - file-row props.
  * @returns the row element.
@@ -154,6 +160,7 @@ export function FileRow<Entry extends FileRowEntry>(
       title,
       onClick: () => props.onOpen(entry),
       ...rowProps,
+      ...(props.depth === undefined ? {} : { style: { paddingLeft: `${6 + props.depth * 14}px` } }),
     },
     h('span', { className: 'dshgg-rowIcon' }, h(HostFileIcon, { path: entry.path, size: 16 })),
     h('span', { className: 'dshgg-fileName' }, name),
@@ -164,7 +171,9 @@ export function FileRow<Entry extends FileRowEntry>(
           { className: 'dshgg-fileArrow', title: entry.origPath },
           `\u2190 ${splitPath(entry.origPath).name}`,
         ),
-    dir === '' ? null : h('span', { className: 'dshgg-fileDir', title: entry.path }, dir),
+    dir === '' || props.showDirectory === false
+      ? null
+      : h('span', { className: 'dshgg-fileDir', title: entry.path }, dir),
     h('span', { className: 'dshgg-fileActions' }, actionButtons),
     h('span', { className: 'dshgg-status', 'data-status': letter }, letter),
   )
@@ -193,6 +202,36 @@ export interface FileRowsContext<Entry extends FileRowEntry> {
 }
 
 /**
+ * Build one file-row element, optionally indented for the folder tree.
+ * @param entry - row data.
+ * @param context - row wiring.
+ * @param treeDepth - nesting level for tree rows; omitted for flat lists.
+ * @returns the file-row element.
+ */
+function fileRowElement<Entry extends FileRowEntry>(
+  entry: Entry,
+  context: FileRowsContext<Entry>,
+  treeDepth?: number,
+): React.ReactElement {
+  const target = context.menuTarget === undefined ? undefined : context.menuTarget(entry)
+  return h(FileRow<Entry>, {
+    key: `file:${entry.kind}:${entry.path}:${entry.x}:${entry.y}:${entry.letter ?? ''}`,
+    entry,
+    letter: entry.letter ?? '',
+    t: context.t,
+    busy: context.busy,
+    mode: context.mode,
+    onOpen: context.onOpen,
+    onStage: context.onStage,
+    onUnstage: context.onUnstage,
+    onDiscard: context.onDiscard,
+    menuTrigger: context.menuTrigger,
+    ...(treeDepth === undefined ? {} : { depth: treeDepth, showDirectory: false }),
+    ...(target === undefined ? {} : { menuTarget: target }),
+  })
+}
+
+/**
  * Render one flat list of changed-file rows.
  * @param entries - rows in display order, carrying the display `letter` where one applies.
  * @param context - row wiring.
@@ -202,21 +241,41 @@ export function renderFileRows<Entry extends FileRowEntry>(
   entries: readonly Entry[],
   context: FileRowsContext<Entry>,
 ): React.ReactElement[] {
-  return entries.map((entry) => {
-    const target = context.menuTarget === undefined ? undefined : context.menuTarget(entry)
-    return h(FileRow<Entry>, {
-      key: `file:${entry.kind}:${entry.path}:${entry.x}:${entry.y}:${entry.letter ?? ''}`,
-      entry,
-      letter: entry.letter ?? '',
-      t: context.t,
-      busy: context.busy,
-      mode: context.mode,
-      onOpen: context.onOpen,
-      onStage: context.onStage,
-      onUnstage: context.onUnstage,
-      onDiscard: context.onDiscard,
-      menuTrigger: context.menuTrigger,
-      ...(target === undefined ? {} : { menuTarget: target }),
-    })
-  })
+  return entries.map((entry) => fileRowElement(entry, context))
+}
+
+/**
+ * Render one non-interactive folder row of the commit-details tree.
+ * @param props - folder row data.
+ * @returns the folder row element.
+ */
+export function FileFolderRow(props: { readonly folder: FileTreeFolderRow }): React.ReactElement {
+  const folder = props.folder
+  return h(
+    'div',
+    {
+      className: 'dshgg-folderRow',
+      title: folder.path,
+      style: { paddingLeft: `${6 + folder.depth * 14}px` },
+    },
+    h('span', { className: 'dshgg-folderIcon' }, h(FolderIcon, { size: 14 })),
+    h('span', { className: 'dshgg-folderName' }, folder.label),
+  )
+}
+
+/**
+ * Render the commit-details folder tree.
+ * @param rows - tree rows in display order.
+ * @param context - row wiring shared with the flat lists.
+ * @returns one folder or file row element per row.
+ */
+export function renderFileTree<Entry extends FileRowEntry>(
+  rows: readonly FileTreeRow<Entry>[],
+  context: FileRowsContext<Entry>,
+): React.ReactElement[] {
+  return rows.map((row) =>
+    row.type === 'folder'
+      ? h(FileFolderRow, { key: `folder:${row.path}`, folder: row })
+      : fileRowElement(row.entry, context, row.depth),
+  )
 }

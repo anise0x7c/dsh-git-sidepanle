@@ -312,6 +312,16 @@ function FileIcon(props) {
     h("path", { key: "b", d: "M9 1.8v3h3" })
   ]);
 }
+function FolderIcon(props) {
+  const size = props?.size ?? 14;
+  return svgIcon(
+    size,
+    h("path", {
+      d: "M2 3.5h4.1l1.5 1.7H14v7.3H2z"
+    }),
+    { className: props?.className }
+  );
+}
 function AlertIcon(props) {
   const size = props?.size ?? 16;
   return svgIcon(size, [
@@ -2449,7 +2459,8 @@ function FileRow(props) {
       "aria-label": `${props.t(statusKey(letter))} ${entry.path}`,
       title,
       onClick: () => props.onOpen(entry),
-      ...rowProps
+      ...rowProps,
+      ...props.depth === void 0 ? {} : { style: { paddingLeft: `${6 + props.depth * 14}px` } }
     },
     h9("span", { className: "dshgg-rowIcon" }, h9(HostFileIcon, { path: entry.path, size: 16 })),
     h9("span", { className: "dshgg-fileName" }, name),
@@ -2458,29 +2469,49 @@ function FileRow(props) {
       { className: "dshgg-fileArrow", title: entry.origPath },
       `← ${splitPath(entry.origPath).name}`
     ),
-    dir === "" ? null : h9("span", { className: "dshgg-fileDir", title: entry.path }, dir),
+    dir === "" || props.showDirectory === false ? null : h9("span", { className: "dshgg-fileDir", title: entry.path }, dir),
     h9("span", { className: "dshgg-fileActions" }, actionButtons),
     h9("span", { className: "dshgg-status", "data-status": letter }, letter)
   );
 }
-function renderFileRows(entries, context) {
-  return entries.map((entry) => {
-    const target = context.menuTarget === void 0 ? void 0 : context.menuTarget(entry);
-    return h9(FileRow, {
-      key: `file:${entry.kind}:${entry.path}:${entry.x}:${entry.y}:${entry.letter ?? ""}`,
-      entry,
-      letter: entry.letter ?? "",
-      t: context.t,
-      busy: context.busy,
-      mode: context.mode,
-      onOpen: context.onOpen,
-      onStage: context.onStage,
-      onUnstage: context.onUnstage,
-      onDiscard: context.onDiscard,
-      menuTrigger: context.menuTrigger,
-      ...target === void 0 ? {} : { menuTarget: target }
-    });
+function fileRowElement(entry, context, treeDepth) {
+  const target = context.menuTarget === void 0 ? void 0 : context.menuTarget(entry);
+  return h9(FileRow, {
+    key: `file:${entry.kind}:${entry.path}:${entry.x}:${entry.y}:${entry.letter ?? ""}`,
+    entry,
+    letter: entry.letter ?? "",
+    t: context.t,
+    busy: context.busy,
+    mode: context.mode,
+    onOpen: context.onOpen,
+    onStage: context.onStage,
+    onUnstage: context.onUnstage,
+    onDiscard: context.onDiscard,
+    menuTrigger: context.menuTrigger,
+    ...treeDepth === void 0 ? {} : { depth: treeDepth, showDirectory: false },
+    ...target === void 0 ? {} : { menuTarget: target }
   });
+}
+function renderFileRows(entries, context) {
+  return entries.map((entry) => fileRowElement(entry, context));
+}
+function FileFolderRow(props) {
+  const folder = props.folder;
+  return h9(
+    "div",
+    {
+      className: "dshgg-folderRow",
+      title: folder.path,
+      style: { paddingLeft: `${6 + folder.depth * 14}px` }
+    },
+    h9("span", { className: "dshgg-folderIcon" }, h9(FolderIcon, { size: 14 })),
+    h9("span", { className: "dshgg-folderName" }, folder.label)
+  );
+}
+function renderFileTree(rows, context) {
+  return rows.map(
+    (row) => row.type === "folder" ? h9(FileFolderRow, { key: `folder:${row.path}`, folder: row }) : fileRowElement(row.entry, context, row.depth)
+  );
 }
 
 // src/client/panel/Section.ts
@@ -2736,6 +2767,77 @@ function CommitBox(props) {
 
 // src/client/panel/views/CommitDetails.ts
 var import_react25 = require("react");
+
+// src/client/git/tree.ts
+var NAME_ORDER = { numeric: true, sensitivity: "base" };
+function pathSegments(path) {
+  return path.split("/").filter((segment) => segment !== "");
+}
+function compareNames(a, b) {
+  return a.localeCompare(b, void 0, NAME_ORDER);
+}
+function fileName(path) {
+  const segments = pathSegments(path);
+  return segments[segments.length - 1] ?? path;
+}
+function createRoot() {
+  return { name: "", path: "", folders: /* @__PURE__ */ new Map(), files: [] };
+}
+function insertEntry(root, entry) {
+  const segments = pathSegments(entry.path);
+  if (segments.length === 0) return;
+  let parent = root;
+  for (const name of segments.slice(0, -1)) {
+    let child = parent.folders.get(name);
+    if (child === void 0) {
+      child = {
+        name,
+        path: parent.path === "" ? name : `${parent.path}/${name}`,
+        folders: /* @__PURE__ */ new Map(),
+        files: []
+      };
+      parent.folders.set(name, child);
+    }
+    parent = child;
+  }
+  parent.files.push(entry);
+}
+function compareFolders(a, b) {
+  const byName = compareNames(a.name, b.name);
+  if (byName !== 0) return byName;
+  return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+}
+function compareFiles(a, b) {
+  const byName = compareNames(fileName(a.path), fileName(b.path));
+  if (byName !== 0) return byName;
+  return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+}
+function appendFolderRows(node, depth, rows) {
+  const folders = [...node.folders.values()].sort(compareFolders);
+  for (const starting of folders) {
+    let deepest = starting;
+    let label = starting.name;
+    while (deepest.files.length === 0 && deepest.folders.size === 1) {
+      const child = deepest.folders.values().next().value;
+      if (child === void 0) break;
+      deepest = child;
+      label += `/${child.name}`;
+    }
+    rows.push({ type: "folder", path: deepest.path, label, depth });
+    appendFolderRows(deepest, depth + 1, rows);
+  }
+  const files = [...node.files].sort(compareFiles);
+  for (const entry of files) rows.push({ type: "file", entry, depth });
+}
+function buildFileTree(entries) {
+  const root = createRoot();
+  for (const entry of entries) insertEntry(root, entry);
+  const rows = [];
+  appendFolderRows(root, 0, rows);
+  return rows;
+}
+
+// src/client/panel/views/CommitDetails.ts
 var h13 = import_react25.createElement;
 function CommitDetails(props) {
   const t = props.t;
@@ -2764,7 +2866,7 @@ function CommitDetails(props) {
   } else if (files.length === 0) {
     filesBody = h13("div", { key: "empty", className: "dshgg-commitNote" }, t("commitDetails.empty"));
   } else {
-    filesBody = renderFileRows(files, {
+    filesBody = renderFileTree(buildFileTree(files), {
       t,
       busy: false,
       mode: "commit",
@@ -4528,8 +4630,9 @@ var rows_default = `/* ---------------------------------------------------------
   text-overflow: ellipsis;
 }
 
-/* The dimmed parent directory trails the file name: it disambiguates equally
-   named files without turning the flat list back into a hierarchy. */
+/* The dimmed parent directory trails the file name in the flat lists: it
+   disambiguates equally named files without turning those lists into a
+   hierarchy. The commit-details tree omits it in favour of folder rows. */
 .dshgg-fileDir {
   flex: 1 1 0;
   min-width: 0;
@@ -4543,6 +4646,40 @@ var rows_default = `/* ---------------------------------------------------------
 .dshgg-fileName[data-obsolete="true"] {
   color: var(--dsw-alias-label-secondary);
   text-decoration: line-through;
+}
+
+/* Commit-details folder tree: a collapsed chain is one non-interactive label.
+ * The inline left padding adds the nesting depth while the right padding stays
+ * compact. */
+.dshgg-folderRow {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-md);
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  cursor: default;
+}
+
+.dshgg-folderIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dshgg-folderName {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .dshgg-fileArrow {

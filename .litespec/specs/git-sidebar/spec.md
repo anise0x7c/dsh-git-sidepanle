@@ -414,19 +414,28 @@ through its inline controls.
 
 The panel SHALL show a commit's changed files, that commit's metadata, and a
 way back to the change list when the user chooses the View Details action from
-the commit row's context menu. The changed files SHALL be listed in a
-single-layer list with no folder rows, sorted by path; each row SHALL show the
-file's repository-relative path with the Web application's own file-type icon
-for that path before the file name, drawn as the application's workspace
-explorer draws it, and the status letter identifying the file's change at the
-row's end in that status's color. When the application provides no such icon
-set, the row SHALL show the plugin's plain document icon instead. A renamed
-file SHALL show its original path. The metadata SHALL identify the commit by
-its short identifier and show its subject, author, relative time, and message
-body when present. Activating a changed file SHALL open that file's diff for
-the commit. A commit that changed no files SHALL be presented as such rather
-than as an empty list, a failed read SHALL be reported with a retry path, and
-returning from the details view SHALL restore the change list and graph
+the commit row's context menu. The changed files SHALL be grouped into a folder
+tree: each folder SHALL appear once as a row above the files and folders it
+contains, and each nested level SHALL be indented one step further than its
+parent. A folder whose subtree is a single unbranched chain of folders SHALL be
+shown as one row joining those folder names with `/` (for example `aa/bb/cc`),
+so the chain costs one indentation level instead of one per folder; a file in a
+folder or more than one child SHALL end the collapse there. Within a folder,
+subfolders SHALL precede files, and both SHALL be ordered by name
+case-insensitively with numeric runs compared as numbers. Folder rows SHALL be
+labels rather than actions: they SHALL NOT open a diff, open a menu, or take
+keyboard focus. Each file row SHALL show the file's name with the Web
+application's own file-type icon for its repository-relative path before the
+name, drawn as the application's workspace explorer draws it, and the status
+letter identifying the file's change at the row's end in that status's color;
+the full path SHALL remain in the row tooltip. When the application provides no
+such icon set, the file row SHALL show the plugin's plain document icon instead.
+A renamed file SHALL show its original path. The metadata SHALL identify the
+commit by its short identifier and show its subject, author, relative time, and
+message body when present. Activating a changed file SHALL open that file's
+diff for the commit. A commit that changed no files SHALL be presented as such
+rather than as an empty list, a failed read SHALL be reported with a retry path,
+and returning from the details view SHALL restore the change list and graph
 without changing the repository. The details view SHALL open as a card above
 the panel's content, with its own separating border and a translucent,
 backdrop-blurred theme surface with a readable solid fallback where filtering
@@ -446,8 +455,38 @@ without moving.
 
 - **WHEN** the user chooses View Details from a commit row's context menu
 - **THEN** the panel shows that commit's short identifier, subject, author,
-  relative time and changed files with their status letters and paths, as a
-  card above the change list and graph, which stay mounted beneath it
+  relative time and changed files as a folder tree with folder rows and file
+  rows carrying their status letters and paths, as a card above the change list
+  and graph, which stay mounted beneath it
+
+#### Scenario: Changed files form a folder tree
+
+- **GIVEN** a commit changed several files below a shared directory
+- **WHEN** the user opens that commit's details
+- **THEN** each folder appears once above its contents, the files inside are
+  one indentation level below that folder, more deeply nested contents are
+  indented further, and folder rows are labels rather than actions
+
+#### Scenario: Unbranched folder chains collapse into one row
+
+- **GIVEN** a commit changed a file at a deeply nested path whose folders form a
+  single unbranched chain
+- **WHEN** the user opens that commit's details
+- **THEN** that chain appears as one folder row joining its folder names with
+  `/`, the file sits one indentation level below it, and the chain costs one
+  level of indentation rather than one per folder
+
+#### Scenario: A branch ends the folder collapse
+
+- **GIVEN** a commit changed files in two sibling folders of the same parent
+- **WHEN** the user opens that commit's details
+- **THEN** the shared parent appears as its own folder row and each sibling
+  folder is a separate row one indentation level below it
+
+#### Scenario: Folder rows are not actions
+
+- **WHEN** the user points at or activates a folder row in the details tree
+- **THEN** no diff opens and no menu appears
 
 #### Scenario: The card matches the operation prompt's material
 
@@ -503,9 +542,9 @@ without moving.
 
 - **GIVEN** a commit changed a JavaScript file, a Markdown file and an image
 - **WHEN** the user opens that commit's details
-- **THEN** each file row shows the application's glyph for its path before the
-  file name, while its status letter, name, dimmed directory and rename arrow
-  keep their places
+- **THEN** folder rows group the files and each file row shows the application's
+  glyph for its path before the file name, while its status letter, name and
+  rename arrow keep their places
 
 #### Scenario: Status letter at the row's end
 

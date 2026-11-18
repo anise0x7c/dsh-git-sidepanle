@@ -1,6 +1,6 @@
 /**
  * One commit's details inside the Git panel: a back control, the commit
- * metadata, and the flat list of files the commit changed. The view renders as
+ * metadata, and the folder tree of files the commit changed. The view renders as
  * a card above the panel's still-mounted change list and graph; the panel
  * returns here with new props for every load, so it only renders.
  */
@@ -8,6 +8,7 @@
 import type React from 'react'
 import { createElement } from 'react'
 import { errorText, formatAgo } from '../../git/format.ts'
+import { buildFileTree } from '../../git/tree.ts'
 import { ArrowLeftIcon } from '../../icons.ts'
 import type {
   MenuTarget,
@@ -20,7 +21,7 @@ import type { LocaleBinder } from '../../types/dsh.ts'
 import { IconButton } from '../controls.ts'
 import { Banner } from '../feedback.ts'
 import type { CommitSummaryPreview, LoadedCommitDetails } from '../hooks/useCommitDetails.ts'
-import { renderFileRows } from '../rows.ts'
+import { renderFileTree } from '../rows.ts'
 
 const h = createElement
 
@@ -86,7 +87,7 @@ export function CommitDetails(props: CommitDetailsProps): React.ReactElement {
   } else if (files.length === 0) {
     filesBody = h('div', { key: 'empty', className: 'dshgg-commitNote' }, t('commitDetails.empty'))
   } else {
-    filesBody = renderFileRows(files, {
+    filesBody = renderFileTree(buildFileTree(files), {
       t,
       busy: false,
       mode: 'commit',

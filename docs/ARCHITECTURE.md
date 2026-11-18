@@ -59,10 +59,10 @@ src/
     icons.ts                  SVG renderers
     host-file-icon.ts         the host's file-type glyph, resolved softly with the plugin icon as fallback
     data/caller.ts            the only fetch layer
-    git/{format,list,graph}.ts pure formatting, list ordering, VS Code graph port
+    git/{format,list,graph,tree}.ts pure formatting, list ordering, commit-file tree, VS Code graph port
     menu/                     targets, triggers, clipboard, actions, command bus
     panel/
-      controls.ts, rows.ts    controls and flat change-file rows
+      controls.ts, rows.ts    controls and rows for the flat change lists and the commit-details folder tree
       change-groups.ts        pure grouping, path ordering and display-letter rules
       Section.ts              collapsible section header
       feedback.ts             banners and empty states
@@ -97,7 +97,7 @@ test/
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, panel/menu, menu/bus, git/* }
-panel/views/* -> { panel/FloatingPanel, panel/Section, panel/BranchMenu, panel/autosize, panel/controls, panel/feedback, panel/rows, panel/split, icons, host-file-icon, menu/trigger, git/format, git/graph, type-only hooks/types }
+panel/views/* -> { panel/FloatingPanel, panel/Section, panel/BranchMenu, panel/autosize, panel/controls, panel/feedback, panel/rows, panel/split, icons, host-file-icon, menu/trigger, git/format, git/graph, git/tree, type-only hooks/types }
 pure git/menu/locale logic -> no React, no ctx
 host-file-icon -> { icons, react, one guarded host-module request }
 host: http/* -> nothing; git/paths -> errors; git/exec -> errors

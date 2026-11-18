@@ -956,6 +956,84 @@ test('commit details overlay the split and keep the chosen ratio', async () => {
   await mounted.harness.dispose()
 })
 
+test('commit details render the changed files as a collapsed folder tree', async () => {
+  const treeDetails: CommitDetails = {
+    ...COMMIT_DETAILS,
+    files: [
+      { path: 'src/app.js', letter: 'M' },
+      { path: 'src/util/deep/b.ts', letter: 'A' },
+      { path: 'docs/gone.md', letter: 'D' },
+      { path: 'top.md', letter: 'M' },
+    ],
+  }
+  const mounted = await mountGit({ commitDetails: treeDetails })
+  await openCommitDetails(mounted)
+  const card = commitCard(mounted.harness)
+  const rows = collectElements(
+    card,
+    (element) => hasClass(element, 'dshgg-folderRow') || hasClass(element, 'dshgg-fileRow'),
+  )
+  assert.deepEqual(
+    rows.map((row) =>
+      hasClass(row, 'dshgg-folderRow')
+        ? `folder:${String(row.props.title)}`
+        : `file:${String(row.props.title)}`,
+    ),
+    [
+      'folder:docs',
+      'file:docs/gone.md',
+      'folder:src',
+      'folder:src/util/deep',
+      'file:src/util/deep/b.ts',
+      'file:src/app.js',
+      'file:top.md',
+    ],
+    'folders precede files at every level and unused folder chains collapse',
+  )
+  assert.deepEqual(
+    rows.map((row) => row.props.style?.paddingLeft),
+    ['6px', '20px', '6px', '20px', '34px', '20px', '6px'],
+    'each rendered nesting step indents the row another fourteen pixels',
+  )
+  const folderRows = rows.filter((row) => hasClass(row, 'dshgg-folderRow'))
+  const fileRows = rows.filter((row) => hasClass(row, 'dshgg-fileRow'))
+  assert.equal(folderRows.length, 3, 'docs, src and the collapsed src/util/deep chain')
+  assert.equal(fileRows.length, 4, 'every changed file keeps exactly one row')
+  const chain = folderRows.find((row) => row.props.title === 'src/util/deep')
+  assert.ok(chain, 'the unbranched src/util chain renders as src/util/deep')
+  assert.equal(chain.props.style?.paddingLeft, '20px', 'the collapsed chain takes one nesting step')
+  assert.deepEqual(
+    fileRows.map((row) => row.props.title),
+    ['docs/gone.md', 'src/util/deep/b.ts', 'src/app.js', 'top.md'],
+    'file rows keep their full repository-relative path as the tooltip',
+  )
+  assert.deepEqual(
+    fileRows.map((row) => {
+      const [status] = collectElements(row, (element) => hasClass(element, 'dshgg-status'))
+      assert.ok(status, 'every file row keeps its status letter')
+      return status.props['data-status']
+    }),
+    ['D', 'A', 'M', 'M'],
+    'file rows keep the status letters their change entries carry',
+  )
+  const [count] = collectElements(card, (element) => hasClass(element, 'dshgg-sectionCount'))
+  assert.ok(count, 'the files header keeps its count')
+  assert.equal(elementText(count), '4', 'the header counts the changed files, not the tree rows')
+  const openedTabsBefore = mounted.openedTabs.length
+  const callsBefore = mounted.calls.length
+  for (const folder of folderRows) {
+    assert.equal(folder.props.role, undefined, 'folder rows are not buttons')
+    assert.equal(folder.props.tabIndex, undefined, 'folder rows take no focus')
+    // A real click on a folder row reaches no handler; if one is ever added,
+    // dispatch it so this no-effect check still means something.
+    if (typeof folder.props.onClick === 'function') mounted.harness.click(folder)
+  }
+  await mounted.harness.flush()
+  assert.equal(mounted.openedTabs.length, openedTabsBefore, 'a folder row opens no diff tab')
+  assert.equal(mounted.calls.length, callsBefore, 'a folder row requests nothing')
+  await mounted.harness.dispose()
+})
+
 test('the change lists and commit details draw the host file-type icon for every file', async () => {
   const mounted = await mountGit({
     hostModules: {
@@ -2110,11 +2188,31 @@ test('View Details shows a commit and a file opens the commit diff', async () =>
   assert.match(text, /renamed\.js/)
   assert.match(text, /old\.js/)
   assert.match(text, /gone\.md/)
-  assert.equal(
-    collectElements(card, (element) => hasClass(element, 'dshgg-folderRow')).length,
-    0,
-    'commit files are a flat list',
+  const folderRows = collectElements(card, (element) => hasClass(element, 'dshgg-folderRow'))
+  assert.deepEqual(
+    folderRows.map((row) => row.props.title),
+    ['docs', 'src'],
+    'commit files are grouped into folder rows',
   )
+  assert.deepEqual(
+    folderRows.map((row) => {
+      const [label] = collectElements(row, (element) => hasClass(element, 'dshgg-folderName'))
+      assert.ok(label, 'every folder row renders its name')
+      return elementText(label)
+    }),
+    ['docs', 'src'],
+    'each folder row shows its collapsed chain label',
+  )
+  for (const row of folderRows) {
+    assert.deepEqual(
+      row.props.style,
+      { paddingLeft: '6px' },
+      'root folder rows sit at the first nesting level',
+    )
+    assert.equal(row.props.role, undefined, 'folder rows are not buttons')
+    assert.equal(row.props.tabIndex, undefined, 'folder rows take no focus')
+    assert.equal(hasClass(row, 'dshgg-fileRow'), false, 'folder rows are not file rows')
+  }
   const commitTitles = collectElements(card, (element) => hasClass(element, 'dshgg-fileRow')).map(
     (row) => row.props.title,
   )
