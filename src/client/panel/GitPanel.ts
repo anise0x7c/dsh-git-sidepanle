@@ -6,7 +6,7 @@
  */
 
 import type React from 'react'
-import { createElement, useCallback, useMemo, useRef, useState } from 'react'
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DETAILS_MOTION_MS, DIFF_KIND, PROMPT_MOTION_MS } from '../constants.ts'
 import { errorText } from '../git/format.ts'
 import { sortChangeEntries } from '../git/list.ts'
@@ -82,6 +82,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     statusState
   const history = useHistory({ call, refs })
   const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history
+  const rootPane = useRef<HTMLDivElement | null>(null)
   const graphPane = useRef<HTMLDivElement | null>(null)
 
   // A history refresh starts a new first page and returns the pane to the top,
@@ -208,6 +209,37 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   const commitState = useCommitDetails({ call, refs })
   const expansion = useCommitExpansion({ call, refs })
   const selectedCommit = commitState.selected
+  // Escape leaves the details card like its back control. A prompt or the
+  // branch menu owns the key while it is open, and a hidden tab must not react
+  // to keys pressed in another tab.
+  useEffect(() => {
+    if (!visible || selectedCommit === null) return undefined
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (branchMenu || confirm !== null || commitMenuActions.dialog !== null) return
+      // A panel that is merely visible must not react to Escape pressed in
+      // another pane. The focused body counts as in-panel because inerting the
+      // underlay can move focus there.
+      const root = rootPane.current
+      const focus = document.activeElement ?? event.target
+      const focusIsInside =
+        focus === document.body ||
+        (root !== null && focus instanceof Element && root.contains(focus))
+      if (!focusIsInside && root !== null) return
+      event.preventDefault()
+      event.stopPropagation()
+      commitState.closeCommit()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [
+    visible,
+    selectedCommit,
+    branchMenu,
+    confirm,
+    commitMenuActions.dialog,
+    commitState.closeCommit,
+  ])
   const commitRows = useMemo<CommitFileRow[]>(
     () =>
       sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
@@ -550,7 +582,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
 
   return h(
     'div',
-    { className: 'dshgg-root', 'data-dsh-git-graph': '' },
+    { className: 'dshgg-root', 'data-dsh-git-graph': '', ref: rootPane },
     h(BranchHeader, {
       t,
       wrapRef: refs.wrap,

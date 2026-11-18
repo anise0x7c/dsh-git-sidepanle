@@ -17,7 +17,12 @@ import type {
   StatusResult,
   WatchState,
 } from '../src/shared/git.ts'
-import { createFakeContext, loadClientBundle, translate } from './support/fake-ctx.ts'
+import {
+  createFakeContext,
+  dispatchDocumentKeydown,
+  loadClientBundle,
+  translate,
+} from './support/fake-ctx.ts'
 import { createMenuMock } from './support/fake-menu.ts'
 import {
   BRANCHES,
@@ -548,6 +553,23 @@ async function finishMotion(harness: TestHarness): Promise<void> {
   await harness.flush()
   harness.runTimeouts()
   await harness.flush()
+}
+
+/** Dispatch one Escape keydown to the listeners registered on `document`. */
+function escapeKeydown(defaultPrevented = false): { prevented: boolean; stopped: boolean } {
+  const result = { prevented: false, stopped: false }
+  dispatchDocumentKeydown({
+    key: 'Escape',
+    defaultPrevented,
+    preventDefault: () => {
+      result.prevented = true
+    },
+    stopPropagation: () => {
+      result.stopped = true
+    },
+    target: {},
+  })
+  return result
 }
 
 /** Capture a fresh graph-row target through the host-shaped context menu. */
@@ -2133,6 +2155,74 @@ test('the commit details view slides in from the right edge and back out', async
   assert.equal(content().props['aria-hidden'], undefined)
   assert.equal(content().props.inert, undefined)
   assert.equal(splitCount(), 1, 'the change list remains mounted after the details view has left')
+})
+
+test('Escape closes the commit details without calling Git', async (t) => {
+  const mounted = await mountGit()
+  t.after(() => mounted.harness.dispose())
+  const wrappers = (): TestElement[] =>
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitMotion'))
+  await openCommitDetails(mounted)
+  const callCount = mounted.calls.length
+  const escapeResult = escapeKeydown()
+  await mounted.harness.flush()
+  assert.deepEqual(escapeResult, { prevented: true, stopped: true }, 'the panel owns the key')
+  const [leaving] = wrappers()
+  assert.ok(leaving)
+  assert.equal(leaving.props['data-phase'], 'leave', 'Escape uses the back-control transition')
+  assert.match(elementText(leaving), /commitDetails\.files/, 'the content leaves before removal')
+  assert.equal(mounted.calls.length, callCount, 'Escape runs no Git command')
+  await finishMotion(mounted.harness)
+  assert.equal(wrappers().length, 0, 'the card is removed after it slides away')
+  assert.match(mounted.harness.text(), /sections\.changes/, 'the split is revealed in place')
+})
+
+test('Escape leaves an owned branch menu and a consumed host key alone', async (t) => {
+  const mounted = await mountGit()
+  t.after(() => mounted.harness.dispose())
+  const wrappers = (): TestElement[] =>
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitMotion'))
+  const branchChip = (): TestElement => {
+    const [chip] = mounted.harness.findAll(
+      (element) => element.type === 'button' && hasClass(element, 'dshgg-branchChip'),
+    )
+    assert.ok(chip, 'no branch chip rendered')
+    return chip
+  }
+  await openCommitDetails(mounted)
+  mounted.harness.click(branchChip())
+  await mounted.harness.flush()
+  assert.equal(branchChip().props['aria-expanded'], true, 'the branch menu is open')
+
+  const branchEscape = escapeKeydown()
+  await mounted.harness.flush()
+  assert.equal(branchEscape.prevented, false, 'the details card does not consume this Escape')
+  assert.equal(branchChip().props['aria-expanded'], false, 'the branch menu closes instead')
+  assert.equal(wrappers().length, 1, 'the details card stays open')
+  assert.equal(wrappers()[0]?.props['data-phase'], 'enter')
+
+  const consumed = escapeKeydown(true)
+  await mounted.harness.flush()
+  assert.deepEqual(consumed, { prevented: false, stopped: false }, 'a handled Escape is ignored')
+  assert.equal(wrappers()[0]?.props['data-phase'], 'enter', 'the card is still open')
+
+  const detailsEscape = escapeKeydown()
+  await mounted.harness.flush()
+  assert.equal(detailsEscape.prevented, true)
+  assert.equal(wrappers()[0]?.props['data-phase'], 'leave', 'a later Escape closes the card')
+})
+
+test('Escape without details leaves the panel alone', async (t) => {
+  const mounted = await mountGit()
+  t.after(() => mounted.harness.dispose())
+  const escapeResult = escapeKeydown()
+  await mounted.harness.flush()
+  assert.deepEqual(escapeResult, { prevented: false, stopped: false })
+  assert.equal(
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitMotion')).length,
+    0,
+    'no details view is opened',
+  )
 })
 
 test('View Details stays available while an operation runs', async () => {

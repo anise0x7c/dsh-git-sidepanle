@@ -424,10 +424,13 @@ shadow, so the change list, graph and commit box stay mounted beneath it and
 are already in place when the card leaves. The card SHALL slide in from the
 panel's right edge when it opens and SHALL slide back out to that edge, and the
 content beneath it SHALL accept no pointer or keyboard input while the card is
-present. A View Details action for a commit that is no longer listed SHALL be
-reported as stale instead of opening an empty view. When the system asks for
-reduced motion the card SHALL appear and leave at its final position without
-moving.
+present. Pressing Escape in the Git panel while the card is open SHALL dismiss it
+through the same transition as the back control, without running Git or
+changing the repository; an open operation prompt or branch menu SHALL keep
+priority for Escape instead. A View Details action for a commit that is no longer listed
+SHALL be reported as stale instead of opening an empty view. When the system
+asks for reduced motion the card SHALL appear and leave at its final position
+without moving.
 
 #### Scenario: Open a commit's details
 
@@ -449,6 +452,25 @@ moving.
 - **WHEN** the details card is open or sliding away
 - **THEN** the change list, graph and commit box beneath it accept no pointer or
   keyboard input and are hidden from assistive technology
+
+#### Scenario: Escape closes the details
+
+- **GIVEN** a commit's details are open, the Git panel has keyboard focus, and no
+  operation prompt or branch menu is open
+- **WHEN** the user presses Escape
+- **THEN** the card slides back out to the right edge like the back control,
+  reveals the content beneath it, and no Git command runs
+
+#### Scenario: Escape keeps the surface that owns it
+
+- **GIVEN** a commit's details are open and an operation prompt or the branch menu is open
+- **WHEN** the user presses Escape
+- **THEN** that prompt or menu is dismissed and the details card stays open
+
+#### Scenario: Escape without details
+
+- **WHEN** the details view is closed and the user presses Escape in the Git panel
+- **THEN** no details view opens and existing Escape behavior elsewhere is unchanged
 
 #### Scenario: Activating the row does not open the details
 

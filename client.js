@@ -3835,6 +3835,7 @@ function GitPanel(props) {
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const history = useHistory({ call, refs });
   const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history;
+  const rootPane = (0, import_react32.useRef)(null);
   const graphPane = (0, import_react32.useRef)(null);
   const reloadHistory = (0, import_react32.useCallback)(async () => {
     await loadGraph();
@@ -3942,6 +3943,29 @@ function GitPanel(props) {
   const commitState = useCommitDetails({ call, refs });
   const expansion = useCommitExpansion({ call, refs });
   const selectedCommit = commitState.selected;
+  (0, import_react32.useEffect)(() => {
+    if (!visible || selectedCommit === null) return void 0;
+    const closeOnEscape = (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (branchMenu || confirm !== null || commitMenuActions.dialog !== null) return;
+      const root = rootPane.current;
+      const focus = document.activeElement ?? event.target;
+      const focusIsInside = focus === document.body || root !== null && focus instanceof Element && root.contains(focus);
+      if (!focusIsInside && root !== null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      commitState.closeCommit();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [
+    visible,
+    selectedCommit,
+    branchMenu,
+    confirm,
+    commitMenuActions.dialog,
+    commitState.closeCommit
+  ]);
   const commitRows = (0, import_react32.useMemo)(
     () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
       ...file,
@@ -4215,7 +4239,7 @@ function GitPanel(props) {
   const underlayProps = detailsPresence.mounted ? { "aria-hidden": "true", inert: "" } : {};
   return h20(
     "div",
-    { className: "dshgg-root", "data-dsh-git-graph": "" },
+    { className: "dshgg-root", "data-dsh-git-graph": "", ref: rootPane },
     h20(BranchHeader, {
       t,
       wrapRef: refs.wrap,

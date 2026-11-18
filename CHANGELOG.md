@@ -28,7 +28,8 @@ is the `engines.dsh` range in `package.json`.
   runs; a stale target is reported instead of opening an empty view.
 - The commit-details view now opens as a bordered, shadowed card above the
   still-mounted change list, graph and commit box, so sliding it back out
-  reveals that content instead of leaving a blank pane.
+  reveals that content instead of leaving a blank pane. Escape closes the card
+  through the same transition while no operation prompt or branch menu owns it.
 - The bottom operation prompt now rises from the pane's bottom edge when it
   opens and lowers out of view before it is removed, and the commit-details
   view slides in from the right edge and slides back out before the change
