@@ -241,6 +241,8 @@ export interface TestHarness {
   scroll(element: TestElement | undefined, metrics: TestScrollMetrics): unknown
   /** Run every pending interval callback once (one elapsed poll period). */
   runIntervals(): void
+  /** Run every pending one-shot timeout once (one elapsed exit animation). */
+  runTimeouts(): void
   dispose(): Promise<void>
   setComponent(component: TestComponent, props: TestProps): void
   hookStoreSize(): number

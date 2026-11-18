@@ -418,8 +418,12 @@ message body when present. Activating a changed file SHALL open that file's
 diff for the commit. A commit that changed no files SHALL be presented as such
 rather than as an empty list, a failed read SHALL be reported with a retry path,
 and returning from the details view SHALL restore the change list and graph
-without changing the repository. A View Details action for a commit that is no
-longer listed SHALL be reported as stale instead of opening an empty view.
+without changing the repository. The details view SHALL slide in from the
+panel's right edge when it opens and SHALL slide back out to that edge before
+the change list returns. A View Details action for a commit that is no longer
+listed SHALL be reported as stale instead of opening an empty view. When the
+system asks for reduced motion so the view SHALL appear and leave at its final
+position without moving.
 
 #### Scenario: Open a commit's details
 
@@ -444,7 +448,7 @@ longer listed SHALL be reported as stale instead of opening an empty view.
 #### Scenario: The application provides no file-type icons
 
 - **GIVEN** the application does not provide its file-type icon set
-- **WHEN** the user opens a commit's details
+- **WHEN** the user opens that commit's details
 - **THEN** every file row shows the plugin's plain document icon, the list still
   opens as usual, and its rows still open their diffs
 
@@ -470,8 +474,22 @@ longer listed SHALL be reported as stale instead of opening an empty view.
 #### Scenario: Return to the changes
 
 - **WHEN** the user activates the back control in the details view
-- **THEN** the change list and graph are shown again with the repository
-  unchanged and with the same commits expanded as before
+- **THEN** the details view travels towards the right edge and the change list
+  and graph are shown again with the repository unchanged and with the same
+  commits expanded as before
+
+#### Scenario: Details arrive from the right edge
+
+- **WHEN** the details view opens for a commit
+- **THEN** it starts out beyond the panel's right edge and moves leftwards into
+  place instead of appearing where it will stay
+
+#### Scenario: Reduced motion keeps the details still
+
+- **WHEN** the system asks for reduced motion and the user opens a commit's
+  details and then returns
+- **THEN** the details view appears and leaves at its final position without
+  moving, and the change list still returns
 
 #### Scenario: Stale View Details
 
@@ -1138,13 +1156,26 @@ file counts.
 
 ### Requirement: Floating operation panels
 
-The panel SHALL present discard confirmations, stage-all-and-commit confirmation, reference naming and branch deletion in a consistent rounded bottom-anchored floating surface within the Git panel, without changing the change-list or graph pane geometry or split ratio. The surface SHALL use the host theme's colors, typography, borders, controls and focus treatment, with translucency and backdrop blur where supported and a readable solid fallback otherwise. Only one operation prompt SHALL be visible at a time; requesting another idle prompt SHALL replace the previous one without executing it.
+The panel SHALL present discard confirmations, stage-all-and-commit
+confirmation, reference naming and branch deletion in a consistent rounded
+bottom-anchored floating surface within the Git panel, without changing the
+change-list or graph pane geometry or split ratio. The surface SHALL use the
+host theme's colors, typography, borders, controls and focus treatment, with
+translucency and backdrop blur where supported and a readable solid fallback
+otherwise. The surface SHALL rise into place from the panel's bottom edge when
+it opens and SHALL lower out of the panel before it is removed when it is
+dismissed, and it SHALL accept no input while it leaves. Only one operation
+prompt SHALL be visible at a time; requesting another idle prompt SHALL replace
+the previous one without executing it. When the system asks for reduced motion
+the surface SHALL appear and disappear at its final position without moving.
 
 #### Scenario: Confirm without resizing the lists
 
 - **GIVEN** the change list and graph are visible at a user-selected split ratio
 - **WHEN** the user opens a discard confirmation
-- **THEN** a rounded frosted card appears above the bottom of the panel while the panes and their split ratio retain their geometry
+- **THEN** a rounded frosted card rises from the pane's bottom edge and settles
+  above the bottom of the panel while the panes and their split ratio retain
+  their geometry
 
 #### Scenario: Reuse for reference forms
 
@@ -1161,6 +1192,18 @@ The panel SHALL present discard confirmations, stage-all-and-commit confirmation
 
 - **WHEN** the browser cannot filter the background behind the floating surface
 - **THEN** the surface remains readable on a solid theme-derived background
+
+#### Scenario: A dismissed prompt leaves the pane
+
+- **WHEN** the user cancels an idle prompt
+- **THEN** the card moves down out of the pane before it is removed, it accepts
+  no further input on the way out, and no Git command runs
+
+#### Scenario: Reduced motion keeps the prompt in place
+
+- **WHEN** the system asks for reduced motion and the user opens and dismisses an
+  operation prompt
+- **THEN** the card appears and disappears at its final position without moving
 
 ### Requirement: Adaptive operation-panel content
 

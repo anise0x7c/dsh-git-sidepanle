@@ -7,7 +7,7 @@
 
 import type React from 'react'
 import { createElement, useCallback, useMemo, useRef, useState } from 'react'
-import { DIFF_KIND } from '../constants.ts'
+import { DETAILS_MOTION_MS, DIFF_KIND, PROMPT_MOTION_MS } from '../constants.ts'
 import { errorText } from '../git/format.ts'
 import { sortChangeEntries } from '../git/list.ts'
 import { AlertIcon, GitBranchIcon } from '../icons.ts'
@@ -31,6 +31,7 @@ import { useCommitMenuActions } from './hooks/useCommitMenuActions.ts'
 import { useHistory } from './hooks/useHistory.ts'
 import { useLiveUpdates } from './hooks/useLiveUpdates.ts'
 import { useMenuCommands } from './hooks/useMenuCommands.ts'
+import { usePresence } from './hooks/usePresence.ts'
 import { useRepoStatus } from './hooks/useRepoStatus.ts'
 import { createMenuTargets, usePanelRefs } from './menu.ts'
 import { isNearEnd } from './scroll.ts'
@@ -98,6 +99,10 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   })
   // The split outlives the commit-details view so returning restores the ratio.
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT_RATIO)
+  // A surface that is leaving keeps rendering the element it rendered last, so
+  // its content does not blink out before its exit animation is over.
+  const lastDetails = useRef<React.ReactNode>(null)
+  const lastPrompt = useRef<React.ReactNode>(null)
   const repo = status?.repo ?? null
   // The change list uses repository-relative paths, so the directory that
   // makes them absolute is the repository root, not the Session directory.
@@ -387,7 +392,9 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     return null
   }
 
-  const commitBody =
+  // The details view slides in from the pane's right edge; the presence keeps
+  // the last rendered commit visible while the view slides back out.
+  const detailsNode =
     selectedCommit === null
       ? null
       : h(CommitDetails, {
@@ -403,8 +410,19 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           menuTrigger,
           rowTarget: targets.rowTarget,
         })
+  const detailsPresence = usePresence(detailsNode !== null, DETAILS_MOTION_MS)
+  if (detailsNode !== null) lastDetails.current = detailsNode
+  const shownDetails = detailsNode ?? (detailsPresence.mounted ? lastDetails.current : null)
+  const detailsMotion =
+    shownDetails === null
+      ? null
+      : h(
+          'div',
+          { className: 'dshgg-commitMotion', 'data-phase': detailsPresence.phase },
+          shownDetails,
+        )
 
-  const singlePane = renderState() ?? commitBody
+  const singlePane = renderState() ?? detailsMotion
   const body =
     singlePane !== null
       ? h('div', { className: 'dshgg-scroll' }, singlePane)
@@ -476,6 +494,53 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           onDismiss: () => setActionFailure(null),
         })
 
+  // The operation prompt rises from the pane's bottom edge and lowers away
+  // again before it is removed; the last rendered prompt stays on screen while
+  // it leaves. A reference form replaces an idle confirmation outright, so the
+  // new prompt enters on its own instead of crossfading with the old one.
+  const promptNode =
+    commitMenuActions.dialog !== null
+      ? h(CommitMenuDialog, {
+          key:
+            commitMenuActions.dialog.kind === 'deleteBranch'
+              ? `delete:${commitMenuActions.dialog.branch}`
+              : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
+          dialog: commitMenuActions.dialog,
+          t,
+          busy: busy !== null,
+          feedback: actionFeedback,
+          onNameChange: commitMenuActions.setName,
+          onMessageChange: commitMenuActions.setMessage,
+          onCancel: () => commitMenuActions.closeDialog(),
+          onSubmit: commitMenuActions.submitDialog,
+        })
+      : confirm !== null
+        ? h(FloatingPanel, {
+            key: confirm.kind === 'discard' ? `discard:${confirm.entry.path}` : confirm.kind,
+            title: confirmTitle(t, confirm),
+            description: confirmDescription(t, confirm),
+            cancelLabel: t('action.cancel'),
+            submitLabel: confirmActionLabel(t, confirm),
+            busy: busy !== null,
+            feedback: actionFeedback,
+            onCancel: () => requestConfirmation(null),
+            onSubmit: () => {
+              if (refs.busy.current === null) confirmAction()
+            },
+          })
+        : null
+  const promptPresence = usePresence(promptNode !== null, PROMPT_MOTION_MS)
+  if (promptNode !== null) lastPrompt.current = promptNode
+  const shownPrompt = promptNode ?? (promptPresence.mounted ? lastPrompt.current : null)
+  const promptMotion =
+    shownPrompt === null
+      ? null
+      : h(
+          'div',
+          { className: 'dshgg-promptMotion', 'data-phase': promptPresence.phase },
+          shownPrompt,
+        )
+
   return h(
     'div',
     { className: 'dshgg-root', 'data-dsh-git-graph': '' },
@@ -498,7 +563,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
       },
       onRefresh: refreshAll,
     }),
-    repo === null || selectedCommit !== null
+    repo === null || detailsMotion !== null
       ? null
       : h(CommitBox, {
           t,
@@ -521,38 +586,8 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           onDismiss: () => setLoadFailure(null),
         })
       : null,
-    commitMenuActions.dialog === null && confirm === null ? actionFeedback : null,
+    promptMotion === null ? actionFeedback : null,
     body,
-    commitMenuActions.dialog === null
-      ? null
-      : h(CommitMenuDialog, {
-          key:
-            commitMenuActions.dialog.kind === 'deleteBranch'
-              ? `delete:${commitMenuActions.dialog.branch}`
-              : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
-          dialog: commitMenuActions.dialog,
-          t,
-          busy: busy !== null,
-          feedback: actionFeedback,
-          onNameChange: commitMenuActions.setName,
-          onMessageChange: commitMenuActions.setMessage,
-          onCancel: () => commitMenuActions.closeDialog(),
-          onSubmit: commitMenuActions.submitDialog,
-        }),
-    confirm === null
-      ? null
-      : h(FloatingPanel, {
-          key: confirm.kind === 'discard' ? `discard:${confirm.entry.path}` : confirm.kind,
-          title: confirmTitle(t, confirm),
-          description: confirmDescription(t, confirm),
-          cancelLabel: t('action.cancel'),
-          submitLabel: confirmActionLabel(t, confirm),
-          busy: busy !== null,
-          feedback: actionFeedback,
-          onCancel: () => requestConfirmation(null),
-          onSubmit: () => {
-            if (refs.busy.current === null) confirmAction()
-          },
-        }),
+    promptMotion,
   )
 }

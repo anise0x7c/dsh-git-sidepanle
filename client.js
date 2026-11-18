@@ -44,6 +44,8 @@ var RPC_PATH = "api/dsh-git-graph/rpc";
 var POLL_INTERVAL_MS = 5e3;
 var LIVE_POLL_INTERVAL_MS = 700;
 var MAX_RENDERED_DIFF_LINES = 4e3;
+var PROMPT_MOTION_MS = 180;
+var DETAILS_MOTION_MS = 200;
 var MENU_TARGET = "gitGraphItem";
 var MENU_CONTRIBUTION_ID = "git-graph.actions";
 var panelSequence = 0;
@@ -1235,7 +1237,7 @@ function resolveMenuActions(value, t, notify) {
 }
 
 // src/client/panel/GitPanel.ts
-var import_react31 = require("react");
+var import_react32 = require("react");
 
 // src/client/git/list.ts
 function sortChangeEntries(entries) {
@@ -2093,17 +2095,42 @@ function dispatch(options, command) {
   }
 }
 
-// src/client/panel/hooks/useRepoStatus.ts
+// src/client/panel/hooks/usePresence.ts
 var import_react16 = require("react");
+function usePresence(open, exitMs) {
+  const [mounted, setMounted] = (0, import_react16.useState)(open);
+  const [leaving, setLeaving] = (0, import_react16.useState)(false);
+  const mountedRef = (0, import_react16.useRef)(mounted);
+  mountedRef.current = mounted;
+  (0, import_react16.useEffect)(() => {
+    if (open) {
+      setMounted(true);
+      setLeaving(false);
+      return;
+    }
+    if (!mountedRef.current) return;
+    setLeaving(true);
+    const timer = setTimeout(() => {
+      setMounted(false);
+      setLeaving(false);
+    }, exitMs);
+    return () => clearTimeout(timer);
+  }, [open, exitMs]);
+  const phase = open || !leaving ? "enter" : "leave";
+  return { mounted: open || mounted, phase };
+}
+
+// src/client/panel/hooks/useRepoStatus.ts
+var import_react17 = require("react");
 function useRepoStatus(options) {
   const { sessionId, useContextMenu, visible, refs } = options;
   const { call, menuTrigger, panelId } = usePanelMenu({ sessionId, useContextMenu });
-  const [status, setStatus] = (0, import_react16.useState)(null);
-  const [loading, setLoading] = (0, import_react16.useState)(true);
-  const [loadFailure, setLoadFailure] = (0, import_react16.useState)(null);
-  const activeRead = (0, import_react16.useRef)(null);
-  const queuedRead = (0, import_react16.useRef)(null);
-  const drain = (0, import_react16.useCallback)(
+  const [status, setStatus] = (0, import_react17.useState)(null);
+  const [loading, setLoading] = (0, import_react17.useState)(true);
+  const [loadFailure, setLoadFailure] = (0, import_react17.useState)(null);
+  const activeRead = (0, import_react17.useRef)(null);
+  const queuedRead = (0, import_react17.useRef)(null);
+  const drain = (0, import_react17.useCallback)(
     async (firstSilent) => {
       refs.inFlight.current = true;
       let silent = firstSilent;
@@ -2133,7 +2160,7 @@ function useRepoStatus(options) {
     },
     [call, refs]
   );
-  const loadStatus = (0, import_react16.useCallback)(
+  const loadStatus = (0, import_react17.useCallback)(
     (loadOptions = {}) => {
       const silent = loadOptions.silent === true;
       const active = activeRead.current;
@@ -2148,10 +2175,10 @@ function useRepoStatus(options) {
     },
     [drain]
   );
-  (0, import_react16.useEffect)(() => {
+  (0, import_react17.useEffect)(() => {
     void loadStatus();
   }, [loadStatus]);
-  (0, import_react16.useEffect)(() => {
+  (0, import_react17.useEffect)(() => {
     if (!visible) return void 0;
     const timer = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
@@ -2197,11 +2224,11 @@ function adjustSplitRatio(ratio, key) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var import_react18 = require("react");
+var import_react19 = require("react");
 
 // src/client/panel/BranchMenu.ts
-var import_react17 = require("react");
-var h7 = import_react17.createElement;
+var import_react18 = require("react");
+var h7 = import_react18.createElement;
 function BranchMenu(props) {
   const t = props.t;
   let content;
@@ -2251,7 +2278,7 @@ function BranchMenu(props) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var h8 = import_react18.createElement;
+var h8 = import_react19.createElement;
 function BranchHeader(props) {
   const t = props.t;
   const repo = props.repo;
@@ -2319,13 +2346,13 @@ function BranchHeader(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var import_react22 = require("react");
+var import_react23 = require("react");
 
 // src/client/panel/rows.ts
-var import_react20 = require("react");
+var import_react21 = require("react");
 
 // src/client/host-file-icon.ts
-var import_react19 = require("react");
+var import_react20 = require("react");
 function resolveHostIcon() {
   try {
     const hostModule = require("@deepseek-ai/dsh-client-ui-primitives");
@@ -2338,11 +2365,11 @@ function resolveHostIcon() {
 var hostIcon = resolveHostIcon();
 function HostFileIcon(props) {
   const size = props.size ?? 16;
-  return hostIcon === void 0 ? (0, import_react19.createElement)(FileIcon, { size }) : (0, import_react19.createElement)(hostIcon, { path: props.path, size });
+  return hostIcon === void 0 ? (0, import_react20.createElement)(FileIcon, { size }) : (0, import_react20.createElement)(hostIcon, { path: props.path, size });
 }
 
 // src/client/panel/rows.ts
-var h9 = import_react20.createElement;
+var h9 = import_react21.createElement;
 function FileRow(props) {
   const entry = props.entry;
   const letter = props.letter;
@@ -2457,8 +2484,8 @@ function renderFileRows(entries, context) {
 }
 
 // src/client/panel/Section.ts
-var import_react21 = require("react");
-var h10 = import_react21.createElement;
+var import_react22 = require("react");
+var h10 = import_react22.createElement;
 function Section(props) {
   const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
@@ -2496,7 +2523,7 @@ function Section(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var h11 = import_react22.createElement;
+var h11 = import_react23.createElement;
 function ChangeGroups(props) {
   const t = props.t;
   const sectionActions = {
@@ -2556,7 +2583,7 @@ function ChangeGroups(props) {
     menuTarget: (entry) => props.rowTarget("file", { section: mode, path: entry.path })
   });
   return h11(
-    import_react22.Fragment,
+    import_react23.Fragment,
     null,
     props.mergeRows.length === 0 ? null : h11(
       Section,
@@ -2613,7 +2640,7 @@ function ChangeGroups(props) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var import_react23 = require("react");
+var import_react24 = require("react");
 
 // src/client/panel/autosize.ts
 var COMMIT_MESSAGE_MAX_LINES = 10;
@@ -2660,11 +2687,11 @@ function autoGrowTextArea(area) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var h12 = import_react23.createElement;
+var h12 = import_react24.createElement;
 function CommitBox(props) {
   const t = props.t;
-  const messageArea = (0, import_react23.useRef)(null);
-  (0, import_react23.useLayoutEffect)(() => {
+  const messageArea = (0, import_react24.useRef)(null);
+  (0, import_react24.useLayoutEffect)(() => {
     const area = messageArea.current;
     if (area === null) return;
     return autoGrowTextArea(area);
@@ -2708,8 +2735,8 @@ function CommitBox(props) {
 }
 
 // src/client/panel/views/CommitDetails.ts
-var import_react24 = require("react");
-var h13 = import_react24.createElement;
+var import_react25 = require("react");
+var h13 = import_react25.createElement;
 function CommitDetails(props) {
   const t = props.t;
   const summary = props.summary;
@@ -2798,11 +2825,11 @@ function CommitDetails(props) {
 }
 
 // src/client/panel/views/CommitMenuDialog.ts
-var import_react25 = require("react");
-var h14 = import_react25.createElement;
+var import_react26 = require("react");
+var h14 = import_react26.createElement;
 function CommitMenuDialog(props) {
   const { dialog, t } = props;
-  const composing = (0, import_react25.useRef)(false);
+  const composing = (0, import_react26.useRef)(false);
   const title = dialog.kind === "createBranch" ? t("menu.createBranch") : dialog.kind === "createTag" ? t("menu.createTag") : t("menu.deleteBranch");
   const description = dialog.kind === "createBranch" ? t("menu.createBranchAt", { hash: dialog.oid.slice(0, 7) }) : dialog.kind === "createTag" ? t("menu.createTagAt", { hash: dialog.oid.slice(0, 7) }) : t("menu.deleteBranchConfirm", { name: dialog.branch });
   const progress = dialog.kind === "createBranch" ? t("menu.creatingBranch") : dialog.kind === "createTag" ? t("menu.creatingTag") : t("menu.deletingBranch");
@@ -2887,7 +2914,7 @@ function CommitMenuDialog(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var import_react29 = require("react");
+var import_react30 = require("react");
 
 // src/client/git/graph.ts
 var SWIMLANE_HEIGHT = 22;
@@ -3266,8 +3293,8 @@ function refBadges(refs) {
 }
 
 // src/client/panel/views/graph/CommitChangeRows.ts
-var import_react26 = require("react");
-var h15 = import_react26.createElement;
+var import_react27 = require("react");
+var h15 = import_react27.createElement;
 function changeRowItems(expansion) {
   if (expansion.failure !== null) return [{ kind: "failure", failure: expansion.failure }];
   if (expansion.loading) return [{ kind: "loading" }];
@@ -3367,11 +3394,11 @@ function renderCommitChangeRows(props) {
 }
 
 // src/client/panel/views/graph/CommitGraphRow.ts
-var import_react28 = require("react");
+var import_react29 = require("react");
 
 // src/client/panel/views/graph/GraphArtwork.ts
-var import_react27 = require("react");
-var h16 = import_react27.createElement;
+var import_react28 = require("react");
+var h16 = import_react28.createElement;
 function graphColorValue(color) {
   return `var(--dshgg-scm-${color})`;
 }
@@ -3477,7 +3504,7 @@ function GraphCell(props) {
 }
 
 // src/client/panel/views/graph/CommitGraphRow.ts
-var h17 = import_react28.createElement;
+var h17 = import_react29.createElement;
 function badgeIconElement(icon) {
   if (icon === "target") return h17(TargetIcon, { size: 16 });
   if (icon === "cloud") return h17(CloudIcon, { size: 16 });
@@ -3558,12 +3585,12 @@ function GraphRow(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var h18 = import_react29.createElement;
+var h18 = import_react30.createElement;
 function GraphSection(props) {
   const t = props.t;
   const commits = Array.isArray(props.commits) ? props.commits : null;
   const references = props.references ?? null;
-  const rowsLayout = (0, import_react29.useMemo)(
+  const rowsLayout = (0, import_react30.useMemo)(
     () => computeGraph(
       bindReferenceTargets(
         (commits ?? []).map((commit) => ({
@@ -3579,21 +3606,21 @@ function GraphSection(props) {
   );
   const graphId = props.graphId ?? "git-graph";
   const expanded = props.expanded ?? null;
-  const inserted = (0, import_react29.useMemo)(
+  const inserted = (0, import_react30.useMemo)(
     () => (commits ?? []).map((commit) => {
       const expansion = expanded?.get(commit.oid);
       return expansion === void 0 ? [] : changeRowItems(expansion);
     }),
     [commits, expanded]
   );
-  const layer = (0, import_react29.useMemo)(
+  const layer = (0, import_react30.useMemo)(
     () => graphLayer(
       rowsLayout,
       inserted.map((items) => items.length)
     ),
     [rowsLayout, inserted]
   );
-  const [hovered, setHovered] = (0, import_react29.useState)(null);
+  const [hovered, setHovered] = (0, import_react30.useState)(null);
   const menu = props.menu;
   const trigger = menu === void 0 ? null : menu.trigger;
   const rows = [];
@@ -3715,11 +3742,11 @@ function GraphSection(props) {
 }
 
 // src/client/panel/views/SplitView.ts
-var import_react30 = require("react");
-var h19 = import_react30.createElement;
+var import_react31 = require("react");
+var h19 = import_react31.createElement;
 function SplitView(props) {
-  const [dragging, setDragging] = (0, import_react30.useState)(false);
-  const dragStart = (0, import_react30.useRef)(null);
+  const [dragging, setDragging] = (0, import_react31.useState)(false);
+  const dragStart = (0, import_react31.useRef)(null);
   const ratio = clampSplitRatio(props.ratio);
   const percent = `${Math.round(ratio * 1e3) / 10}%`;
   const beginDrag = (event) => {
@@ -3792,7 +3819,7 @@ function SplitView(props) {
 }
 
 // src/client/panel/GitPanel.ts
-var h20 = import_react31.createElement;
+var h20 = import_react32.createElement;
 function GitPanel(props) {
   const t = props.t;
   const tab = props.useTabInfo().tab;
@@ -3808,29 +3835,31 @@ function GitPanel(props) {
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const history = useHistory({ call, refs });
   const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history;
-  const graphPane = (0, import_react31.useRef)(null);
-  const reloadHistory = (0, import_react31.useCallback)(async () => {
+  const graphPane = (0, import_react32.useRef)(null);
+  const reloadHistory = (0, import_react32.useCallback)(async () => {
     await loadGraph();
     if (graphPane.current !== null) graphPane.current.scrollTop = 0;
   }, [loadGraph]);
-  const [openSections, setOpenSections] = (0, import_react31.useState)({
+  const [openSections, setOpenSections] = (0, import_react32.useState)({
     merge: true,
     staged: true,
     changes: true,
     graph: true
   });
-  const [splitRatio, setSplitRatio] = (0, import_react31.useState)(DEFAULT_SPLIT_RATIO);
+  const [splitRatio, setSplitRatio] = (0, import_react32.useState)(DEFAULT_SPLIT_RATIO);
+  const lastDetails = (0, import_react32.useRef)(null);
+  const lastPrompt = (0, import_react32.useRef)(null);
   const repo = status?.repo ?? null;
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
   const files = status?.files ?? [];
-  const groups = (0, import_react31.useMemo)(() => groupChangeEntries(files), [files]);
+  const groups = (0, import_react32.useMemo)(() => groupChangeEntries(files), [files]);
   const { mergeRows, stagedRows, changedRows } = groups;
   const clean = repo !== null && mergeRows.length === 0 && stagedRows.length === 0 && changedRows.length === 0;
-  const handleWorktreeChange = (0, import_react31.useCallback)(() => {
+  const handleWorktreeChange = (0, import_react32.useCallback)(() => {
     void loadStatus({ silent: true });
   }, [loadStatus]);
-  const handleReferencesChange = (0, import_react31.useCallback)(async () => {
+  const handleReferencesChange = (0, import_react32.useCallback)(async () => {
     const next = await refreshReferences();
     await loadStatus({ silent: true });
     const revision = next?.current?.revision;
@@ -3913,14 +3942,14 @@ function GitPanel(props) {
   const commitState = useCommitDetails({ call, refs });
   const expansion = useCommitExpansion({ call, refs });
   const selectedCommit = commitState.selected;
-  const commitRows = (0, import_react31.useMemo)(
+  const commitRows = (0, import_react32.useMemo)(
     () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
       ...file,
       kind: "commit"
     })),
     [commitState.details]
   );
-  const openDiff = (0, import_react31.useCallback)(
+  const openDiff = (0, import_react32.useCallback)(
     (entry, mode) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -3935,7 +3964,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openFileAtCommit = (0, import_react31.useCallback)(
+  const openFileAtCommit = (0, import_react32.useCallback)(
     (commit, entry) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -3950,7 +3979,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openCommitDiff = (0, import_react31.useCallback)(
+  const openCommitDiff = (0, import_react32.useCallback)(
     (entry) => {
       if (selectedCommit !== null) openFileAtCommit(selectedCommit, entry);
     },
@@ -4071,7 +4100,7 @@ function GitPanel(props) {
     }
     return null;
   };
-  const commitBody = selectedCommit === null ? null : h20(CommitDetails, {
+  const detailsNode = selectedCommit === null ? null : h20(CommitDetails, {
     t,
     summary: selectedCommit,
     details: commitState.details,
@@ -4084,7 +4113,15 @@ function GitPanel(props) {
     menuTrigger,
     rowTarget: targets.rowTarget
   });
-  const singlePane = renderState() ?? commitBody;
+  const detailsPresence = usePresence(detailsNode !== null, DETAILS_MOTION_MS);
+  if (detailsNode !== null) lastDetails.current = detailsNode;
+  const shownDetails = detailsNode ?? (detailsPresence.mounted ? lastDetails.current : null);
+  const detailsMotion = shownDetails === null ? null : h20(
+    "div",
+    { className: "dshgg-commitMotion", "data-phase": detailsPresence.phase },
+    shownDetails
+  );
+  const singlePane = renderState() ?? detailsMotion;
   const body = singlePane !== null ? h20("div", { className: "dshgg-scroll" }, singlePane) : h20(SplitView, {
     ratio: splitRatio,
     onRatioChange: setSplitRatio,
@@ -4144,6 +4181,37 @@ function GitPanel(props) {
     dismissLabel: t("action.dismiss"),
     onDismiss: () => setActionFailure(null)
   });
+  const promptNode = commitMenuActions.dialog !== null ? h20(CommitMenuDialog, {
+    key: commitMenuActions.dialog.kind === "deleteBranch" ? `delete:${commitMenuActions.dialog.branch}` : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
+    dialog: commitMenuActions.dialog,
+    t,
+    busy: busy !== null,
+    feedback: actionFeedback,
+    onNameChange: commitMenuActions.setName,
+    onMessageChange: commitMenuActions.setMessage,
+    onCancel: () => commitMenuActions.closeDialog(),
+    onSubmit: commitMenuActions.submitDialog
+  }) : confirm !== null ? h20(FloatingPanel, {
+    key: confirm.kind === "discard" ? `discard:${confirm.entry.path}` : confirm.kind,
+    title: confirmTitle(t, confirm),
+    description: confirmDescription(t, confirm),
+    cancelLabel: t("action.cancel"),
+    submitLabel: confirmActionLabel(t, confirm),
+    busy: busy !== null,
+    feedback: actionFeedback,
+    onCancel: () => requestConfirmation(null),
+    onSubmit: () => {
+      if (refs.busy.current === null) confirmAction();
+    }
+  }) : null;
+  const promptPresence = usePresence(promptNode !== null, PROMPT_MOTION_MS);
+  if (promptNode !== null) lastPrompt.current = promptNode;
+  const shownPrompt = promptNode ?? (promptPresence.mounted ? lastPrompt.current : null);
+  const promptMotion = shownPrompt === null ? null : h20(
+    "div",
+    { className: "dshgg-promptMotion", "data-phase": promptPresence.phase },
+    shownPrompt
+  );
   return h20(
     "div",
     { className: "dshgg-root", "data-dsh-git-graph": "" },
@@ -4166,7 +4234,7 @@ function GitPanel(props) {
       },
       onRefresh: refreshAll
     }),
-    repo === null || selectedCommit !== null ? null : h20(CommitBox, {
+    repo === null || detailsMotion !== null ? null : h20(CommitBox, {
       t,
       message,
       hint: commitHint,
@@ -4185,32 +4253,9 @@ function GitPanel(props) {
       dismissLabel: t("action.dismiss"),
       onDismiss: () => setLoadFailure(null)
     }) : null,
-    commitMenuActions.dialog === null && confirm === null ? actionFeedback : null,
+    promptMotion === null ? actionFeedback : null,
     body,
-    commitMenuActions.dialog === null ? null : h20(CommitMenuDialog, {
-      key: commitMenuActions.dialog.kind === "deleteBranch" ? `delete:${commitMenuActions.dialog.branch}` : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
-      dialog: commitMenuActions.dialog,
-      t,
-      busy: busy !== null,
-      feedback: actionFeedback,
-      onNameChange: commitMenuActions.setName,
-      onMessageChange: commitMenuActions.setMessage,
-      onCancel: () => commitMenuActions.closeDialog(),
-      onSubmit: commitMenuActions.submitDialog
-    }),
-    confirm === null ? null : h20(FloatingPanel, {
-      key: confirm.kind === "discard" ? `discard:${confirm.entry.path}` : confirm.kind,
-      title: confirmTitle(t, confirm),
-      description: confirmDescription(t, confirm),
-      cancelLabel: t("action.cancel"),
-      submitLabel: confirmActionLabel(t, confirm),
-      busy: busy !== null,
-      feedback: actionFeedback,
-      onCancel: () => requestConfirmation(null),
-      onSubmit: () => {
-        if (refs.busy.current === null) confirmAction();
-      }
-    })
+    promptMotion
   );
 }
 
@@ -4245,7 +4290,99 @@ var graph_default = "/* --------------------------------------------------------
 var graph_dialogs_default = "/* -------------------------------------------------------- graph dialogs --- */\n\n.dshgg-dialogField {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  margin-top: 8px;\n}\n\n.dshgg-dialogLabel,\n.dshgg-dialogHint {\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-dialogHint {\n  margin-top: 4px;\n}\n\n.dshgg-dialogInput {\n  box-sizing: border-box;\n  width: 100%;\n  min-width: 0;\n  max-width: 100%;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  outline: none;\n}\n\n.dshgg-dialogInput:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-dialogInput:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-dialogMessage {\n  min-height: 48px;\n  max-height: 120px;\n  resize: vertical;\n}\n";
 
 // src/client/styles/motion.css
-var motion_default = '/* --------------------------------------------------------------- motion --- */\n\n@media (prefers-reduced-motion: reduce) {\n  .dshgg-iconBtn[data-spinning="true"] svg {\n    animation: none;\n  }\n\n  .dshgg-chevron {\n    transition: none;\n  }\n}\n';
+var motion_default = `/* --------------------------------------------------------------- motion --- */
+
+/* The operation prompt rises from the pane's bottom edge when it opens and
+ * lowers out again when it is dismissed. The card keeps a 4px gap above that
+ * edge, so the leaving card travels its own height plus that gap to clear the
+ * pane; the host's tab body clips it below the edge, so it never paints over
+ * the rest of the application. A leaving prompt takes no pointer input. */
+.dshgg-root .dshgg-promptMotion {
+  display: contents;
+}
+
+.dshgg-root .dshgg-promptMotion[data-phase="enter"] .dshgg-floating-panel {
+  animation: dshgg-prompt-rise 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dshgg-root .dshgg-promptMotion[data-phase="leave"] .dshgg-floating-panel {
+  animation: dshgg-prompt-lower 180ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+/* The commit details view travels in from the pane's right edge and back out
+ * that way before the change list returns. It sits inside the scroll frame's
+ * 6px side padding, so it clears the frame by its own width plus that gap. A
+ * view on its way out accepts no input either. */
+.dshgg-commitMotion {
+  display: block;
+}
+
+.dshgg-commitMotion[data-phase="enter"] {
+  animation: dshgg-details-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dshgg-commitMotion[data-phase="leave"] {
+  animation: dshgg-details-leave 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+@keyframes dshgg-prompt-rise {
+  from {
+    transform: translateY(calc(100% + 8px));
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+@keyframes dshgg-prompt-lower {
+  from {
+    transform: none;
+  }
+
+  to {
+    transform: translateY(calc(100% + 8px));
+  }
+}
+
+@keyframes dshgg-details-enter {
+  from {
+    transform: translateX(calc(100% + 8px));
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+@keyframes dshgg-details-leave {
+  from {
+    transform: none;
+  }
+
+  to {
+    transform: translateX(calc(100% + 8px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dshgg-iconBtn[data-spinning="true"] svg {
+    animation: none;
+  }
+
+  .dshgg-chevron {
+    transition: none;
+  }
+
+  /* Both surfaces appear and leave at their final position instead. */
+  .dshgg-root .dshgg-promptMotion[data-phase] .dshgg-floating-panel,
+  .dshgg-commitMotion[data-phase] {
+    animation: none;
+  }
+}
+`;
 
 // src/client/styles/rows.css
 var rows_default = `/* ----------------------------------------------------------------- rows --- */
@@ -4683,8 +4820,8 @@ function installStyles(target) {
 }
 
 // src/client/titles.ts
-var import_react32 = require("react");
-var h21 = import_react32.createElement;
+var import_react33 = require("react");
+var h21 = import_react33.createElement;
 function GitTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;

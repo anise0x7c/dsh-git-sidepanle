@@ -538,6 +538,18 @@ function hasClass(element: TestElement, name: string): boolean {
     .includes(name)
 }
 
+/**
+ * Finish any exit animation and render what it was hiding. A dismissed prompt
+ * and a returning details view stay mounted while they leave, so a test that
+ * wants the surface gone runs the pending motion timer and flushes again.
+ */
+async function finishMotion(harness: TestHarness): Promise<void> {
+  // The close renders first: its effect is what schedules the exit timer.
+  await harness.flush()
+  harness.runTimeouts()
+  await harness.flush()
+}
+
 /** Capture a fresh graph-row target through the host-shaped context menu. */
 function graphMenuTarget(mounted: MountedGit, invoker?: TestEventTarget): CapturedTarget {
   const [row] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-graphRow'))
@@ -913,7 +925,7 @@ test('commit details replace the split and return with the chosen ratio', async 
   assert.equal(mounted.harness.findAll((element) => element.props.role === 'separator').length, 0)
   assert.match(mounted.harness.text(), /commitDetails\.files/)
   mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
-  await mounted.harness.flush()
+  await finishMotion(mounted.harness)
   assert.equal(divider().props['aria-valuenow'], 60)
   await mounted.harness.dispose()
 })
@@ -1600,9 +1612,49 @@ test('floating discard focuses Cancel and Escape preserves the split without Git
   })
   await mounted.harness.flush()
   assert.ok(prevented && stopped, 'Escape is handled here, not by the surrounding tab')
+  await finishMotion(mounted.harness)
   assert.equal(mounted.harness.findAll((element) => element.props.role === 'alertdialog').length, 0)
   assert.deepEqual(mounted.calls, beforeCalls, 'opening and cancelling do not call Git')
   assert.deepEqual(geometry(), beforeGeometry)
+})
+
+test('the operation prompt rises into place and lowers away before it is removed', async (t) => {
+  const status = createStatus({
+    files: [
+      { kind: 'ordinary', x: '.', y: 'M', path: 'src/app.js', conflict: false, untracked: false },
+    ],
+  })
+  const mounted = await mountGit({ status })
+  t.after(() => mounted.harness.dispose())
+  const wrappers = (): TestElement[] =>
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-promptMotion'))
+  assert.equal(wrappers().length, 0, 'no prompt motion is rendered while the pane is idle')
+  await openDiscard(mounted)
+  floatingPanel(mounted.harness)
+  assert.equal(wrappers().length, 1, 'the prompt is wrapped in the surface that moves')
+  assert.equal(
+    wrappers()[0]?.props['data-phase'],
+    'enter',
+    'an opening prompt rises from the bottom',
+  )
+  mounted.harness.click(buttonByText(mounted.harness, 'action.cancel'))
+  await mounted.harness.flush()
+  assert.equal(wrappers().length, 1, 'a dismissed prompt stays mounted while it leaves')
+  const [leaving] = wrappers()
+  assert.ok(leaving)
+  assert.equal(leaving.props['data-phase'], 'leave', 'a dismissed prompt lowers away')
+  assert.match(
+    mounted.harness.text(),
+    /confirm\.discardTitle/,
+    'the card keeps its content while it leaves',
+  )
+  assert.equal(
+    collectElements(leaving, (element) => element.props.role === 'alertdialog').length,
+    1,
+  )
+  await finishMotion(mounted.harness)
+  assert.equal(wrappers().length, 0, 'the prompt is removed once its exit animation ends')
+  assert.equal(mounted.harness.findAll((element) => element.props.role === 'alertdialog').length, 0)
 })
 
 test('floating stage-all confirmation has no empty or dangling description', async (t) => {
@@ -1659,7 +1711,7 @@ test('floating prompts replace each other in both directions and never resurface
   }
   const cancel = async () => {
     mounted.harness.click(buttonByText(mounted.harness, 'action.cancel'))
-    await mounted.harness.flush()
+    await finishMotion(mounted.harness)
     assert.equal(
       mounted.harness.findAll((element) => element.props.role === 'alertdialog').length,
       0,
@@ -1824,7 +1876,7 @@ for (const operation of ['create-branch', 'create-tag', 'delete-branch']) {
     assert.equal(mounted.calls.filter((call) => call.op === operation).length, 1)
     floatingPanel(mounted.harness)
     release()
-    await mounted.harness.flush()
+    await finishMotion(mounted.harness)
     assert.equal(
       mounted.harness.findAll((element) => element.props.role === 'alertdialog').length,
       0,
@@ -1881,7 +1933,7 @@ test('floating branch failure remains inside the retained form', async (t) => {
   )
   assert.notEqual(dialog.props['aria-busy'], true)
   mounted.harness.click(buttonByText(mounted.harness, 'action.cancel'))
-  await mounted.harness.flush()
+  await finishMotion(mounted.harness)
   assert.equal(mounted.harness.findAll((element) => element.props.role === 'alertdialog').length, 0)
   assert.equal(mounted.calls.filter((call) => call.op === 'create-branch').length, 1)
 })
@@ -2002,11 +2054,45 @@ test('View Details shows a commit and a file opens the commit diff', async () =>
   assert.equal(opened.options.params.status, 'M')
 
   mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
-  await mounted.harness.flush()
+  await finishMotion(mounted.harness)
   const after = mounted.harness.text()
   assert.match(after, /sections\.changes/)
   assert.doesNotMatch(after, /commitDetails\.files/)
   await mounted.harness.dispose()
+})
+
+test('the commit details view slides in from the right edge and back out', async (t) => {
+  const mounted = await mountGit()
+  t.after(() => mounted.harness.dispose())
+  const wrappers = (): TestElement[] =>
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitMotion'))
+  assert.equal(wrappers().length, 0, 'no details motion is rendered while the split shows')
+  await openCommitDetails(mounted)
+  const [arriving] = wrappers()
+  assert.ok(arriving, 'the details view has a motion surface')
+  assert.equal(arriving.props['data-phase'], 'enter', 'the details view slides in')
+  assert.equal(
+    collectElements(arriving, (element) => hasClass(element, 'dshgg-commitView')).length,
+    1,
+    'the details view itself is the surface that moves',
+  )
+  mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
+  await mounted.harness.flush()
+  const [leaving] = wrappers()
+  assert.ok(leaving)
+  assert.equal(leaving.props['data-phase'], 'leave', 'returning slides the details view out')
+  assert.match(
+    mounted.harness.text(),
+    /commitDetails\.files/,
+    'the details content is still shown while it slides away',
+  )
+  await finishMotion(mounted.harness)
+  assert.equal(wrappers().length, 0, 'the details view is removed once it has slid away')
+  assert.equal(
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-split')).length,
+    1,
+    'the change list returns after the details view has left',
+  )
 })
 
 test('View Details stays available while an operation runs', async () => {
@@ -2302,7 +2388,7 @@ test('a failed commit read reports the failure and retries', async () => {
   await mounted.harness.flush()
   assert.equal(mounted.calls.filter((call) => call.op === 'commit-details').length, before + 1)
   mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
-  await mounted.harness.flush()
+  await finishMotion(mounted.harness)
   assert.match(mounted.harness.text(), /sections\.changes/)
   await mounted.harness.dispose()
 })
@@ -2315,7 +2401,7 @@ test('returning from details keeps the expanded commits', async () => {
   await openCommitDetails(mounted, 1)
   assert.equal(mounted.calls.at(-1)?.oid, 'b'.repeat(40))
   mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
-  await mounted.harness.flush()
+  await finishMotion(mounted.harness)
   assert.equal(changeRows(mounted.harness).length, 4)
   assert.equal(graphRows(mounted.harness)[0]?.props['aria-expanded'], true)
   await mounted.harness.dispose()
@@ -2342,7 +2428,7 @@ test('past-commit files offer copy-only context menus', async () => {
     [menuActionId('copy-relative'), menuActionId('copy-path')],
   )
   mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
-  await mounted.harness.flush()
+  await finishMotion(mounted.harness)
 
   mounted.harness.click(graphRows(mounted.harness)[0] as TestElement)
   await mounted.harness.flush()
@@ -2876,6 +2962,7 @@ test('commit submenus run checkout, creation and confirmed deletion', async () =
     text: 'menu.branchCreated',
     success: true,
   })
+  await finishMotion(mounted.harness)
   assert.equal(mounted.harness.text().includes('menu.createBranchAt'), false)
 
   await runMenuAction(mounted.components, await openMenu(), 'create-tag')
@@ -2919,7 +3006,7 @@ test('commit submenus run checkout, creation and confirmed deletion', async () =
   assert.equal(mounted.harness.findAll((element) => element.props.id === describedBy).length, 1)
   const focusBeforeEscape = focusRestores
   mounted.harness.keydown(dialog, { key: 'Escape' })
-  await mounted.harness.flush()
+  await finishMotion(mounted.harness)
   assert.equal(mounted.harness.text().includes('menu.deleteBranchConfirm'), false)
   assert.equal(focusRestores, focusBeforeEscape + 1)
   assert.equal(
@@ -2931,7 +3018,7 @@ test('commit submenus run checkout, creation and confirmed deletion', async () =
   await mounted.harness.flush()
   const focusBeforeCancel = focusRestores
   mounted.harness.click(buttonByText(mounted.harness, 'action.cancel'))
-  await mounted.harness.flush()
+  await finishMotion(mounted.harness)
   assert.equal(focusRestores, focusBeforeCancel + 1)
   await runMenuAction(mounted.components, await openMenu(), 'delete-branch', 'feature/graph')
   await mounted.harness.flush()

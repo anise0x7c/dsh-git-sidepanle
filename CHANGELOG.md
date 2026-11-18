@@ -26,6 +26,10 @@ is the `engines.dsh` range in `package.json`.
 - The commit-details view now opens from a new first commit-menu action,
   **View Details** (查看详情), which stays available while another operation
   runs; a stale target is reported instead of opening an empty view.
+- The bottom operation prompt now rises from the pane's bottom edge when it
+  opens and lowers out of view before it is removed, and the commit-details
+  view slides in from the right edge and slides back out before the change
+  list returns. Both respect reduced motion.
 
 ## 0.12.1
 
