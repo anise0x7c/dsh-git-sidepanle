@@ -5,10 +5,14 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { DETAILS_MOTION_MS, PROMPT_MOTION_MS } from '../../src/client/constants.ts'
 
-const css = readFileSync(
-  new URL('../../src/client/styles/motion.css', import.meta.url),
-  'utf8',
-).replace(/\/\*[\s\S]*?\*\//g, '')
+const readSheet = (name: string): string =>
+  readFileSync(new URL(`../../src/client/styles/${name}`, import.meta.url), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  )
+
+// The details card's surface lives in its own sheet, so both are searched.
+const css = [readSheet('motion.css'), readSheet('commit-detail.css')].join('\n')
 
 /**
  * Read the declarations of one leaf rule.
@@ -56,8 +60,13 @@ test('the operation prompt rises from the pane bottom and lowers away again', ()
 })
 
 test('the commit details view travels in from the right edge and back out', () => {
-  const enter = declarations('.dshgg-commitMotion[data-phase="enter"]')
-  const leave = declarations('.dshgg-commitMotion[data-phase="leave"]')
+  const wrapper = declarations('.dshgg-root .dshgg-commitMotion')
+  assert.match(wrapper, /\bposition:\s*absolute\s*;/, 'the card overlays the content')
+  assert.match(wrapper, /\binset:\s*4px\s*;/, 'it keeps the pane edge gap')
+  assert.match(wrapper, /\bz-index:\s*15\s*;/, 'it sits above the content and below the prompt')
+  assert.match(wrapper, /\bpointer-events:\s*none\s*;/, 'the layer passes input to the card')
+  const enter = declarations('.dshgg-root .dshgg-commitMotion[data-phase="enter"]')
+  const leave = declarations('.dshgg-root .dshgg-commitMotion[data-phase="leave"]')
   assert.match(
     enter,
     new RegExp(`\\banimation:\\s*dshgg-details-enter\\s+${DETAILS_MOTION_MS}ms\\b`),
@@ -67,6 +76,15 @@ test('the commit details view travels in from the right edge and back out', () =
     new RegExp(`\\banimation:\\s*dshgg-details-leave\\s+${DETAILS_MOTION_MS}ms\\b`),
   )
   assert.match(leave, /\bpointer-events:\s*none\s*;/)
+  const card = declarations('.dshgg-root .dshgg-commitCard')
+  assert.match(card, /\bbackground:\s*var\(--dsw-alias-bg-layer-1\)\s*;/)
+  assert.match(card, /\bborder:\s*0\.5px\s+solid\s+var\(--dsw-alias-border-l1\)\s*;/)
+  assert.match(card, /\bbox-shadow:\s*var\(--dsw-elevation-prominent\)\s*;/)
+  assert.match(card, /\bpointer-events:\s*auto\s*;/)
+  const leaveCard = declarations(
+    '.dshgg-root .dshgg-commitMotion[data-phase="leave"] .dshgg-commitCard',
+  )
+  assert.match(leaveCard, /\bpointer-events:\s*none\s*;/, 'a leaving card takes no input')
   assert.match(keyframes('dshgg-details-enter'), /translateX\(calc\(100% \+ \d+px\)\)/)
   assert.match(keyframes('dshgg-details-leave'), /translateX\(calc\(100% \+ \d+px\)\)/)
 })

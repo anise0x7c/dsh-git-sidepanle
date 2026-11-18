@@ -4119,9 +4119,9 @@ function GitPanel(props) {
   const detailsMotion = shownDetails === null ? null : h20(
     "div",
     { className: "dshgg-commitMotion", "data-phase": detailsPresence.phase },
-    shownDetails
+    h20("div", { className: "dshgg-scroll dshgg-commitCard" }, shownDetails)
   );
-  const singlePane = renderState() ?? detailsMotion;
+  const singlePane = renderState();
   const body = singlePane !== null ? h20("div", { className: "dshgg-scroll" }, singlePane) : h20(SplitView, {
     ratio: splitRatio,
     onRatioChange: setSplitRatio,
@@ -4212,6 +4212,7 @@ function GitPanel(props) {
     { className: "dshgg-promptMotion", "data-phase": promptPresence.phase },
     shownPrompt
   );
+  const underlayProps = detailsPresence.mounted ? { "aria-hidden": "true", inert: "" } : {};
   return h20(
     "div",
     { className: "dshgg-root", "data-dsh-git-graph": "" },
@@ -4234,33 +4235,42 @@ function GitPanel(props) {
       },
       onRefresh: refreshAll
     }),
-    repo === null || detailsMotion !== null ? null : h20(CommitBox, {
-      t,
-      message,
-      hint: commitHint,
-      placeholder,
-      busy,
-      onChange: setMessage,
-      onCommit: requestCommit
-    }),
-    loadFailure !== null && status !== null ? h20(Banner, {
-      title: t("error.title"),
-      detail: errorText(t, loadFailure),
-      retryLabel: t("retry"),
-      onRetry: () => {
-        void loadStatus();
-      },
-      dismissLabel: t("action.dismiss"),
-      onDismiss: () => setLoadFailure(null)
-    }) : null,
-    promptMotion === null ? actionFeedback : null,
-    body,
+    h20(
+      "div",
+      { className: "dshgg-stage" },
+      h20(
+        "div",
+        { className: "dshgg-content", ...underlayProps },
+        repo === null ? null : h20(CommitBox, {
+          t,
+          message,
+          hint: commitHint,
+          placeholder,
+          busy,
+          onChange: setMessage,
+          onCommit: requestCommit
+        }),
+        loadFailure !== null && status !== null ? h20(Banner, {
+          title: t("error.title"),
+          detail: errorText(t, loadFailure),
+          retryLabel: t("retry"),
+          onRetry: () => {
+            void loadStatus();
+          },
+          dismissLabel: t("action.dismiss"),
+          onDismiss: () => setLoadFailure(null)
+        }) : null,
+        promptMotion === null ? actionFeedback : null,
+        body
+      ),
+      detailsMotion
+    ),
     promptMotion
   );
 }
 
 // src/client/styles/base.css
-var base_default = "/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host's `--dsw-*`\n * theme tokens, and text uses the host's `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH's\n * own sidebar surfaces. Sizes follow the host's sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n * The commit graph is the one exception: it reproduces VS Code's Source\n * Control Graph, including its `scmGraph.*` palette and 22px rows.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  position: relative;\n  isolation: isolate;\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n";
+var base_default = "/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host's `--dsw-*`\n * theme tokens, and text uses the host's `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH's\n * own sidebar surfaces. Sizes follow the host's sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n * The commit graph is the one exception: it reproduces VS Code's Source\n * Control Graph, including its `scmGraph.*` palette and 22px rows.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  position: relative;\n  isolation: isolate;\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n\n/* The stage is the positioning box shared by the panel content and the details\n * card that overlays it, so both keep the same height and the card never\n * resizes the content beneath it. */\n.dshgg-stage {\n  position: relative;\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  overflow: clip;\n}\n\n.dshgg-content {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n}\n";
 
 // src/client/styles/branch-menu.css
 var branch_menu_default = "/* ---------------------------------------------------------- branch menu --- */\n\n.dshgg-menu {\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 0;\n  z-index: 20;\n  min-width: 220px;\n  max-width: min(320px, 70vw);\n  max-height: 320px;\n  padding: 4px;\n  overflow-y: auto;\n  background: var(--dsw-specific-menu);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  backdrop-filter: var(--dsw-menu-backdrop-filter);\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-menuItem {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  min-height: 32px;\n  padding: 5px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n.dshgg-menuItem:disabled {\n  color: var(--dsw-alias-label-primary);\n  cursor: default;\n}\n\n@media (hover: hover) {\n  .dshgg-menuItem:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-menuItem:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.dshgg-menuCheck {\n  display: inline-flex;\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-menuCheck svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-menuLabel {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n";
@@ -4272,7 +4282,7 @@ var buttons_default = '/* ------------------------------------------------------
 var commit_box_default = "/* ------------------------------------------------------------ commit box --- */\n\n.dshgg-commitBox {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  gap: 8px;\n  padding: 10px 8px 8px;\n}\n\n/* The message decides the height: one row at rest and ten at most, after which\n   the box scrolls. `panel/autosize.ts` applies it; the line height comes from\n   the font shorthand, and `overflow-y: auto` keeps the message reachable before\n   the first measurement. */\n.dshgg-commitMessage {\n  box-sizing: border-box;\n  width: 100%;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  overflow-y: auto;\n  resize: none;\n  outline: none;\n}\n\n.dshgg-commitMessage::placeholder {\n  color: var(--dsw-alias-label-dimmed);\n}\n\n.dshgg-commitMessage:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-commitMessage:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-commitRow {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.dshgg-commitHint {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n";
 
 // src/client/styles/commit-detail.css
-var commit_detail_default = "/* --------------------------------------------------------- commit detail --- */\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n";
+var commit_detail_default = "/* --------------------------------------------------------- commit detail --- */\n\n/* The details card keeps the scroll frame's scrolling and padding, and adds the\n * theme surface, border and shadow that separate it from the content it\n * overlays while it slides in and out. */\n.dshgg-root .dshgg-commitCard {\n  flex: 1 1 auto;\n  min-width: 0;\n  min-height: 0;\n  padding: 0 8px 10px;\n  background: var(--dsw-alias-bg-layer-1);\n  border: 0.5px solid var(--dsw-alias-border-l1);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  pointer-events: auto;\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n";
 
 // src/client/styles/confirm.css
 var confirm_default = '/* ------------------------------------------------------------- confirm --- */\n\n/* This local layer never participates in the pane split or intercepts clicks\n   outside the card. No portal, viewport positioning or modal backdrop. */\n.dshgg-root .dshgg-floating-panel-layer {\n  position: absolute;\n  inset: 4px;\n  z-index: 25;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: flex-end;\n  min-width: 0;\n  min-height: 0;\n  pointer-events: none;\n}\n\n.dshgg-root .dshgg-floating-panel {\n  box-sizing: border-box;\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  max-height: 100%;\n  /* If even the wrapping footer exceeds the pane, every action stays reachable. */\n  overflow-x: hidden;\n  overflow-y: auto;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-alias-bg-layer-1);\n  border: 0.5px solid var(--dsw-alias-border-l1);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  pointer-events: auto;\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n/* Keep the solid theme surface on browsers without backdrop filtering. */\n@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {\n  .dshgg-root .dshgg-floating-panel {\n    background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));\n    backdrop-filter: var(--dsw-menu-backdrop-filter);\n    -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);\n  }\n}\n\n.dshgg-root .dshgg-floating-panel-body {\n  flex: 1 1 auto;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px 8px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overflow-wrap: anywhere;\n  overscroll-behavior: contain;\n}\n\n.dshgg-root .dshgg-floating-panel-footer {\n  display: flex;\n  flex: none;\n  flex-wrap: wrap;\n  align-items: center;\n  justify-content: flex-end;\n  gap: 8px;\n  min-width: 0;\n  padding: 10px 8px;\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-root .dshgg-floating-panel-footer .dshgg-btn {\n  flex: 0 1 auto;\n  min-width: 0;\n  max-width: 100%;\n  height: auto;\n  min-height: 28px;\n  padding: 6px 12px;\n  white-space: normal;\n  overflow-wrap: anywhere;\n}\n\n.dshgg-root .dshgg-floating-panel [aria-disabled="true"] {\n  opacity: 0.5;\n  cursor: default;\n}\n\n.dshgg-root .dshgg-floating-panel .dshgg-banner {\n  margin: 10px 0 0;\n}\n\n.dshgg-confirmTitle {\n  font: var(--dsw-font-xs-strong-13);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmDesc {\n  margin-top: 3px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n';
@@ -4321,20 +4331,31 @@ var motion_default = `/* -------------------------------------------------------
   pointer-events: none;
 }
 
-/* The commit details view travels in from the pane's right edge and back out
- * that way before the change list returns. It sits inside the scroll frame's
- * 6px side padding, so it clears the frame by its own width plus that gap. A
- * view on its way out accepts no input either. */
-.dshgg-commitMotion {
-  display: block;
+/* The commit details card travels in from the pane's right edge and back out
+ * that way. It overlays the still-mounted change list, graph and commit box,
+ * so the exit reveals them instead of a blank pane. The layer sits inside the
+ * stage's 4px inset, so it clears the pane by its own width plus that gap. A
+ * card on its way out accepts no input either. */
+.dshgg-root .dshgg-commitMotion {
+  position: absolute;
+  inset: 4px;
+  z-index: 15;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
 }
 
-.dshgg-commitMotion[data-phase="enter"] {
+.dshgg-root .dshgg-commitMotion[data-phase="enter"] {
   animation: dshgg-details-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.dshgg-commitMotion[data-phase="leave"] {
+.dshgg-root .dshgg-commitMotion[data-phase="leave"] {
   animation: dshgg-details-leave 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+.dshgg-root .dshgg-commitMotion[data-phase="leave"] .dshgg-commitCard {
   pointer-events: none;
 }
 
@@ -4389,7 +4410,7 @@ var motion_default = `/* -------------------------------------------------------
 
   /* Both surfaces appear and leave at their final position instead. */
   .dshgg-root .dshgg-promptMotion[data-phase] .dshgg-floating-panel,
-  .dshgg-commitMotion[data-phase] {
+  .dshgg-root .dshgg-commitMotion[data-phase] {
     animation: none;
   }
 }

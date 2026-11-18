@@ -29,20 +29,31 @@
   pointer-events: none;
 }
 
-/* The commit details view travels in from the pane's right edge and back out
- * that way before the change list returns. It sits inside the scroll frame's
- * 6px side padding, so it clears the frame by its own width plus that gap. A
- * view on its way out accepts no input either. */
-.dshgg-commitMotion {
-  display: block;
+/* The commit details card travels in from the pane's right edge and back out
+ * that way. It overlays the still-mounted change list, graph and commit box,
+ * so the exit reveals them instead of a blank pane. The layer sits inside the
+ * stage's 4px inset, so it clears the pane by its own width plus that gap. A
+ * card on its way out accepts no input either. */
+.dshgg-root .dshgg-commitMotion {
+  position: absolute;
+  inset: 4px;
+  z-index: 15;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
 }
 
-.dshgg-commitMotion[data-phase="enter"] {
+.dshgg-root .dshgg-commitMotion[data-phase="enter"] {
   animation: dshgg-details-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.dshgg-commitMotion[data-phase="leave"] {
+.dshgg-root .dshgg-commitMotion[data-phase="leave"] {
   animation: dshgg-details-leave 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+.dshgg-root .dshgg-commitMotion[data-phase="leave"] .dshgg-commitCard {
   pointer-events: none;
 }
 
@@ -97,7 +108,7 @@
 
   /* Both surfaces appear and leave at their final position instead. */
   .dshgg-root .dshgg-promptMotion[data-phase] .dshgg-floating-panel,
-  .dshgg-commitMotion[data-phase] {
+  .dshgg-root .dshgg-commitMotion[data-phase] {
     animation: none;
   }
 }

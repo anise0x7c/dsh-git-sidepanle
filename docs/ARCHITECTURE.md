@@ -154,9 +154,10 @@ every public export or semantic branch has a consumer.
 5. The body is a resizable split: change groups scroll above the graph in their
    own pane, and `panel/split.ts` owns the 20%–80% ratio mapped from pointer and
    keyboard gestures. `GitPanel` keeps the ratio so commit details (opened from
-   the commit row's View Details menu action) can replace the split and return
-   to it, while commit metadata and files load lazily. Activating a commit row
-   instead toggles `useCommitExpansion`, which reads each expanded commit's files
+   the commit row's View Details menu action) can overlay the still-mounted
+   split as a card and reveal it again, while commit metadata and files load
+   lazily. Activating a commit row instead toggles `useCommitExpansion`, which
+   reads each expanded commit's files
    with its own request token; `GraphSection` derives one list of inserted rows
    per commit and hands its lengths to `graphLayer`, which offsets the commit
    rows below and draws VS Code's graph-placeholder lanes through the inserted

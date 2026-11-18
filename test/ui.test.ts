@@ -911,7 +911,7 @@ test('refresh returns the graph to the first page', async () => {
   await mounted.harness.dispose()
 })
 
-test('commit details replace the split and return with the chosen ratio', async () => {
+test('commit details overlay the split and keep the chosen ratio', async () => {
   const mounted = await mountGit()
   const divider = (): TestElement => {
     const [element] = mounted.harness.findAll((candidate) => candidate.props.role === 'separator')
@@ -922,7 +922,11 @@ test('commit details replace the split and return with the chosen ratio', async 
   await mounted.harness.flush()
   assert.equal(divider().props['aria-valuenow'], 60)
   await openCommitDetails(mounted)
-  assert.equal(mounted.harness.findAll((element) => element.props.role === 'separator').length, 0)
+  assert.equal(
+    divider().props['aria-valuenow'],
+    60,
+    'the split stays mounted beneath the details card at the chosen ratio',
+  )
   assert.match(mounted.harness.text(), /commitDetails\.files/)
   mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
   await finishMotion(mounted.harness)
@@ -958,7 +962,10 @@ test('the change lists and commit details draw the host file-type icon for every
     'every change-list row passes its path to the host icon',
   )
   await openCommitDetails(mounted)
-  const details = fileRows()
+  assert.equal(fileRows().length, 8, 'the underlay change rows stay mounted beneath the card')
+  const details = collectElements(commitCard(mounted.harness), (element) =>
+    hasClass(element, 'dshgg-fileRow'),
+  )
   assert.equal(details.length, 4)
   assert.deepEqual(
     glyphs(details).sort(),
@@ -970,18 +977,25 @@ test('the change lists and commit details draw the host file-type icon for every
 
 test('the change lists and commit details keep the plain icon without a usable host icon', async () => {
   const mounted = await mountGit()
-  const plainIcons = (): number =>
-    mounted.harness
-      .findAll((element) => String(element.props?.className ?? '').includes('dshgg-rowIcon'))
-      .flatMap((icon) =>
-        collectElements(
-          icon,
-          (element) => element.type === 'svg' && element.props.viewBox === '0 0 16 16',
-        ),
-      ).length
+  const plainIcons = (scope?: TestElement): number => {
+    const icons =
+      scope === undefined
+        ? mounted.harness.findAll((element) => hasClass(element, 'dshgg-rowIcon'))
+        : collectElements(scope, (element) => hasClass(element, 'dshgg-rowIcon'))
+    return icons.flatMap((icon) =>
+      collectElements(
+        icon,
+        (element) => element.type === 'svg' && element.props.viewBox === '0 0 16 16',
+      ),
+    ).length
+  }
   assert.equal(plainIcons(), 4, 'every change-list row falls back to the document icon')
   await openCommitDetails(mounted)
-  assert.equal(plainIcons(), 4, 'every details row falls back to the document icon')
+  assert.equal(
+    plainIcons(commitCard(mounted.harness)),
+    4,
+    'every details row falls back to the document icon',
+  )
   await mounted.harness.dispose()
 })
 
@@ -1989,6 +2003,13 @@ function changeRows(harness: TestHarness): TestElement[] {
   )
 }
 
+/** Find the details card that overlays the still-mounted panel content. */
+function commitCard(harness: TestHarness): TestElement {
+  const [card] = harness.findAll((element) => hasClass(element, 'dshgg-commitCard'))
+  assert.ok(card, 'no commit details card rendered')
+  return card
+}
+
 /** Open one commit's details view through its row's View Details menu action. */
 async function openCommitDetails(mounted: MountedGit, index = 0): Promise<void> {
   const row = graphRows(mounted.harness)[index]
@@ -2005,7 +2026,8 @@ test('View Details shows a commit and a file opens the commit diff', async () =>
 
   const detailsCall = mounted.calls.find((call) => call.op === 'commit-details')
   assert.equal(detailsCall?.oid, 'a'.repeat(40))
-  const text = mounted.harness.text()
+  const card = commitCard(mounted.harness)
+  const text = elementText(card)
   assert.match(text, /commitDetails\.files/)
   assert.match(text, /Fix the sidebar/)
   assert.match(text, /Ann/)
@@ -2017,31 +2039,33 @@ test('View Details shows a commit and a file opens the commit diff', async () =>
   assert.match(text, /old\.js/)
   assert.match(text, /gone\.md/)
   assert.equal(
-    mounted.harness.findAll((element) =>
-      String(element.props?.className ?? '').includes('dshgg-folderRow'),
-    ).length,
+    collectElements(card, (element) => hasClass(element, 'dshgg-folderRow')).length,
     0,
     'commit files are a flat list',
   )
-  const commitTitles = mounted.harness
-    .findAll((element) => String(element.props?.className ?? '').includes('dshgg-fileRow'))
-    .map((row) => row.props.title)
+  const commitTitles = collectElements(card, (element) => hasClass(element, 'dshgg-fileRow')).map(
+    (row) => row.props.title,
+  )
   assert.deepEqual(
     commitTitles,
     ['docs/gone.md', 'src/added.js', 'src/app.js', 'src/old.js → src/renamed.js'],
     'commit files are listed once each in path order',
   )
   assert.ok(buttonByLabel(mounted.harness, 'commitDetails.back'))
+  assert.ok(commitBox(mounted.harness), 'the commit box stays mounted beneath the card')
   assert.equal(
-    mounted.harness.findAll((element) => element.type === 'textarea').length,
-    0,
-    'the commit box is hidden while details are open',
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-split')).length,
+    1,
+    'the split stays mounted beneath the card',
   )
+  const content = mounted.harness.findAll((element) => hasClass(element, 'dshgg-content'))[0]
+  assert.ok(content, 'the panel content stays mounted beneath the card')
+  assert.equal(content.props['aria-hidden'], 'true', 'the underlay is hidden from the tree')
+  assert.equal(content.props.inert, '', 'the underlay takes no focus or input')
 
-  const fileRows = mounted.harness.findAll(
-    (element) =>
-      String(element.props?.className ?? '').includes('dshgg-fileRow') &&
-      element.props?.title === 'src/app.js',
+  const fileRows = collectElements(
+    card,
+    (element) => hasClass(element, 'dshgg-fileRow') && element.props?.title === 'src/app.js',
   )
   assert.equal(fileRows.length, 1, 'the changed file is listed once')
   mounted.harness.click(fileRows[0])
@@ -2066,7 +2090,17 @@ test('the commit details view slides in from the right edge and back out', async
   t.after(() => mounted.harness.dispose())
   const wrappers = (): TestElement[] =>
     mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitMotion'))
+  const content = (): TestElement => {
+    const [element] = mounted.harness.findAll((candidate) => hasClass(candidate, 'dshgg-content'))
+    assert.ok(element, 'no panel content rendered')
+    return element
+  }
+  const splitCount = (): number =>
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-split')).length
   assert.equal(wrappers().length, 0, 'no details motion is rendered while the split shows')
+  assert.equal(splitCount(), 1)
+  assert.equal(content().props['aria-hidden'], undefined)
+  assert.equal(content().props.inert, undefined)
   await openCommitDetails(mounted)
   const [arriving] = wrappers()
   assert.ok(arriving, 'the details view has a motion surface')
@@ -2076,23 +2110,29 @@ test('the commit details view slides in from the right edge and back out', async
     1,
     'the details view itself is the surface that moves',
   )
+  const [card] = collectElements(arriving, (element) => hasClass(element, 'dshgg-commitCard'))
+  assert.ok(card, 'the details view sits on the card surface')
+  assert.equal(splitCount(), 1, 'the split stays mounted beneath the entering card')
+  assert.equal(content().props['aria-hidden'], 'true', 'the entering card hides the underlay')
+  assert.equal(content().props.inert, '', 'the entering card makes the underlay inert')
   mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
   await mounted.harness.flush()
   const [leaving] = wrappers()
   assert.ok(leaving)
   assert.equal(leaving.props['data-phase'], 'leave', 'returning slides the details view out')
   assert.match(
-    mounted.harness.text(),
+    elementText(leaving),
     /commitDetails\.files/,
     'the details content is still shown while it slides away',
   )
+  assert.equal(splitCount(), 1, 'the split stays mounted while the card leaves')
+  assert.equal(content().props['aria-hidden'], 'true', 'the leaving card still hides the underlay')
+  assert.equal(content().props.inert, '', 'the leaving card still makes the underlay inert')
   await finishMotion(mounted.harness)
   assert.equal(wrappers().length, 0, 'the details view is removed once it has slid away')
-  assert.equal(
-    mounted.harness.findAll((element) => hasClass(element, 'dshgg-split')).length,
-    1,
-    'the change list returns after the details view has left',
-  )
+  assert.equal(content().props['aria-hidden'], undefined)
+  assert.equal(content().props.inert, undefined)
+  assert.equal(splitCount(), 1, 'the change list remains mounted after the details view has left')
 })
 
 test('View Details stays available while an operation runs', async () => {
@@ -2343,11 +2383,10 @@ test('a commit without file changes says so in its expanded row and its details'
   assert.match(elementText(rows[0] as TestElement), /commitDetails\.empty/)
 
   await openCommitDetails(mounted)
-  assert.match(mounted.harness.text(), /commitDetails\.empty/)
+  assert.match(elementText(commitCard(mounted.harness)), /commitDetails\.empty/)
   assert.equal(
-    mounted.harness.findAll((element) =>
-      String(element.props?.className ?? '').includes('dshgg-fileRow'),
-    ).length,
+    collectElements(commitCard(mounted.harness), (element) => hasClass(element, 'dshgg-fileRow'))
+      .length,
     0,
   )
   await mounted.harness.dispose()
@@ -2410,10 +2449,9 @@ test('returning from details keeps the expanded commits', async () => {
 test('past-commit files offer copy-only context menus', async () => {
   const mounted = await mountGit()
   await openCommitDetails(mounted)
-  const fileRows = mounted.harness.findAll(
-    (element) =>
-      String(element.props?.className ?? '').includes('dshgg-fileRow') &&
-      element.props?.title === 'src/app.js',
+  const fileRows = collectElements(
+    commitCard(mounted.harness),
+    (element) => hasClass(element, 'dshgg-fileRow') && element.props?.title === 'src/app.js',
   )
   assert.equal(fileRows.length, 1)
   mounted.harness.contextmenu(fileRows[0], { clientX: 7, clientY: 8 })

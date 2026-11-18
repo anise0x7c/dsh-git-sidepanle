@@ -418,19 +418,37 @@ message body when present. Activating a changed file SHALL open that file's
 diff for the commit. A commit that changed no files SHALL be presented as such
 rather than as an empty list, a failed read SHALL be reported with a retry path,
 and returning from the details view SHALL restore the change list and graph
-without changing the repository. The details view SHALL slide in from the
-panel's right edge when it opens and SHALL slide back out to that edge before
-the change list returns. A View Details action for a commit that is no longer
-listed SHALL be reported as stale instead of opening an empty view. When the
-system asks for reduced motion so the view SHALL appear and leave at its final
-position without moving.
+without changing the repository. The details view SHALL open as a card above
+the panel's content, with its own theme surface, a separating border and a
+shadow, so the change list, graph and commit box stay mounted beneath it and
+are already in place when the card leaves. The card SHALL slide in from the
+panel's right edge when it opens and SHALL slide back out to that edge, and the
+content beneath it SHALL accept no pointer or keyboard input while the card is
+present. A View Details action for a commit that is no longer listed SHALL be
+reported as stale instead of opening an empty view. When the system asks for
+reduced motion the card SHALL appear and leave at its final position without
+moving.
 
 #### Scenario: Open a commit's details
 
 - **WHEN** the user chooses View Details from a commit row's context menu
 - **THEN** the panel shows that commit's short identifier, subject, author,
-  relative time and changed files with their status letters and paths, and the
-  change list is replaced until the user returns
+  relative time and changed files with their status letters and paths, as a
+  card above the change list and graph, which stay mounted beneath it
+
+#### Scenario: The content beneath the card stays in place
+
+- **GIVEN** the user has scrolled the change list or graph and chosen a split ratio
+- **WHEN** the user opens a commit's details
+- **THEN** the change list, graph and commit box remain mounted beneath the card
+  with that split ratio and those scroll positions, and the content is already
+  in place while the card arrives
+
+#### Scenario: The content beneath accepts no input
+
+- **WHEN** the details card is open or sliding away
+- **THEN** the change list, graph and commit box beneath it accept no pointer or
+  keyboard input and are hidden from assistive technology
 
 #### Scenario: Activating the row does not open the details
 
@@ -474,22 +492,22 @@ position without moving.
 #### Scenario: Return to the changes
 
 - **WHEN** the user activates the back control in the details view
-- **THEN** the details view travels towards the right edge and the change list
-  and graph are shown again with the repository unchanged and with the same
-  commits expanded as before
+- **THEN** the card travels towards the right edge and reveals the change list
+  and graph already in place beneath it, with the repository unchanged, the same
+  split ratio, the same scroll positions and the same commits expanded as before
 
 #### Scenario: Details arrive from the right edge
 
 - **WHEN** the details view opens for a commit
 - **THEN** it starts out beyond the panel's right edge and moves leftwards into
-  place instead of appearing where it will stay
+  place above the content instead of appearing where it will stay
 
 #### Scenario: Reduced motion keeps the details still
 
 - **WHEN** the system asks for reduced motion and the user opens a commit's
   details and then returns
-- **THEN** the details view appears and leaves at its final position without
-  moving, and the change list still returns
+- **THEN** the card appears and leaves at its final position without moving, and
+  the change list and graph stay in place beneath it
 
 #### Scenario: Stale View Details
 
@@ -763,7 +781,9 @@ The user SHALL be able to move the divider by dragging it, and both panes SHALL
 keep a usable minimum height. Scrolling one pane SHALL NOT move the other or
 change its scroll position. The divider SHALL be reachable by keyboard and
 SHALL change the split with the arrow keys. Opening a commit's details SHALL
-replace the split, and returning SHALL restore the ratio the user chose.
+overlay the split with a card without resizing or unmounting either pane, and
+returning SHALL reveal the same split with the ratio and scroll positions the
+user left.
 
 #### Scenario: Change list scrolls on its own
 
@@ -785,10 +805,18 @@ replace the split, and returning SHALL restore the ratio the user chose.
 - **WHEN** the user drags the divider to either extreme
 - **THEN** both panes remain at least a usable minimum height
 
+#### Scenario: Details do not move the split
+
+- **GIVEN** the change list and graph are visible at a user-selected ratio
+- **WHEN** the user opens a commit's details
+- **THEN** the card covers the split, and both panes keep their geometry and
+  scroll positions underneath it
+
 #### Scenario: Returning from commit details
 
 - **WHEN** the user opens a commit's details and then returns to the split
-- **THEN** the change list and graph return with the ratio they had before
+- **THEN** the change list and graph are revealed with the ratio and scroll
+  positions they had before
 
 ### Requirement: Clean workspace state
 

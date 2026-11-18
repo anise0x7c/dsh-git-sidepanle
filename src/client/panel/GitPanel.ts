@@ -419,10 +419,10 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
       : h(
           'div',
           { className: 'dshgg-commitMotion', 'data-phase': detailsPresence.phase },
-          shownDetails,
+          h('div', { className: 'dshgg-scroll dshgg-commitCard' }, shownDetails),
         )
 
-  const singlePane = renderState() ?? detailsMotion
+  const singlePane = renderState()
   const body =
     singlePane !== null
       ? h('div', { className: 'dshgg-scroll' }, singlePane)
@@ -541,6 +541,13 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           shownPrompt,
         )
 
+  // The details card overlays content that stays mounted and visible beneath
+  // it. Marking that content inert and hidden keeps keyboard and assistive
+  // technology users in the card; React 18's types do not know `inert`.
+  const underlayProps: React.HTMLAttributes<HTMLDivElement> = detailsPresence.mounted
+    ? ({ 'aria-hidden': 'true', inert: '' } as React.HTMLAttributes<HTMLDivElement>)
+    : {}
+
   return h(
     'div',
     { className: 'dshgg-root', 'data-dsh-git-graph': '' },
@@ -563,31 +570,40 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
       },
       onRefresh: refreshAll,
     }),
-    repo === null || detailsMotion !== null
-      ? null
-      : h(CommitBox, {
-          t,
-          message,
-          hint: commitHint,
-          placeholder,
-          busy,
-          onChange: setMessage,
-          onCommit: requestCommit,
-        }),
-    loadFailure !== null && status !== null
-      ? h(Banner, {
-          title: t('error.title'),
-          detail: errorText(t, loadFailure),
-          retryLabel: t('retry'),
-          onRetry: () => {
-            void loadStatus()
-          },
-          dismissLabel: t('action.dismiss'),
-          onDismiss: () => setLoadFailure(null),
-        })
-      : null,
-    promptMotion === null ? actionFeedback : null,
-    body,
+    h(
+      'div',
+      { className: 'dshgg-stage' },
+      h(
+        'div',
+        { className: 'dshgg-content', ...underlayProps },
+        repo === null
+          ? null
+          : h(CommitBox, {
+              t,
+              message,
+              hint: commitHint,
+              placeholder,
+              busy,
+              onChange: setMessage,
+              onCommit: requestCommit,
+            }),
+        loadFailure !== null && status !== null
+          ? h(Banner, {
+              title: t('error.title'),
+              detail: errorText(t, loadFailure),
+              retryLabel: t('retry'),
+              onRetry: () => {
+                void loadStatus()
+              },
+              dismissLabel: t('action.dismiss'),
+              onDismiss: () => setLoadFailure(null),
+            })
+          : null,
+        promptMotion === null ? actionFeedback : null,
+        body,
+      ),
+      detailsMotion,
+    ),
     promptMotion,
   )
 }
