@@ -3058,7 +3058,7 @@ var NODE_SHAPES = {
     hoverGap: 7
   }
 };
-function graphRowGeometry(row, offset = 0) {
+function graphRowGeometry(row, offset = 0, expanded = false) {
   const { input, output, parents } = row;
   const circleIndex = row.lane;
   const paths = [];
@@ -3121,11 +3121,16 @@ function graphRowGeometry(row, offset = 0) {
   }
   const inputIndex = input.findIndex((lane) => lane.id === row.oid);
   const incoming = input[inputIndex];
+  const nodeLane = (from, to, color) => expanded ? {
+    d: verticalLine(laneX(circleIndex), y(from), y(to)),
+    color,
+    width: HIGHLIGHT_STROKE_WIDTH
+  } : { d: verticalLine(laneX(circleIndex), y(from), y(to)), color };
   if (incoming !== void 0) {
-    paths.push({ d: verticalLine(laneX(circleIndex), y(0), y(H / 2)), color: incoming.color });
+    paths.push(nodeLane(0, H / 2, incoming.color));
   }
   if (parents.length > 0) {
-    paths.push({ d: verticalLine(laneX(circleIndex), y(H / 2), y(H)), color: row.color });
+    paths.push(nodeLane(H / 2, H, row.color));
   }
   const shape = row.kind === "HEAD" ? "head" : parents.length > 1 ? "merge" : "node";
   const shapeSpec = NODE_SHAPES[shape];
@@ -3174,7 +3179,8 @@ function graphLayer(rows, inserted = []) {
     else entry.d.push(path.d);
   };
   rows.forEach((row, index) => {
-    const geometry = graphRowGeometry(row, top);
+    const count = inserted[index] ?? 0;
+    const geometry = graphRowGeometry(row, top, count > 0);
     width = Math.max(width, geometry.width);
     for (const path of [...geometry.bridge, ...geometry.paths]) add(path);
     gaps.push({
@@ -3185,7 +3191,6 @@ function graphLayer(rows, inserted = []) {
       hoverGap: geometry.node.hoverGap
     });
     top += SWIMLANE_HEIGHT;
-    const count = inserted[index] ?? 0;
     for (let child = 0; child < count; child += 1) {
       for (const path of graphPlaceholderPaths(row, top)) add(path);
       width = Math.max(width, graphPlaceholderWidth(row));

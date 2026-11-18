@@ -8,7 +8,8 @@ is the `engines.dsh` range in `package.json`.
 - Activating a commit row in the graph now expands the commit's changed files
   inline below it, as VS Code's Source Control Graph does: 22px file rows with
   an icon, the name, the dimmed directory and the status letter, the commit's
-  outgoing lanes running through them (its own lane three pixels wide), several
+  outgoing lanes running through them (its own lane three pixels wide from the
+  commit row down), several
   commits expandable at once, and inline loading, empty, failure/retry and
   capped-list rows.
 - The commit-details view now opens from a new first commit-menu action,

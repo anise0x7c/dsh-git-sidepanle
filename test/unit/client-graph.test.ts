@@ -685,15 +685,15 @@ describe('graphLayer', () => {
       layer.paths.map((path) => [path.color, path.width]),
       [
         ['lane2', undefined],
-        ['lane1', undefined],
         ['lane1', HIGHLIGHT_STROKE_WIDTH],
+        ['lane1', undefined],
       ],
-      'the node lane gets its own wide element',
+      'the node lane gets its own wide element from the commit row down',
     )
     assert.equal(
-      layer.paths[2]?.d,
-      'M 11 22 V 44 M 11 44 V 66',
-      'the node lane runs through both inserted rows',
+      layer.paths[1]?.d,
+      'M 11 11 V 22 M 11 22 V 44 M 11 44 V 66',
+      'the node lane is wide in its own row and through both inserted rows',
     )
     assert.match(
       String(layer.paths[0]?.d),
@@ -707,16 +707,53 @@ describe('graphLayer', () => {
     )
   })
 
+  test("widens the expanded commit row's own lane above and below its node", () => {
+    const rows = computeGraph([commit('c3', ['c2']), commit('c2', ['c1']), commit('c1')])
+    const row = rows[1]
+    assert.ok(row)
+    assert.deepEqual(graphRowGeometry(row, 22).paths, [
+      { d: 'M 11 22 V 33', color: 'lane1' },
+      { d: 'M 11 33 V 44', color: 'lane1' },
+    ])
+    assert.deepEqual(
+      graphRowGeometry(row, 22, true).paths,
+      [
+        { d: 'M 11 22 V 33', color: 'lane1', width: HIGHLIGHT_STROKE_WIDTH },
+        { d: 'M 11 33 V 44', color: 'lane1', width: HIGHLIGHT_STROKE_WIDTH },
+      ],
+      'the wide line runs from the row top edge through the node position',
+    )
+  })
+
+  test('keeps every other line of an expanded row one pixel wide', () => {
+    const rows = computeGraph([commit('tip', ['main', 'side']), commit('main'), commit('side')])
+    const tip = rows[0]
+    assert.ok(tip)
+    assert.deepEqual(
+      graphRowGeometry(tip, 0, true)
+        .paths.filter((path) => path.width !== undefined)
+        .map((path) => path.d),
+      ['M 11 11 V 22'],
+      'only the node lane widens; the merge curve stays one pixel',
+    )
+  })
+
   test('leaves every commit row geometry unchanged except for its offset', () => {
     const rows = computeGraph(randomHistory(7, 12))
     const inserted = rows.map((_, index) => (index % 3 === 0 ? index % 4 : 0))
     const layer = graphLayer(rows, inserted)
     let top = 0
     rows.forEach((row, index) => {
-      const geometry = graphRowGeometry(row, top)
-      for (const path of [...geometry.bridge, ...geometry.paths]) {
+      const geometry = graphRowGeometry(row, top, (inserted[index] ?? 0) > 0)
+      for (const path of geometry.bridge) {
         const element = layer.paths.find(
           (candidate) => candidate.color === path.color && candidate.width === undefined,
+        )
+        assert.ok(element?.d.includes(path.d), `row ${index} bridges ${path.d} one pixel wide`)
+      }
+      for (const path of geometry.paths) {
+        const element = layer.paths.find(
+          (candidate) => candidate.color === path.color && candidate.width === path.width,
         )
         assert.ok(element?.d.includes(path.d), `row ${index} keeps ${path.d}`)
       }

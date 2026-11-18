@@ -16,7 +16,9 @@
  * change's design notes for the deliberate deviations (root commits keep other
  * lanes; node gaps are a mask rather than background-colored strokes; the lines
  * of the whole graph are one layer, so a lane crossing a row boundary is one
- * stroke instead of two).
+ * stroke instead of two; an expanded commit widens its own node lane, so VS
+ * Code's wide change-row stroke starts at the row's top edge instead of its
+ * bottom edge).
  *
  * Pure data in and out: no React, no DOM, no plugin context, so the layout is
  * directly unit-testable.
@@ -518,9 +520,11 @@ const NODE_SHAPES: Record<
  * be built by calling this once per row with the row's offset.
  * @param row - laid-out row.
  * @param offset - distance from the top of the graph, in pixels, added to every y.
+ * @param expanded - whether the row's changes are listed below it; the row then
+ *   carries its node's lane at the wide stroke into those rows.
  * @returns geometry for the row.
  */
-export function graphRowGeometry(row: GraphRow, offset = 0): GraphRowGeometry {
+export function graphRowGeometry(row: GraphRow, offset = 0, expanded = false): GraphRowGeometry {
   const { input, output, parents } = row
   const circleIndex = row.lane
   const paths: GraphPath[] = []
@@ -590,11 +594,20 @@ export function graphRowGeometry(row: GraphRow, offset = 0): GraphRowGeometry {
 
   const inputIndex = input.findIndex((lane) => lane.id === row.oid)
   const incoming = input[inputIndex]
+  /** The node's own lane; it joins the wide line of listed changes from above. */
+  const nodeLane = (from: number, to: number, color: GraphPath['color']): GraphPath =>
+    expanded
+      ? {
+          d: verticalLine(laneX(circleIndex), y(from), y(to)),
+          color,
+          width: HIGHLIGHT_STROKE_WIDTH,
+        }
+      : { d: verticalLine(laneX(circleIndex), y(from), y(to)), color }
   if (incoming !== undefined) {
-    paths.push({ d: verticalLine(laneX(circleIndex), y(0), y(H / 2)), color: incoming.color })
+    paths.push(nodeLane(0, H / 2, incoming.color))
   }
   if (parents.length > 0) {
-    paths.push({ d: verticalLine(laneX(circleIndex), y(H / 2), y(H)), color: row.color })
+    paths.push(nodeLane(H / 2, H, row.color))
   }
 
   const shape: GraphNodeShape = row.kind === 'HEAD' ? 'head' : parents.length > 1 ? 'merge' : 'node'
@@ -709,7 +722,8 @@ export function graphLayer(
     else entry.d.push(path.d)
   }
   rows.forEach((row, index) => {
-    const geometry = graphRowGeometry(row, top)
+    const count = inserted[index] ?? 0
+    const geometry = graphRowGeometry(row, top, count > 0)
     width = Math.max(width, geometry.width)
     for (const path of [...geometry.bridge, ...geometry.paths]) add(path)
     gaps.push({
@@ -720,7 +734,6 @@ export function graphLayer(
       hoverGap: geometry.node.hoverGap,
     })
     top += SWIMLANE_HEIGHT
-    const count = inserted[index] ?? 0
     for (let child = 0; child < count; child += 1) {
       for (const path of graphPlaceholderPaths(row, top)) add(path)
       width = Math.max(width, graphPlaceholderWidth(row))

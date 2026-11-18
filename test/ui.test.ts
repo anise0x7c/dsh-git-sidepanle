@@ -2092,8 +2092,8 @@ test('the line layer runs the expanded commit lanes through its file rows', asyn
   await mounted.harness.flush()
   assert.equal(layer().props.height, 44 + 4 * 22, 'every file row adds one row height')
   const wide = collectElements(layer(), (element) => element.props?.['data-width'] === '3')
-  assert.equal(wide.length, 1, 'the node lane is drawn wider through the file rows')
-  assert.match(String(wide[0]?.props.d), /^M 11 22 V 44 M 11 44 V 66/)
+  assert.equal(wide.length, 1, 'the node lane is wide in its own row and through the file rows')
+  assert.match(String(wide[0]?.props.d), /^M 11 11 V 22 M 11 22 V 44 M 11 44 V 66/)
   const lanes = collectElements(changeRows(mounted.harness)[0] as TestElement, (element) =>
     String(element.props?.className ?? '').includes('dshgg-graphChangeLanes'),
   )
