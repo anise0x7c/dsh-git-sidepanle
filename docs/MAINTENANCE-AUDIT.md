@@ -62,4 +62,4 @@
 - **真实 DSH 契约**：对安装的 0.2.2-rc.3 菜单注册表运行 `pnpm verify:contract`，5 类目标、23 条命令和 shared Toast 通过。不是仅依赖 fake registry 自证。
 - **实际服务产物**：当前 `http://127.0.0.1:45523` 的插件事件图给出 revision `64cd0dcebe3a`；读取该 URL 的客户端产物后，与本地构建严格比对，差异只有已核实的 Host 终止分号和 source-map URL 重写；双语安全拒绝映射已包含在服务产物中。一次初始比对器少做末尾 trim 导致误报，一次事件读取器误解析了下一帧的半包；均已定位为验收脚本问题，不是插件失败，最终目标产物比对通过。
 - **页面与发布限制**：Git/diff Slot 的真实注册已确认活跃，但本环境没有浏览器控制，没有声称真实点击或视觉验收通过。没有启动替代服务、安装/升级插件、改 profile 或重启 Host。Host 安全与 watcher 变更需要用户重启 Host 后生效，再刷新原页面，完成右键菜单、stage/unstage、discard 取消/确认、commit、diff 和 branch switch 的点击复核。
-- **规格与版本**：三项 LiteSpec 均以 0 errors / 0 warnings 验证后归档；当前 Git Sidebar 40 项要求，Development Workflow 4 项要求。未创建 Git 提交或版本号变更；剩余债务明确列在上一节，不以本次通过门禁宣称全部技术债已消除。
+- **规格与版本**：三项 LiteSpec 均以 0 errors / 0 warnings 验证后归档；当时 Git Sidebar 40 项要求，Development Workflow 4 项要求。未创建 Git 提交或版本号变更；剩余债务明确列在上一节，不以本次通过门禁宣称全部技术债已消除。

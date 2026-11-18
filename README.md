@@ -61,16 +61,25 @@ run install scripts; platform binary packages provide esbuild and Biome directly
 
 See [Architecture](<docs/ARCHITECTURE.md>) for module boundaries and loader
 contracts, [Refactor record](<docs/REFACTOR-PLAN.md>) for migration decisions,
-[Maintenance audit](<docs/MAINTENANCE-AUDIT.md>) for findings and remaining trust boundaries, and
-[Usage](<docs/DETAIL.md>) / [中文说明](<docs/DETAIL.zh.md>) for features and limitations.
+[Maintenance audit](<docs/MAINTENANCE-AUDIT.md>) for findings and remaining trust boundaries,
+[Usage](<docs/DETAIL.md>) / [中文说明](<docs/DETAIL.zh.md>) for features and limitations,
+and [Changelog](<CHANGELOG.md>) for released changes.
 
 ## Install and open
 
-Install the directory through **Plugins → Add plugin** in DSH, or
-`install_bundle` with this directory. Open it from the right Sidebar's guide, or
-with `Ctrl+Shift+G` (`Cmd+Shift+G` on macOS).
+Clone this repository, then install that directory through **Plugins → Add
+plugin** in DSH, or `install_bundle` with the directory. The bundle needs DSH
+`>=0.2.2-rc.1 <0.3.0-0`; installing a prepared checkout uses the committed
+artifacts, so no build step is required. Open it from the right Sidebar's guide,
+or with `Ctrl+Shift+G` (`Cmd+Shift+G` on macOS) in the desktop app and the
+Windows/macOS Web interface; Linux Web browsers have no default shortcut, so
+assign one in DSH's keyboard settings.
 
 After changing sources, rebuild the artifacts. Host changes take effect only
 after a Host restart; browser update behavior depends on the running DSH Web
 development/reload setup. If the open page does not update, refresh it and verify
 the served artifact rather than starting another server.
+
+## License
+
+MIT — see [LICENSE](<LICENSE>).

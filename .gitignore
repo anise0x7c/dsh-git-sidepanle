@@ -3,3 +3,13 @@ node_modules/
 *~
 .preview/
 .cache/
+
+# Local tooling and OS clutter
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/

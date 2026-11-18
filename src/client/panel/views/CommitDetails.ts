@@ -1,8 +1,8 @@
 /**
  * One commit's details inside the Git panel: a back control, the commit
- * metadata, and the flat list of files the commit changed. This view replaces
- * the change list while it is open; the panel returns here with new props for
- * every load, so it only renders.
+ * metadata, and the flat list of files the commit changed. The view renders as
+ * a card above the panel's still-mounted change list and graph; the panel
+ * returns here with new props for every load, so it only renders.
  */
 
 import type React from 'react'

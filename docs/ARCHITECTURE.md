@@ -74,7 +74,7 @@ src/
       scroll.ts               pure near-end rule that pages the commit history
       autosize.ts             commit-message height rule and its one element pass
       hooks/                  repository/history/branches/details/expansion/action hooks
-      views/                  branch/commit/change/graph sections, reference dialogs and the split view
+      views/                  branch/commit/change/graph sections, the commit-details card, reference dialogs and the split view
         graph/                shared SVG artwork, commit row/badge and expanded change-row presentation
       GitPanel.ts             hook and view assembly
     diff/                     diff panel and pure diff rendering
@@ -84,6 +84,9 @@ scripts/
   verify-contract.ts          integration with the real installed DSH registry
 test/
   *.test.ts                   Host, loader, rendered UI, workflow and architecture regressions
+  registration.test.ts        loader registration, style lease and factory side effects
+  tooling.test.ts             package manifest, exports, CI and artifact contracts
+  types/rpc.type-test.ts      compile-only RPC request/response assertions
   support/architecture.ts     TypeScript-AST import graph checks over virtual source trees
   unit/*.test.ts              pure modules, no Git process or DOM
   support/*.ts                fixtures, minimal React, fake context/menu, VS Code graph oracle
@@ -93,15 +96,16 @@ test/
 
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
-GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
-panel/views/* -> { panel/FloatingPanel, panel/autosize, panel/controls, panel/split, icons, host-file-icon, git/format, git/graph }
+GitPanel -> panel/hooks/* -> { data/caller, panel/menu, menu/bus, git/* }
+panel/views/* -> { panel/FloatingPanel, panel/Section, panel/BranchMenu, panel/autosize, panel/controls, panel/feedback, panel/rows, panel/split, icons, host-file-icon, menu/trigger, git/format, git/graph, type-only hooks/types }
 pure git/menu/locale logic -> no React, no ctx
 host-file-icon -> { icons, react, one guarded host-module request }
 host: http/* -> nothing; git/paths -> errors; git/exec -> errors
       git/files -> { exec, paths }; git/changes -> { exec, paths, files, ignore }
       git/mutations -> { exec, branches }; readers -> { exec, paths, files as needed }
       validation -> { errors, git/exec }; watch/* -> git/exec
-      rpc -> { validation, readers, changes, mutations, watch }; host-entry -> { rpc, http/*, watch }
+      rpc -> { validation, session, errors, git/exec, readers, changes, mutations, watch }
+      host-entry -> { rpc, http/*, watch, errors }
 either half -- import type --> shared/git
 ```
 
@@ -204,9 +208,12 @@ every public export or semantic branch has a consumer.
   checks do not sandbox concurrent local replacement of ancestor directories.
 - The browser factory calls `window.__ModuleLoader__.load({id, factory})`,
   returns `{inject, apply}`, and has no side effects. Registrations belong to
-  `apply` with `ctx.effect`; style leases are shared across module replacements and released on disposal. Only `react` is external.
+  `apply` with `ctx.effect`; style leases are shared across module replacements
+  and released on disposal. The platform supplies `react`; the only other
+  runtime request is the guarded host file-type icon module in
+  `host-file-icon.ts`.
 - `props.useContextMenu` is bound once inside `useMemo`. No DSH UI package is
-  imported into the client artifact.
+  imported as a module; the guarded host-icon request above is the sole exception.
 - Absolute copy paths use `repo.root`, never the possibly nested Session cwd.
 - All visible copy comes from the bound English/Chinese dictionaries. Styling
   retains the Host theme tokens and keyboard/menu focus semantics. The one
