@@ -422,7 +422,7 @@ describe('resolveMenuActions for group headers', () => {
 })
 
 describe('resolveMenuActions for commit and diff targets', () => {
-  test('an ordinary commit offers checkout, reference creation, then renamed copies', () => {
+  test('an ordinary commit offers details, checkout, reference creation, then renamed copies', () => {
     const value = {
       sessionId: SESSION,
       kind: 'commit',
@@ -432,6 +432,7 @@ describe('resolveMenuActions for commit and diff targets', () => {
     }
     const actions = actionsFor(value)
     assert.deepEqual(publishedIds(actions), [
+      'git-graph.actions/view-details',
       'git-graph.actions/checkout-detached',
       'git-graph.actions/create-branch',
       'git-graph.actions/create-tag',
@@ -439,6 +440,7 @@ describe('resolveMenuActions for commit and diff targets', () => {
       'git-graph.actions/copy-message',
     ])
     assert.deepEqual(labelsOf(actions), [
+      t('menu.viewDetails'),
       t('menu.checkoutDetached'),
       t('menu.createBranch'),
       t('menu.createTag'),
@@ -447,7 +449,7 @@ describe('resolveMenuActions for commit and diff targets', () => {
     ])
     assert.deepEqual(
       actions.map((action) => action.separatorBefore === true),
-      [false, true, true, true, false],
+      [false, true, true, true, true, false],
     )
   })
 
@@ -464,6 +466,7 @@ describe('resolveMenuActions for commit and diff targets', () => {
       ],
     })
     assert.deepEqual(publishedIds(actions), [
+      'git-graph.actions/view-details',
       'git-graph.actions/checkout',
       'git-graph.actions/checkout-detached',
       'git-graph.actions/create-branch',
@@ -488,6 +491,7 @@ describe('resolveMenuActions for commit and diff targets', () => {
     )
     assert.equal(removal?.danger, true)
     assert.equal(removal?.run, undefined)
+    assert.equal(checkout?.separatorBefore, true, 'the checkout group follows View Details')
   })
 
   test('only a non-current local head creates the deletion submenu', () => {
@@ -506,6 +510,7 @@ describe('resolveMenuActions for commit and diff targets', () => {
   test('a commit row omits the command for a missing or empty field', () => {
     const base = { sessionId: SESSION, kind: 'commit' }
     assert.deepEqual(publishedIds(actionsFor({ ...base, oid: 'a'.repeat(40) })), [
+      `${MENU_CONTRIBUTION_ID}/view-details`,
       `${MENU_CONTRIBUTION_ID}/checkout-detached`,
       `${MENU_CONTRIBUTION_ID}/create-branch`,
       `${MENU_CONTRIBUTION_ID}/create-tag`,
@@ -514,6 +519,17 @@ describe('resolveMenuActions for commit and diff targets', () => {
     assert.deepEqual(publishedIds(actionsFor({ ...base, subject: 'Fix it' })), [
       `${MENU_CONTRIBUTION_ID}/copy-message`,
     ])
+    const short = actionsFor({ ...base, oid: 'abc1234', subject: 'Fix it' })
+    assert.deepEqual(publishedIds(short), [
+      `${MENU_CONTRIBUTION_ID}/view-details`,
+      `${MENU_CONTRIBUTION_ID}/copy-id`,
+      `${MENU_CONTRIBUTION_ID}/copy-message`,
+    ])
+    assert.deepEqual(
+      short.map((action) => action.separatorBefore === true),
+      [false, true, false],
+      'a short id keeps the copies but still separates them from View Details',
+    )
     assert.deepEqual(actionsFor({ ...base, oid: '', subject: '' }), [])
     assert.deepEqual(actionsFor(base), [])
   })
@@ -603,7 +619,7 @@ describe('resolveMenuActions busy state', () => {
     )
     assert.deepEqual(
       commit.filter((action) => action.disabled === undefined).map((action) => action.id),
-      ['copy-id', 'copy-message'],
+      ['view-details', 'copy-id', 'copy-message'],
     )
     const diff = actionsFor({
       sessionId: SESSION,
@@ -706,6 +722,7 @@ describe('menu command payloads', () => {
         'feature',
       ).run()
       actionById(actions, 'create-tag').run()
+      actionById(actions, 'view-details').run()
     })
     assert.deepEqual(emitted, [
       { sessionId: SESSION, panelId: PANEL, type: 'checkout', branch: 'feature' },
@@ -713,6 +730,7 @@ describe('menu command payloads', () => {
       { sessionId: SESSION, panelId: PANEL, type: 'createBranch', oid: 'a'.repeat(40) },
       { sessionId: SESSION, panelId: PANEL, type: 'deleteBranch', branch: 'feature' },
       { sessionId: SESSION, panelId: PANEL, type: 'createTag', oid: 'a'.repeat(40) },
+      { sessionId: SESSION, panelId: PANEL, type: 'viewCommit', oid: 'a'.repeat(40) },
     ])
   })
 

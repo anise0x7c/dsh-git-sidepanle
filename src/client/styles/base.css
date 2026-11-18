@@ -49,3 +49,24 @@
   flex: none;
   color: var(--dsw-alias-label-caption);
 }
+
+/* The stage is the positioning box shared by the panel content and the details
+ * card that overlays it, so both keep the same height and the card never
+ * resizes the content beneath it. */
+.dshgg-stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: clip;
+}
+
+.dshgg-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}

@@ -28,6 +28,19 @@
   outline-offset: -2px;
 }
 
+/* The row's own file-type glyph: a fixed square that never squeezes the name.
+ * The application's icon paints itself, so this slot only supplies the fallback
+ * color and the geometry. */
+.dshgg-rowIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
 .dshgg-status {
   flex: none;
   width: 14px;

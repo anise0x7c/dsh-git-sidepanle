@@ -444,6 +444,18 @@ export function createHarness(options: HarnessOptions): TestHarness {
     for (const callback of [...intervals.values()]) callback()
   }
 
+  /**
+   * Run every pending one-shot timeout once, as one elapsed exit animation
+   * would. Tests call this (and then `flush`) to finish a surface that is
+   * waiting for its motion to end before it unmounts.
+   */
+  function runTimeouts(): void {
+    for (const [id, callback] of [...timeouts]) {
+      timeouts.delete(id)
+      callback()
+    }
+  }
+
   return {
     React: react,
     render,
@@ -458,6 +470,7 @@ export function createHarness(options: HarnessOptions): TestHarness {
     scroll,
     dispose,
     runIntervals,
+    runTimeouts,
     setComponent(component, props) {
       options.component = component
       options.props = props

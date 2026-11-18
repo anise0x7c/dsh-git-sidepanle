@@ -34,8 +34,10 @@ export interface GraphRowProps {
   readonly geometry: GraphRowGeometry
   /** Locale binder. */
   readonly t: LocaleBinder
-  /** Open this commit's details. */
-  readonly onSelect?: (commit: CommitSummary) => void
+  /** Toggle this commit's inline file list. */
+  readonly onActivate?: (commit: CommitSummary) => void
+  /** Whether the commit's file list is expanded below the row. */
+  readonly expanded?: boolean
   /** Host trigger binding. */
   readonly menuTrigger: MenuTriggerFactory | null
   /** Captured target for this row. */
@@ -83,8 +85,8 @@ function Badge(props: { badge: RefBadge }): React.ReactElement {
 
 /**
  * One commit row: the node cell, then the subject and dimmed author on one
- * ellipsized line, then the reference badges. Activating the row opens the
- * commit's details; the row stays a focus stop and keeps its context-menu
+ * ellipsized line, then the reference badges. Activating the row toggles the
+ * commit's inline file list; the row stays a focus stop and keeps its context-menu
  * gesture. The short identifier and relative time live in the tooltip, as in
  * VS Code's hover. Hovering the row closes its node's gap in the line layer.
  * @param props - row props.
@@ -97,11 +99,12 @@ export function GraphRow(props: GraphRowProps): React.ReactElement {
   const badges = refBadges(row.refs)
   const menuTrigger = typeof props.menuTrigger === 'function' ? props.menuTrigger : null
   const open = (): void => {
-    if (typeof props.onSelect === 'function') props.onSelect(commit)
+    if (typeof props.onActivate === 'function') props.onActivate(commit)
   }
   const interactive = {
     role: 'button',
     tabIndex: 0,
+    'aria-expanded': props.expanded === true,
     onClick: open,
     onMouseEnter: () => props.onHover(props.index),
     onMouseLeave: () => props.onHover(null),
@@ -129,6 +132,7 @@ export function GraphRow(props: GraphRowProps): React.ReactElement {
     {
       className: 'dshgg-graphRow',
       'data-current': row.kind === 'HEAD' ? 'true' : undefined,
+      'data-expanded': props.expanded === true ? 'true' : undefined,
       title: `${titlePrefix}${commit.shortOid} ${subject} · ${commit.author} · ${ago} · ${t('menu.hint')}`,
       ...rowProps,
     },

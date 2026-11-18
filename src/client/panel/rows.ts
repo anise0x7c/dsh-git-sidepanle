@@ -6,6 +6,7 @@
 import type React from 'react'
 import { createElement } from 'react'
 import { splitPath, statusKey } from '../git/format.ts'
+import { HostFileIcon } from '../host-file-icon.ts'
 import { MinusIcon, PlusIcon, UndoIcon } from '../icons.ts'
 import type { MenuTarget, MenuTriggerFactory } from '../menu/trigger.ts'
 import type { LocaleBinder } from '../types/dsh.ts'
@@ -154,7 +155,7 @@ export function FileRow<Entry extends FileRowEntry>(
       onClick: () => props.onOpen(entry),
       ...rowProps,
     },
-    h('span', { className: 'dshgg-status', 'data-status': letter }, letter),
+    h('span', { className: 'dshgg-rowIcon' }, h(HostFileIcon, { path: entry.path, size: 16 })),
     h('span', { className: 'dshgg-fileName' }, name),
     entry.origPath === undefined
       ? null
@@ -165,6 +166,7 @@ export function FileRow<Entry extends FileRowEntry>(
         ),
     dir === '' ? null : h('span', { className: 'dshgg-fileDir', title: entry.path }, dir),
     h('span', { className: 'dshgg-fileActions' }, actionButtons),
+    h('span', { className: 'dshgg-status', 'data-status': letter }, letter),
   )
 }
 

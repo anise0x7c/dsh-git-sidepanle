@@ -44,6 +44,8 @@ var RPC_PATH = "api/dsh-git-graph/rpc";
 var POLL_INTERVAL_MS = 5e3;
 var LIVE_POLL_INTERVAL_MS = 700;
 var MAX_RENDERED_DIFF_LINES = 4e3;
+var PROMPT_MOTION_MS = 180;
+var DETAILS_MOTION_MS = 200;
 var MENU_TARGET = "gitGraphItem";
 var MENU_CONTRIBUTION_ID = "git-graph.actions";
 var panelSequence = 0;
@@ -714,6 +716,7 @@ var en = {
   "menu.addToGitignore": "Add to .gitignore",
   "menu.ignored": "Added {path} to .gitignore",
   "menu.ignoredTracked": "Added {path} to .gitignore; tracked files remain tracked.",
+  "menu.viewDetails": "View Details",
   "menu.checkout": "Checkout",
   "menu.checkoutDetached": "Checkout (Detached)",
   "menu.detached": "Checked out with detached HEAD",
@@ -852,6 +855,7 @@ var zh = {
   "menu.addToGitignore": "添加到 .gitignore",
   "menu.ignored": "已将 {path} 添加到 .gitignore",
   "menu.ignoredTracked": "已将 {path} 添加到 .gitignore；已跟踪文件仍会被 Git 跟踪。",
+  "menu.viewDetails": "查看详情",
   "menu.checkout": "签出",
   "menu.checkoutDetached": "签出(已分离)",
   "menu.detached": "已以分离头指针方式签出",
@@ -1142,6 +1146,7 @@ function resolveMenuActions(value, t, notify) {
   if (target.kind === "commit") {
     const actions = [];
     const oid = target.oid;
+    const details = typeof oid === "string" && oid !== "" ? menuAction("view-details", t("menu.viewDetails"), command({ type: "viewCommit", oid })) : null;
     const canMutate = typeof oid === "string" && /^[0-9a-f]{40}$/.test(oid);
     const branchHeads = Array.isArray(target.branchHeads) ? target.branchHeads.filter(
       (branch) => typeof branch === "object" && branch !== null && typeof branch.name === "string" && branch.name !== ""
@@ -1219,7 +1224,9 @@ function resolveMenuActions(value, t, notify) {
         )
       );
     }
-    return actions;
+    if (details === null) return actions;
+    const [first, ...rest] = actions;
+    return first === void 0 ? [details] : [details, { ...first, separatorBefore: true }, ...rest];
   }
   if (target.kind === "commitFile" || target.kind === "diff") {
     const path = target.path;
@@ -1230,7 +1237,7 @@ function resolveMenuActions(value, t, notify) {
 }
 
 // src/client/panel/GitPanel.ts
-var import_react28 = require("react");
+var import_react32 = require("react");
 
 // src/client/git/list.ts
 function sortChangeEntries(entries) {
@@ -1590,12 +1597,74 @@ function useCommitDetails(options) {
   return { selected, details, loading, failure, selectCommit, closeCommit, retryCommit };
 }
 
-// src/client/panel/hooks/useCommitMenuActions.ts
+// src/client/panel/hooks/useCommitExpansion.ts
 var import_react11 = require("react");
+var LOADING = { loading: true, failure: null, files: [], truncated: false };
+function useCommitExpansion(options) {
+  const { call, refs } = options;
+  const [expanded, setExpanded] = (0, import_react11.useState)(() => /* @__PURE__ */ new Map());
+  const tokens = (0, import_react11.useRef)(/* @__PURE__ */ new Map());
+  const put = (0, import_react11.useCallback)((oid, next) => {
+    setExpanded((current) => {
+      const copy = new Map(current);
+      if (next === null) copy.delete(oid);
+      else copy.set(oid, next);
+      return copy;
+    });
+  }, []);
+  const nextToken = (0, import_react11.useCallback)((oid) => {
+    const token = (tokens.current.get(oid) ?? 0) + 1;
+    tokens.current.set(oid, token);
+    return token;
+  }, []);
+  const load = (0, import_react11.useCallback)(
+    async (oid) => {
+      const token = nextToken(oid);
+      const current = () => refs.mounted.current && tokens.current.get(oid) === token;
+      put(oid, LOADING);
+      try {
+        const value = await call("commit-details", { oid });
+        if (!current()) return;
+        const files = sortChangeEntries(Array.isArray(value.files) ? value.files : []).map(
+          (file) => ({ ...file, kind: "commit" })
+        );
+        put(oid, { loading: false, failure: null, files, truncated: value.truncated === true });
+      } catch (error) {
+        if (!current()) return;
+        put(oid, { loading: false, failure: toFailure(error), files: [], truncated: false });
+      }
+    },
+    [call, refs, put, nextToken]
+  );
+  const toggleCommit = (0, import_react11.useCallback)(
+    (commit) => {
+      if (commit === null || commit === void 0 || typeof commit.oid !== "string") return;
+      const oid = commit.oid;
+      if (expanded.has(oid)) {
+        nextToken(oid);
+        put(oid, null);
+        return;
+      }
+      void load(oid);
+    },
+    [expanded, load, put, nextToken]
+  );
+  const retryCommit = (0, import_react11.useCallback)(
+    (commit) => {
+      if (commit === null || commit === void 0 || !expanded.has(commit.oid)) return;
+      void load(commit.oid);
+    },
+    [expanded, load]
+  );
+  return { expanded, toggleCommit, retryCommit };
+}
+
+// src/client/panel/hooks/useCommitMenuActions.ts
+var import_react12 = require("react");
 function useCommitMenuActions(options) {
   const { call, t, refs, perform, onReferencesChanged } = options;
-  const [dialog, setDialog] = (0, import_react11.useState)(null);
-  const invoker = (0, import_react11.useRef)(null);
+  const [dialog, setDialog] = (0, import_react12.useState)(null);
+  const invoker = (0, import_react12.useRef)(null);
   const rememberTrigger = (element) => {
     invoker.current = element;
   };
@@ -1693,23 +1762,23 @@ function useCommitMenuActions(options) {
 }
 
 // src/client/panel/hooks/useHistory.ts
-var import_react12 = require("react");
+var import_react13 = require("react");
 function isReferences(value) {
   return typeof value === "object" && value !== null && "current" in value;
 }
 function useHistory(options) {
   const { call, refs } = options;
-  const [graph, setGraph] = (0, import_react12.useState)(null);
-  const [references, setReferences] = (0, import_react12.useState)(null);
-  const [graphLoading, setGraphLoading] = (0, import_react12.useState)(false);
-  const [graphFailure, setGraphFailure] = (0, import_react12.useState)(null);
-  const [hasMore, setHasMore] = (0, import_react12.useState)(false);
-  const [moreLoading, setMoreLoading] = (0, import_react12.useState)(false);
-  const [moreFailure, setMoreFailure] = (0, import_react12.useState)(null);
-  const offset = (0, import_react12.useRef)(0);
-  const generation = (0, import_react12.useRef)(0);
-  const moreInFlight = (0, import_react12.useRef)(false);
-  const loadGraph = (0, import_react12.useCallback)(async () => {
+  const [graph, setGraph] = (0, import_react13.useState)(null);
+  const [references, setReferences] = (0, import_react13.useState)(null);
+  const [graphLoading, setGraphLoading] = (0, import_react13.useState)(false);
+  const [graphFailure, setGraphFailure] = (0, import_react13.useState)(null);
+  const [hasMore, setHasMore] = (0, import_react13.useState)(false);
+  const [moreLoading, setMoreLoading] = (0, import_react13.useState)(false);
+  const [moreFailure, setMoreFailure] = (0, import_react13.useState)(null);
+  const offset = (0, import_react13.useRef)(0);
+  const generation = (0, import_react13.useRef)(0);
+  const moreInFlight = (0, import_react13.useRef)(false);
+  const loadGraph = (0, import_react13.useCallback)(async () => {
     const current = generation.current + 1;
     generation.current = current;
     if (refs.mounted.current) setGraphLoading(true);
@@ -1737,7 +1806,7 @@ function useHistory(options) {
       if (refs.mounted.current && generation.current === current) setGraphLoading(false);
     }
   }, [call, refs]);
-  const refreshReferences = (0, import_react12.useCallback)(async () => {
+  const refreshReferences = (0, import_react13.useCallback)(async () => {
     try {
       const value = await call("references");
       if (!refs.mounted.current) return null;
@@ -1747,7 +1816,7 @@ function useHistory(options) {
       return null;
     }
   }, [call, refs]);
-  const loadMore = (0, import_react12.useCallback)(async () => {
+  const loadMore = (0, import_react13.useCallback)(async () => {
     if (!refs.mounted.current || moreInFlight.current || graphLoading || !hasMore) return;
     const current = generation.current;
     moreInFlight.current = true;
@@ -1773,7 +1842,7 @@ function useHistory(options) {
       if (refs.mounted.current) setMoreLoading(false);
     }
   }, [call, graphLoading, hasMore, refs]);
-  (0, import_react12.useEffect)(() => {
+  (0, import_react13.useEffect)(() => {
     void loadGraph();
   }, [loadGraph]);
   return {
@@ -1791,17 +1860,17 @@ function useHistory(options) {
 }
 
 // src/client/panel/hooks/useLiveUpdates.ts
-var import_react13 = require("react");
+var import_react14 = require("react");
 function useLiveUpdates(options) {
   const { call, panelId, visible, repoRoot, refs, onWorktreeChange, onReferencesChange } = options;
-  const [watching, setWatching] = (0, import_react13.useState)(false);
-  const baseline = (0, import_react13.useRef)(null);
-  const handlers = (0, import_react13.useRef)({ onWorktreeChange, onReferencesChange });
-  (0, import_react13.useEffect)(() => {
+  const [watching, setWatching] = (0, import_react14.useState)(false);
+  const baseline = (0, import_react14.useRef)(null);
+  const handlers = (0, import_react14.useRef)({ onWorktreeChange, onReferencesChange });
+  (0, import_react14.useEffect)(() => {
     handlers.current = { onWorktreeChange, onReferencesChange };
   });
   refs.watching.current = watching;
-  const subscribe = (0, import_react13.useCallback)(async () => {
+  const subscribe = (0, import_react14.useCallback)(async () => {
     try {
       const state = await call("watch", { panel: panelId });
       if (!refs.mounted.current) return;
@@ -1816,7 +1885,7 @@ function useLiveUpdates(options) {
       }
     }
   }, [call, panelId, refs]);
-  (0, import_react13.useEffect)(() => {
+  (0, import_react14.useEffect)(() => {
     void subscribe();
     return () => {
       if (!refs.mounted.current) refs.watching.current = false;
@@ -1824,7 +1893,7 @@ function useLiveUpdates(options) {
       });
     };
   }, [subscribe, call, panelId, repoRoot, refs]);
-  (0, import_react13.useEffect)(() => {
+  (0, import_react14.useEffect)(() => {
     if (!visible) return void 0;
     let active = true;
     const poll = async () => {
@@ -1884,10 +1953,10 @@ function useLiveUpdates(options) {
 }
 
 // src/client/panel/hooks/useMenuCommands.ts
-var import_react14 = require("react");
+var import_react15 = require("react");
 function useMenuCommands() {
-  const optionsRef = (0, import_react14.useRef)(null);
-  (0, import_react14.useEffect)(
+  const optionsRef = (0, import_react15.useRef)(null);
+  (0, import_react15.useEffect)(
     () => panelCommands.subscribe((command) => {
       const options = optionsRef.current;
       if (options !== null) dispatch(options, command);
@@ -1908,6 +1977,7 @@ function dispatch(options, command) {
     createBranch,
     createTag,
     deleteBranch,
+    viewCommit,
     setConfirm,
     notify,
     openDiff
@@ -1921,6 +1991,12 @@ function dispatch(options, command) {
   const reportStale = () => notify(t("menu.stale"), false);
   if (command.type === "refresh") {
     refreshAll();
+    return;
+  }
+  if (command.type === "viewCommit") {
+    if (typeof command.oid !== "string" || command.oid === "" || !viewCommit(command.oid)) {
+      reportStale();
+    }
     return;
   }
   if (busyRef.current !== null) {
@@ -2019,17 +2095,42 @@ function dispatch(options, command) {
   }
 }
 
+// src/client/panel/hooks/usePresence.ts
+var import_react16 = require("react");
+function usePresence(open, exitMs) {
+  const [mounted, setMounted] = (0, import_react16.useState)(open);
+  const [leaving, setLeaving] = (0, import_react16.useState)(false);
+  const mountedRef = (0, import_react16.useRef)(mounted);
+  mountedRef.current = mounted;
+  (0, import_react16.useEffect)(() => {
+    if (open) {
+      setMounted(true);
+      setLeaving(false);
+      return;
+    }
+    if (!mountedRef.current) return;
+    setLeaving(true);
+    const timer = setTimeout(() => {
+      setMounted(false);
+      setLeaving(false);
+    }, exitMs);
+    return () => clearTimeout(timer);
+  }, [open, exitMs]);
+  const phase = open || !leaving ? "enter" : "leave";
+  return { mounted: open || mounted, phase };
+}
+
 // src/client/panel/hooks/useRepoStatus.ts
-var import_react15 = require("react");
+var import_react17 = require("react");
 function useRepoStatus(options) {
   const { sessionId, useContextMenu, visible, refs } = options;
   const { call, menuTrigger, panelId } = usePanelMenu({ sessionId, useContextMenu });
-  const [status, setStatus] = (0, import_react15.useState)(null);
-  const [loading, setLoading] = (0, import_react15.useState)(true);
-  const [loadFailure, setLoadFailure] = (0, import_react15.useState)(null);
-  const activeRead = (0, import_react15.useRef)(null);
-  const queuedRead = (0, import_react15.useRef)(null);
-  const drain = (0, import_react15.useCallback)(
+  const [status, setStatus] = (0, import_react17.useState)(null);
+  const [loading, setLoading] = (0, import_react17.useState)(true);
+  const [loadFailure, setLoadFailure] = (0, import_react17.useState)(null);
+  const activeRead = (0, import_react17.useRef)(null);
+  const queuedRead = (0, import_react17.useRef)(null);
+  const drain = (0, import_react17.useCallback)(
     async (firstSilent) => {
       refs.inFlight.current = true;
       let silent = firstSilent;
@@ -2059,7 +2160,7 @@ function useRepoStatus(options) {
     },
     [call, refs]
   );
-  const loadStatus = (0, import_react15.useCallback)(
+  const loadStatus = (0, import_react17.useCallback)(
     (loadOptions = {}) => {
       const silent = loadOptions.silent === true;
       const active = activeRead.current;
@@ -2074,10 +2175,10 @@ function useRepoStatus(options) {
     },
     [drain]
   );
-  (0, import_react15.useEffect)(() => {
+  (0, import_react17.useEffect)(() => {
     void loadStatus();
   }, [loadStatus]);
-  (0, import_react15.useEffect)(() => {
+  (0, import_react17.useEffect)(() => {
     if (!visible) return void 0;
     const timer = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
@@ -2123,11 +2224,11 @@ function adjustSplitRatio(ratio, key) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var import_react17 = require("react");
+var import_react19 = require("react");
 
 // src/client/panel/BranchMenu.ts
-var import_react16 = require("react");
-var h7 = import_react16.createElement;
+var import_react18 = require("react");
+var h7 = import_react18.createElement;
 function BranchMenu(props) {
   const t = props.t;
   let content;
@@ -2177,7 +2278,7 @@ function BranchMenu(props) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var h8 = import_react17.createElement;
+var h8 = import_react19.createElement;
 function BranchHeader(props) {
   const t = props.t;
   const repo = props.repo;
@@ -2245,11 +2346,30 @@ function BranchHeader(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var import_react20 = require("react");
+var import_react23 = require("react");
 
 // src/client/panel/rows.ts
-var import_react18 = require("react");
-var h9 = import_react18.createElement;
+var import_react21 = require("react");
+
+// src/client/host-file-icon.ts
+var import_react20 = require("react");
+function resolveHostIcon() {
+  try {
+    const hostModule = require("@deepseek-ai/dsh-client-ui-primitives");
+    const icon = hostModule?.FileTypeIcon;
+    return typeof icon === "function" ? icon : void 0;
+  } catch {
+    return void 0;
+  }
+}
+var hostIcon = resolveHostIcon();
+function HostFileIcon(props) {
+  const size = props.size ?? 16;
+  return hostIcon === void 0 ? (0, import_react20.createElement)(FileIcon, { size }) : (0, import_react20.createElement)(hostIcon, { path: props.path, size });
+}
+
+// src/client/panel/rows.ts
+var h9 = import_react21.createElement;
 function FileRow(props) {
   const entry = props.entry;
   const letter = props.letter;
@@ -2331,7 +2451,7 @@ function FileRow(props) {
       onClick: () => props.onOpen(entry),
       ...rowProps
     },
-    h9("span", { className: "dshgg-status", "data-status": letter }, letter),
+    h9("span", { className: "dshgg-rowIcon" }, h9(HostFileIcon, { path: entry.path, size: 16 })),
     h9("span", { className: "dshgg-fileName" }, name),
     entry.origPath === void 0 ? null : h9(
       "span",
@@ -2339,7 +2459,8 @@ function FileRow(props) {
       `← ${splitPath(entry.origPath).name}`
     ),
     dir === "" ? null : h9("span", { className: "dshgg-fileDir", title: entry.path }, dir),
-    h9("span", { className: "dshgg-fileActions" }, actionButtons)
+    h9("span", { className: "dshgg-fileActions" }, actionButtons),
+    h9("span", { className: "dshgg-status", "data-status": letter }, letter)
   );
 }
 function renderFileRows(entries, context) {
@@ -2363,8 +2484,8 @@ function renderFileRows(entries, context) {
 }
 
 // src/client/panel/Section.ts
-var import_react19 = require("react");
-var h10 = import_react19.createElement;
+var import_react22 = require("react");
+var h10 = import_react22.createElement;
 function Section(props) {
   const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
@@ -2402,7 +2523,7 @@ function Section(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var h11 = import_react20.createElement;
+var h11 = import_react23.createElement;
 function ChangeGroups(props) {
   const t = props.t;
   const sectionActions = {
@@ -2462,7 +2583,7 @@ function ChangeGroups(props) {
     menuTarget: (entry) => props.rowTarget("file", { section: mode, path: entry.path })
   });
   return h11(
-    import_react20.Fragment,
+    import_react23.Fragment,
     null,
     props.mergeRows.length === 0 ? null : h11(
       Section,
@@ -2519,7 +2640,7 @@ function ChangeGroups(props) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var import_react21 = require("react");
+var import_react24 = require("react");
 
 // src/client/panel/autosize.ts
 var COMMIT_MESSAGE_MAX_LINES = 10;
@@ -2566,11 +2687,11 @@ function autoGrowTextArea(area) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var h12 = import_react21.createElement;
+var h12 = import_react24.createElement;
 function CommitBox(props) {
   const t = props.t;
-  const messageArea = (0, import_react21.useRef)(null);
-  (0, import_react21.useLayoutEffect)(() => {
+  const messageArea = (0, import_react24.useRef)(null);
+  (0, import_react24.useLayoutEffect)(() => {
     const area = messageArea.current;
     if (area === null) return;
     return autoGrowTextArea(area);
@@ -2614,8 +2735,8 @@ function CommitBox(props) {
 }
 
 // src/client/panel/views/CommitDetails.ts
-var import_react22 = require("react");
-var h13 = import_react22.createElement;
+var import_react25 = require("react");
+var h13 = import_react25.createElement;
 function CommitDetails(props) {
   const t = props.t;
   const summary = props.summary;
@@ -2704,11 +2825,11 @@ function CommitDetails(props) {
 }
 
 // src/client/panel/views/CommitMenuDialog.ts
-var import_react23 = require("react");
-var h14 = import_react23.createElement;
+var import_react26 = require("react");
+var h14 = import_react26.createElement;
 function CommitMenuDialog(props) {
   const { dialog, t } = props;
-  const composing = (0, import_react23.useRef)(false);
+  const composing = (0, import_react26.useRef)(false);
   const title = dialog.kind === "createBranch" ? t("menu.createBranch") : dialog.kind === "createTag" ? t("menu.createTag") : t("menu.deleteBranch");
   const description = dialog.kind === "createBranch" ? t("menu.createBranchAt", { hash: dialog.oid.slice(0, 7) }) : dialog.kind === "createTag" ? t("menu.createTagAt", { hash: dialog.oid.slice(0, 7) }) : t("menu.deleteBranchConfirm", { name: dialog.branch });
   const progress = dialog.kind === "createBranch" ? t("menu.creatingBranch") : dialog.kind === "createTag" ? t("menu.creatingTag") : t("menu.deletingBranch");
@@ -2793,11 +2914,12 @@ function CommitMenuDialog(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var import_react26 = require("react");
+var import_react30 = require("react");
 
 // src/client/git/graph.ts
 var SWIMLANE_HEIGHT = 22;
 var SWIMLANE_WIDTH = 11;
+var HIGHLIGHT_STROKE_WIDTH = 3;
 var SWIMLANE_CURVE_RADIUS = 5;
 var ROW_OVERHANG = 1;
 var LANE_COLORS = ["lane1", "lane2", "lane3", "lane4", "lane5"];
@@ -2983,7 +3105,7 @@ var NODE_SHAPES = {
     hoverGap: 7
   }
 };
-function graphRowGeometry(row, offset = 0) {
+function graphRowGeometry(row, offset = 0, expanded = false) {
   const { input, output, parents } = row;
   const circleIndex = row.lane;
   const paths = [];
@@ -3050,7 +3172,10 @@ function graphRowGeometry(row, offset = 0) {
     paths.push({ d: verticalLine(laneX(circleIndex), y(0), y(H / 2)), color: incoming.color });
   }
   if (parents.length > 0) {
-    paths.push({ d: verticalLine(laneX(circleIndex), y(H / 2), y(H)), color: row.color });
+    const d = verticalLine(laneX(circleIndex), y(H / 2), y(H));
+    paths.push(
+      expanded ? { d, color: row.color, width: HIGHLIGHT_STROKE_WIDTH } : { d, color: row.color }
+    );
   }
   const shape = row.kind === "HEAD" ? "head" : parents.length > 1 ? "merge" : "node";
   const shapeSpec = NODE_SHAPES[shape];
@@ -3071,18 +3196,38 @@ function graphRowGeometry(row, offset = 0) {
     }
   };
 }
-function graphLayer(rows) {
+function graphPlaceholderPaths(row, offset = 0) {
+  const paths = [];
+  for (let index = 0; index < row.output.length; index += 1) {
+    const lane = row.output[index];
+    if (lane === void 0) continue;
+    const d = verticalLine(laneX(index), offset, offset + SWIMLANE_HEIGHT);
+    paths.push(
+      index === row.lane ? { d, color: lane.color, width: HIGHLIGHT_STROKE_WIDTH } : { d, color: lane.color }
+    );
+  }
+  return paths;
+}
+function graphPlaceholderWidth(row) {
+  return SWIMLANE_WIDTH * (row.output.length + 1);
+}
+function graphLayer(rows, inserted = []) {
   const segments = /* @__PURE__ */ new Map();
   const gaps = [];
   let width = 0;
+  let top = 0;
+  const add = (path) => {
+    const key = `${path.color}:${path.width ?? 1}`;
+    const entry = segments.get(key);
+    if (entry === void 0)
+      segments.set(key, { color: path.color, width: path.width, d: [path.d] });
+    else entry.d.push(path.d);
+  };
   rows.forEach((row, index) => {
-    const geometry = graphRowGeometry(row, index * SWIMLANE_HEIGHT);
+    const count = inserted[index] ?? 0;
+    const geometry = graphRowGeometry(row, top, count > 0);
     width = Math.max(width, geometry.width);
-    for (const path of [...geometry.bridge, ...geometry.paths]) {
-      const list = segments.get(path.color);
-      if (list === void 0) segments.set(path.color, [path.d]);
-      else list.push(path.d);
-    }
+    for (const path of [...geometry.bridge, ...geometry.paths]) add(path);
     gaps.push({
       row: index,
       cx: geometry.node.cx,
@@ -3090,12 +3235,20 @@ function graphLayer(rows) {
       gap: geometry.node.gap,
       hoverGap: geometry.node.hoverGap
     });
+    top += SWIMLANE_HEIGHT;
+    for (let child = 0; child < count; child += 1) {
+      for (const path of graphPlaceholderPaths(row, top)) add(path);
+      width = Math.max(width, graphPlaceholderWidth(row));
+      top += SWIMLANE_HEIGHT;
+    }
   });
   return {
-    paths: [...segments].map(([color, list]) => ({ d: list.join(" "), color })),
+    paths: [...segments.values()].map(
+      ({ color, width: stroke, d }) => stroke === void 0 ? { d: d.join(" "), color } : { d: d.join(" "), color, width: stroke }
+    ),
     gaps,
     width,
-    height: rows.length * SWIMLANE_HEIGHT
+    height: top
   };
 }
 function badgeIcon(kind) {
@@ -3139,21 +3292,122 @@ function refBadges(refs) {
   return badges;
 }
 
+// src/client/panel/views/graph/CommitChangeRows.ts
+var import_react27 = require("react");
+var h15 = import_react27.createElement;
+function changeRowItems(expansion) {
+  if (expansion.failure !== null) return [{ kind: "failure", failure: expansion.failure }];
+  if (expansion.loading) return [{ kind: "loading" }];
+  if (expansion.files.length === 0) return [{ kind: "empty" }];
+  const items = expansion.files.map((entry) => ({ kind: "file", entry }));
+  if (expansion.truncated) items.push({ kind: "truncated", count: expansion.files.length });
+  return items;
+}
+function graphArea(width) {
+  return h15("span", {
+    className: "dshgg-graphChangeLanes",
+    style: { width: `${width}px` },
+    "aria-hidden": "true"
+  });
+}
+function ChangeFileRow(props) {
+  const entry = props.entry;
+  const { dir, name } = splitPath(entry.path);
+  const letter = entry.letter ?? "";
+  const open = () => props.onOpen(entry);
+  const interactive = {
+    role: "button",
+    tabIndex: 0,
+    onClick: open,
+    onKeyDown: (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        open();
+      }
+    }
+  };
+  const trigger = props.menuTrigger;
+  const rowProps = trigger === null || props.menuTarget === void 0 ? interactive : trigger(props.menuTarget, { ...interactive, "aria-haspopup": "menu" });
+  return h15(
+    "div",
+    {
+      className: "dshgg-graphChange dshgg-fileRow",
+      "aria-label": `${props.t(statusKey(letter))} ${entry.path}`,
+      title: entry.origPath === void 0 ? entry.path : `${entry.origPath} → ${entry.path}`,
+      ...rowProps
+    },
+    graphArea(props.graphWidth),
+    h15(
+      "span",
+      { className: "dshgg-graphChangeIcon" },
+      h15(HostFileIcon, { path: entry.path, size: 16 })
+    ),
+    h15(
+      "span",
+      { className: "dshgg-graphChangeLabel" },
+      h15("span", { className: "dshgg-graphChangeName" }, name),
+      dir === "" ? null : h15("span", { className: "dshgg-graphChangeDir" }, dir)
+    ),
+    h15("span", { className: "dshgg-status dshgg-graphChangeStatus", "data-status": letter }, letter)
+  );
+}
+function renderCommitChangeRows(props) {
+  const t = props.t;
+  return props.items.map((item) => {
+    if (item.kind === "file") {
+      const target = props.fileTarget?.(item.entry.path);
+      return h15(ChangeFileRow, {
+        key: `change:${props.oid}:${item.entry.path}`,
+        entry: item.entry,
+        graphWidth: props.graphWidth,
+        t,
+        onOpen: props.onOpen,
+        menuTrigger: props.menuTrigger,
+        ...target === void 0 ? {} : { menuTarget: target }
+      });
+    }
+    const note = item.kind === "loading" ? t("commitDetails.loading") : item.kind === "empty" ? t("commitDetails.empty") : item.kind === "truncated" ? t("commitDetails.truncated", { n: item.count }) : errorText(t, item.failure);
+    return h15(
+      "div",
+      {
+        key: `change:${props.oid}:${item.kind}`,
+        className: "dshgg-graphChange dshgg-graphChangeNote",
+        "data-note": item.kind,
+        role: item.kind === "failure" ? "alert" : "status"
+      },
+      graphArea(props.graphWidth),
+      h15("span", { className: "dshgg-graphChangeText", title: note }, note),
+      item.kind === "failure" ? h15(
+        "button",
+        {
+          type: "button",
+          className: "dshgg-graphChangeRetry",
+          onClick: (event) => {
+            event.stopPropagation();
+            props.onRetry();
+          }
+        },
+        t("retry")
+      ) : null
+    );
+  });
+}
+
 // src/client/panel/views/graph/CommitGraphRow.ts
-var import_react25 = require("react");
+var import_react29 = require("react");
 
 // src/client/panel/views/graph/GraphArtwork.ts
-var import_react24 = require("react");
-var h15 = import_react24.createElement;
+var import_react28 = require("react");
+var h16 = import_react28.createElement;
 function graphColorValue(color) {
   return `var(--dshgg-scm-${color})`;
 }
 function GraphBody(props) {
   const layer = props.layer;
-  return h15(
+  return h16(
     "div",
     { className: "dshgg-graphBody" },
-    h15(
+    h16(
       "svg",
       {
         className: "dshgg-graphLayer",
@@ -3163,10 +3417,10 @@ function GraphBody(props) {
         "aria-hidden": "true",
         focusable: false
       },
-      h15(
+      h16(
         "defs",
         null,
-        h15(
+        h16(
           "mask",
           {
             id: props.maskId,
@@ -3176,9 +3430,9 @@ function GraphBody(props) {
             width: layer.width,
             height: layer.height
           },
-          h15("rect", { x: 0, y: 0, width: layer.width, height: layer.height, fill: "white" }),
+          h16("rect", { x: 0, y: 0, width: layer.width, height: layer.height, fill: "white" }),
           layer.gaps.map(
-            (gap) => h15("circle", {
+            (gap) => h16("circle", {
               key: `gap:${gap.row}`,
               className: "dshgg-graphGap",
               cx: gap.cx,
@@ -3189,16 +3443,17 @@ function GraphBody(props) {
           )
         )
       ),
-      h15(
+      h16(
         "g",
         { className: "dshgg-graphLines", mask: `url(#${props.maskId})` },
         layer.paths.map(
-          (path, index) => h15("path", {
-            key: `${path.color}:${index}`,
+          (path, index) => h16("path", {
+            key: `${path.color}:${path.width ?? 1}:${index}`,
             className: "dshgg-graphEdge",
             "data-color": path.color,
+            "data-width": path.width === void 0 ? void 0 : String(path.width),
             d: path.d,
-            style: { stroke: graphColorValue(path.color) }
+            style: path.width === void 0 ? { stroke: graphColorValue(path.color) } : { stroke: graphColorValue(path.color), strokeWidth: `${path.width}px` }
           })
         )
       )
@@ -3209,7 +3464,7 @@ function GraphBody(props) {
 function GraphCell(props) {
   const geometry = props.geometry;
   const node = geometry.node;
-  return h15(
+  return h16(
     "svg",
     {
       className: "dshgg-graphSvg",
@@ -3220,7 +3475,7 @@ function GraphCell(props) {
       focusable: false
     },
     node.circles.map(
-      (circle, index) => h15("circle", {
+      (circle, index) => h16("circle", {
         key: `node:${index}`,
         className: "dshgg-graphNode",
         "data-shape": node.shape,
@@ -3249,16 +3504,16 @@ function GraphCell(props) {
 }
 
 // src/client/panel/views/graph/CommitGraphRow.ts
-var h16 = import_react25.createElement;
+var h17 = import_react29.createElement;
 function badgeIconElement(icon) {
-  if (icon === "target") return h16(TargetIcon, { size: 16 });
-  if (icon === "cloud") return h16(CloudIcon, { size: 16 });
-  if (icon === "tag") return h16(TagIcon, { size: 16 });
-  return h16(GitBranchIcon, { size: 12 });
+  if (icon === "target") return h17(TargetIcon, { size: 16 });
+  if (icon === "cloud") return h17(CloudIcon, { size: 16 });
+  if (icon === "tag") return h17(TagIcon, { size: 16 });
+  return h17(GitBranchIcon, { size: 12 });
 }
 function Badge(props) {
   const badge = props.badge;
-  return h16(
+  return h17(
     "span",
     {
       className: "dshgg-graphBadge",
@@ -3267,9 +3522,9 @@ function Badge(props) {
       style: { backgroundColor: graphColorValue(badge.color) },
       title: badge.refs.map((ref) => ref.name).join(", ")
     },
-    badge.count > 1 ? h16("span", { className: "dshgg-graphBadgeCount" }, String(badge.count)) : null,
-    h16("span", { className: "dshgg-graphBadgeIcon" }, badgeIconElement(badge.icon)),
-    badge.name === null ? null : h16("span", { className: "dshgg-graphBadgeName" }, badge.name)
+    badge.count > 1 ? h17("span", { className: "dshgg-graphBadgeCount" }, String(badge.count)) : null,
+    h17("span", { className: "dshgg-graphBadgeIcon" }, badgeIconElement(badge.icon)),
+    badge.name === null ? null : h17("span", { className: "dshgg-graphBadgeName" }, badge.name)
   );
 }
 function GraphRow(props) {
@@ -3279,11 +3534,12 @@ function GraphRow(props) {
   const badges = refBadges(row.refs);
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
   const open = () => {
-    if (typeof props.onSelect === "function") props.onSelect(commit);
+    if (typeof props.onActivate === "function") props.onActivate(commit);
   };
   const interactive = {
     role: "button",
     tabIndex: 0,
+    "aria-expanded": props.expanded === true,
     onClick: open,
     onMouseEnter: () => props.onHover(props.index),
     onMouseLeave: () => props.onHover(null),
@@ -3302,38 +3558,39 @@ function GraphRow(props) {
   const subject = commit.subject === "" ? t("graph.noSubject") : commit.subject;
   const ago = formatAgo(t, commit.authoredAt);
   const titlePrefix = row.refs.length === 0 ? "" : `${row.refs.map((ref) => ref.name).join(", ")} · `;
-  return h16(
+  return h17(
     "div",
     {
       className: "dshgg-graphRow",
       "data-current": row.kind === "HEAD" ? "true" : void 0,
+      "data-expanded": props.expanded === true ? "true" : void 0,
       title: `${titlePrefix}${commit.shortOid} ${subject} · ${commit.author} · ${ago} · ${t("menu.hint")}`,
       ...rowProps
     },
-    h16(GraphCell, { geometry: props.geometry }),
-    h16(
+    h17(GraphCell, { geometry: props.geometry }),
+    h17(
       "span",
       { className: "dshgg-graphLabel" },
-      h16("span", { className: "dshgg-graphSubject" }, subject),
-      commit.author === "" ? null : h16("span", { className: "dshgg-graphAuthor" }, commit.author)
+      h17("span", { className: "dshgg-graphSubject" }, subject),
+      commit.author === "" ? null : h17("span", { className: "dshgg-graphAuthor" }, commit.author)
     ),
-    badges.length === 0 ? null : h16(
+    badges.length === 0 ? null : h17(
       "span",
       { className: "dshgg-graphBadges" },
       badges.map(
-        (badge, index) => h16(Badge, { key: `${badge.color}:${badge.icon}:${index}`, badge })
+        (badge, index) => h17(Badge, { key: `${badge.color}:${badge.icon}:${index}`, badge })
       )
     )
   );
 }
 
 // src/client/panel/views/GraphSection.ts
-var h17 = import_react26.createElement;
+var h18 = import_react30.createElement;
 function GraphSection(props) {
   const t = props.t;
   const commits = Array.isArray(props.commits) ? props.commits : null;
   const references = props.references ?? null;
-  const rowsLayout = (0, import_react26.useMemo)(
+  const rowsLayout = (0, import_react30.useMemo)(
     () => computeGraph(
       bindReferenceTargets(
         (commits ?? []).map((commit) => ({
@@ -3348,16 +3605,30 @@ function GraphSection(props) {
     [commits, references]
   );
   const graphId = props.graphId ?? "git-graph";
-  const layer = (0, import_react26.useMemo)(() => graphLayer(rowsLayout), [rowsLayout]);
-  const [hovered, setHovered] = (0, import_react26.useState)(null);
+  const expanded = props.expanded ?? null;
+  const inserted = (0, import_react30.useMemo)(
+    () => (commits ?? []).map((commit) => {
+      const expansion = expanded?.get(commit.oid);
+      return expansion === void 0 ? [] : changeRowItems(expansion);
+    }),
+    [commits, expanded]
+  );
+  const layer = (0, import_react30.useMemo)(
+    () => graphLayer(
+      rowsLayout,
+      inserted.map((items) => items.length)
+    ),
+    [rowsLayout, inserted]
+  );
+  const [hovered, setHovered] = (0, import_react30.useState)(null);
   const menu = props.menu;
   const trigger = menu === void 0 ? null : menu.trigger;
   const rows = [];
   if (props.loading === true && commits === null) {
-    rows.push(h17("div", { key: "loading", className: "dshgg-note" }, t("graph.loading")));
+    rows.push(h18("div", { key: "loading", className: "dshgg-note" }, t("graph.loading")));
   } else if (props.failure !== null) {
     rows.push(
-      h17(Banner, {
+      h18(Banner, {
         key: "error",
         title: t("error.title"),
         detail: errorText(t, props.failure),
@@ -3366,7 +3637,7 @@ function GraphSection(props) {
       })
     );
   } else if (commits === null || commits.length === 0) {
-    rows.push(h17("div", { key: "empty", className: "dshgg-note" }, t("graph.empty")));
+    rows.push(h18("div", { key: "empty", className: "dshgg-note" }, t("graph.empty")));
   } else {
     const rowElements = [];
     for (let index = 0; index < commits.length; index += 1) {
@@ -3374,23 +3645,39 @@ function GraphSection(props) {
       const row = rowsLayout[index];
       if (commit === void 0 || row === void 0) continue;
       rowElements.push(
-        h17(GraphRow, {
+        h18(GraphRow, {
           key: commit.oid,
           index,
           commit,
           row,
           geometry: graphRowGeometry(row),
           t,
-          onSelect: props.onSelect,
+          onActivate: props.onActivate,
+          expanded: expanded?.has(commit.oid) === true,
           menuTrigger: trigger,
           ...menu === void 0 || trigger === null ? {} : { menuTarget: menu.commitTarget(commit) },
           ...menu.onInvoke === void 0 ? {} : { onInvoke: menu.onInvoke },
           onHover: setHovered
         })
       );
+      const items = inserted[index] ?? [];
+      if (items.length > 0) {
+        rowElements.push(
+          ...renderCommitChangeRows({
+            items,
+            oid: commit.oid,
+            graphWidth: graphPlaceholderWidth(row),
+            t,
+            onOpen: (entry) => props.onOpenChange?.(commit, entry),
+            onRetry: () => props.onRetryChanges?.(commit),
+            menuTrigger: trigger,
+            ...menu.fileTarget === void 0 ? {} : { fileTarget: menu.fileTarget }
+          })
+        );
+      }
     }
     rows.push(
-      h17(
+      h18(
         GraphBody,
         {
           key: "body",
@@ -3405,11 +3692,11 @@ function GraphSection(props) {
     const moreFailure = props.moreFailure ?? null;
     if (loadMore !== null && moreFailure !== null) {
       rows.push(
-        h17(
+        h18(
           "div",
           { key: "moreError", className: "dshgg-graphMore" },
-          h17("span", { className: "dshgg-graphMoreText" }, errorText(t, moreFailure)),
-          h17(
+          h18("span", { className: "dshgg-graphMoreText" }, errorText(t, moreFailure)),
+          h18(
             "button",
             {
               type: "button",
@@ -3423,7 +3710,7 @@ function GraphSection(props) {
     } else if (loadMore !== null && props.hasMore === true) {
       const loading = props.moreLoading === true;
       rows.push(
-        h17(
+        h18(
           "button",
           {
             key: "more",
@@ -3439,7 +3726,7 @@ function GraphSection(props) {
       );
     }
   }
-  return h17(
+  return h18(
     Section,
     {
       id: "graph",
@@ -3455,11 +3742,11 @@ function GraphSection(props) {
 }
 
 // src/client/panel/views/SplitView.ts
-var import_react27 = require("react");
-var h18 = import_react27.createElement;
+var import_react31 = require("react");
+var h19 = import_react31.createElement;
 function SplitView(props) {
-  const [dragging, setDragging] = (0, import_react27.useState)(false);
-  const dragStart = (0, import_react27.useRef)(null);
+  const [dragging, setDragging] = (0, import_react31.useState)(false);
+  const dragStart = (0, import_react31.useRef)(null);
   const ratio = clampSplitRatio(props.ratio);
   const percent = `${Math.round(ratio * 1e3) / 10}%`;
   const beginDrag = (event) => {
@@ -3490,15 +3777,15 @@ function SplitView(props) {
     event.preventDefault();
     props.onRatioChange(next);
   };
-  return h18(
+  return h19(
     "div",
     { className: "dshgg-split" },
-    h18(
+    h19(
       "div",
       { className: "dshgg-scroll dshgg-paneTop", style: { flexBasis: percent } },
       props.changes
     ),
-    h18(
+    h19(
       "div",
       {
         className: "dshgg-splitter",
@@ -3517,9 +3804,9 @@ function SplitView(props) {
         onPointerCancel: endDrag,
         onKeyDown: handleKey
       },
-      h18("span", { className: "dshgg-splitterLine" })
+      h19("span", { className: "dshgg-splitterLine" })
     ),
-    h18(
+    h19(
       "div",
       {
         className: "dshgg-scroll dshgg-paneBottom",
@@ -3532,7 +3819,7 @@ function SplitView(props) {
 }
 
 // src/client/panel/GitPanel.ts
-var h19 = import_react28.createElement;
+var h20 = import_react32.createElement;
 function GitPanel(props) {
   const t = props.t;
   const tab = props.useTabInfo().tab;
@@ -3548,29 +3835,32 @@ function GitPanel(props) {
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const history = useHistory({ call, refs });
   const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history;
-  const graphPane = (0, import_react28.useRef)(null);
-  const reloadHistory = (0, import_react28.useCallback)(async () => {
+  const rootPane = (0, import_react32.useRef)(null);
+  const graphPane = (0, import_react32.useRef)(null);
+  const reloadHistory = (0, import_react32.useCallback)(async () => {
     await loadGraph();
     if (graphPane.current !== null) graphPane.current.scrollTop = 0;
   }, [loadGraph]);
-  const [openSections, setOpenSections] = (0, import_react28.useState)({
+  const [openSections, setOpenSections] = (0, import_react32.useState)({
     merge: true,
     staged: true,
     changes: true,
     graph: true
   });
-  const [splitRatio, setSplitRatio] = (0, import_react28.useState)(DEFAULT_SPLIT_RATIO);
+  const [splitRatio, setSplitRatio] = (0, import_react32.useState)(DEFAULT_SPLIT_RATIO);
+  const lastDetails = (0, import_react32.useRef)(null);
+  const lastPrompt = (0, import_react32.useRef)(null);
   const repo = status?.repo ?? null;
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
   const files = status?.files ?? [];
-  const groups = (0, import_react28.useMemo)(() => groupChangeEntries(files), [files]);
+  const groups = (0, import_react32.useMemo)(() => groupChangeEntries(files), [files]);
   const { mergeRows, stagedRows, changedRows } = groups;
   const clean = repo !== null && mergeRows.length === 0 && stagedRows.length === 0 && changedRows.length === 0;
-  const handleWorktreeChange = (0, import_react28.useCallback)(() => {
+  const handleWorktreeChange = (0, import_react32.useCallback)(() => {
     void loadStatus({ silent: true });
   }, [loadStatus]);
-  const handleReferencesChange = (0, import_react28.useCallback)(async () => {
+  const handleReferencesChange = (0, import_react32.useCallback)(async () => {
     const next = await refreshReferences();
     await loadStatus({ silent: true });
     const revision = next?.current?.revision;
@@ -3651,15 +3941,39 @@ function GitPanel(props) {
     rawRequestCommit();
   };
   const commitState = useCommitDetails({ call, refs });
+  const expansion = useCommitExpansion({ call, refs });
   const selectedCommit = commitState.selected;
-  const commitRows = (0, import_react28.useMemo)(
+  (0, import_react32.useEffect)(() => {
+    if (!visible || selectedCommit === null) return void 0;
+    const closeOnEscape = (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (branchMenu || confirm !== null || commitMenuActions.dialog !== null) return;
+      const root = rootPane.current;
+      const focus = document.activeElement ?? event.target;
+      const focusIsInside = focus === document.body || root !== null && focus instanceof Element && root.contains(focus);
+      if (!focusIsInside && root !== null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      commitState.closeCommit();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [
+    visible,
+    selectedCommit,
+    branchMenu,
+    confirm,
+    commitMenuActions.dialog,
+    commitState.closeCommit
+  ]);
+  const commitRows = (0, import_react32.useMemo)(
     () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
       ...file,
       kind: "commit"
     })),
     [commitState.details]
   );
-  const openDiff = (0, import_react28.useCallback)(
+  const openDiff = (0, import_react32.useCallback)(
     (entry, mode) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -3674,22 +3988,33 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openCommitDiff = (0, import_react28.useCallback)(
-    (entry) => {
-      if (selectedCommit === null) return;
+  const openFileAtCommit = (0, import_react32.useCallback)(
+    (commit, entry) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
           path: entry.path,
-          commit: selectedCommit.oid,
-          shortOid: selectedCommit.shortOid,
+          commit: commit.oid,
+          shortOid: commit.shortOid,
           status: entry.letter,
           origPath: entry.origPath,
           cwd: repoRoot ?? void 0
         }
       });
     },
-    [tab.actions, repoRoot, selectedCommit]
+    [tab.actions, repoRoot]
   );
+  const openCommitDiff = (0, import_react32.useCallback)(
+    (entry) => {
+      if (selectedCommit !== null) openFileAtCommit(selectedCommit, entry);
+    },
+    [openFileAtCommit, selectedCommit]
+  );
+  const viewCommit = (oid) => {
+    const commit = graph?.find((candidate) => candidate.oid === oid);
+    if (commit === void 0) return false;
+    commitState.selectCommit(commit);
+    return true;
+  };
   const toggleSection = (id) => setOpenSections((current) => ({ ...current, [id]: current[id] !== true }));
   const handleGraphScroll = (event) => {
     if (!isNearEnd(event.currentTarget)) return;
@@ -3715,6 +4040,7 @@ function GitPanel(props) {
     trigger: menuTrigger,
     sectionTarget: targets.sectionTarget,
     commitTarget: targets.commitTarget,
+    fileTarget: (path) => targets.rowTarget("commitFile", { section: "commit", path }),
     onInvoke: commitMenuActions.rememberTrigger
   };
   commandOptions.current = {
@@ -3736,24 +4062,25 @@ function GitPanel(props) {
     createBranch: (oid) => requestReference(() => commitMenuActions.createBranch(oid)),
     createTag: (oid) => requestReference(() => commitMenuActions.createTag(oid)),
     deleteBranch: (branch) => requestReference(() => commitMenuActions.deleteBranch(branch)),
+    viewCommit,
     setConfirm: requestConfirmation,
     notify: props.notify,
     openDiff
   };
   const renderState = () => {
     if (loading && status === null) {
-      return h19(EmptyState, {
-        icon: h19(GitBranchIcon, { size: 26 }),
+      return h20(EmptyState, {
+        icon: h20(GitBranchIcon, { size: 26 }),
         title: t("loading")
       });
     }
     if (loadFailure !== null && status === null) {
       if (loadFailure.code === "git-unavailable") {
-        return h19(EmptyState, {
-          icon: h19(AlertIcon, { size: 26 }),
+        return h20(EmptyState, {
+          icon: h20(AlertIcon, { size: 26 }),
           title: t("gitUnavailable.title"),
           desc: t("gitUnavailable.desc"),
-          action: h19(
+          action: h20(
             "button",
             {
               type: "button",
@@ -3766,11 +4093,11 @@ function GitPanel(props) {
           )
         });
       }
-      return h19(EmptyState, {
-        icon: h19(AlertIcon, { size: 26 }),
+      return h20(EmptyState, {
+        icon: h20(AlertIcon, { size: 26 }),
         title: t("error.title"),
         desc: errorText(t, loadFailure),
-        action: h19(
+        action: h20(
           "button",
           {
             type: "button",
@@ -3784,11 +4111,11 @@ function GitPanel(props) {
       });
     }
     if (status !== null && repo === null) {
-      return h19(EmptyState, {
-        icon: h19(GitBranchIcon, { size: 26 }),
+      return h20(EmptyState, {
+        icon: h20(GitBranchIcon, { size: 26 }),
         title: t("noRepo.title"),
         desc: t("noRepo.desc", { path: sessionDirectory ?? "" }),
-        action: h19(
+        action: h20(
           "button",
           { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: refreshAll },
           t("refresh")
@@ -3797,7 +4124,7 @@ function GitPanel(props) {
     }
     return null;
   };
-  const commitBody = selectedCommit === null ? null : h19(CommitDetails, {
+  const detailsNode = selectedCommit === null ? null : h20(CommitDetails, {
     t,
     summary: selectedCommit,
     details: commitState.details,
@@ -3810,15 +4137,23 @@ function GitPanel(props) {
     menuTrigger,
     rowTarget: targets.rowTarget
   });
-  const singlePane = renderState() ?? commitBody;
-  const body = singlePane !== null ? h19("div", { className: "dshgg-scroll" }, singlePane) : h19(SplitView, {
+  const detailsPresence = usePresence(detailsNode !== null, DETAILS_MOTION_MS);
+  if (detailsNode !== null) lastDetails.current = detailsNode;
+  const shownDetails = detailsNode ?? (detailsPresence.mounted ? lastDetails.current : null);
+  const detailsMotion = shownDetails === null ? null : h20(
+    "div",
+    { className: "dshgg-commitMotion", "data-phase": detailsPresence.phase },
+    h20("div", { className: "dshgg-scroll dshgg-commitCard" }, shownDetails)
+  );
+  const singlePane = renderState();
+  const body = singlePane !== null ? h20("div", { className: "dshgg-scroll" }, singlePane) : h20(SplitView, {
     ratio: splitRatio,
     onRatioChange: setSplitRatio,
     label: t("split.label"),
     hint: t("split.hint"),
     onGraphScroll: handleGraphScroll,
     graphRef: graphPane,
-    changes: h19(ChangeGroups, {
+    changes: h20(ChangeGroups, {
       t,
       clean,
       mergeRows,
@@ -3837,7 +4172,7 @@ function GitPanel(props) {
       sectionTarget: targets.sectionTarget,
       rowTarget: targets.rowTarget
     }),
-    graph: h19(GraphSection, {
+    graph: h20(GraphSection, {
       t,
       commits: graph,
       references,
@@ -3851,7 +4186,10 @@ function GitPanel(props) {
         void history.loadMore();
       },
       open: openSections.graph === true,
-      onSelect: commitState.selectCommit,
+      onActivate: expansion.toggleCommit,
+      expanded: expansion.expanded,
+      onOpenChange: openFileAtCommit,
+      onRetryChanges: expansion.retryCommit,
       onToggle: () => toggleSection("graph"),
       onRetry: () => {
         void reloadHistory();
@@ -3861,16 +4199,48 @@ function GitPanel(props) {
   });
   const commitHint = stagedRows.length > 0 ? t("commit.hint") : t("commit.hintNone");
   const placeholder = repo === null ? t("commit.placeholder", { branch: "" }) : t("commit.placeholder", { branch: branchLabel ?? "" });
-  const actionFeedback = actionFailure === null ? null : h19(Banner, {
+  const actionFeedback = actionFailure === null ? null : h20(Banner, {
     title: t("error.title"),
     detail: errorText(t, actionFailure),
     dismissLabel: t("action.dismiss"),
     onDismiss: () => setActionFailure(null)
   });
-  return h19(
+  const promptNode = commitMenuActions.dialog !== null ? h20(CommitMenuDialog, {
+    key: commitMenuActions.dialog.kind === "deleteBranch" ? `delete:${commitMenuActions.dialog.branch}` : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
+    dialog: commitMenuActions.dialog,
+    t,
+    busy: busy !== null,
+    feedback: actionFeedback,
+    onNameChange: commitMenuActions.setName,
+    onMessageChange: commitMenuActions.setMessage,
+    onCancel: () => commitMenuActions.closeDialog(),
+    onSubmit: commitMenuActions.submitDialog
+  }) : confirm !== null ? h20(FloatingPanel, {
+    key: confirm.kind === "discard" ? `discard:${confirm.entry.path}` : confirm.kind,
+    title: confirmTitle(t, confirm),
+    description: confirmDescription(t, confirm),
+    cancelLabel: t("action.cancel"),
+    submitLabel: confirmActionLabel(t, confirm),
+    busy: busy !== null,
+    feedback: actionFeedback,
+    onCancel: () => requestConfirmation(null),
+    onSubmit: () => {
+      if (refs.busy.current === null) confirmAction();
+    }
+  }) : null;
+  const promptPresence = usePresence(promptNode !== null, PROMPT_MOTION_MS);
+  if (promptNode !== null) lastPrompt.current = promptNode;
+  const shownPrompt = promptNode ?? (promptPresence.mounted ? lastPrompt.current : null);
+  const promptMotion = shownPrompt === null ? null : h20(
     "div",
-    { className: "dshgg-root", "data-dsh-git-graph": "" },
-    h19(BranchHeader, {
+    { className: "dshgg-promptMotion", "data-phase": promptPresence.phase },
+    shownPrompt
+  );
+  const underlayProps = detailsPresence.mounted ? { "aria-hidden": "true", inert: "" } : {};
+  return h20(
+    "div",
+    { className: "dshgg-root", "data-dsh-git-graph": "", ref: rootPane },
+    h20(BranchHeader, {
       t,
       wrapRef: refs.wrap,
       repo,
@@ -3889,56 +4259,42 @@ function GitPanel(props) {
       },
       onRefresh: refreshAll
     }),
-    repo === null || selectedCommit !== null ? null : h19(CommitBox, {
-      t,
-      message,
-      hint: commitHint,
-      placeholder,
-      busy,
-      onChange: setMessage,
-      onCommit: requestCommit
-    }),
-    loadFailure !== null && status !== null ? h19(Banner, {
-      title: t("error.title"),
-      detail: errorText(t, loadFailure),
-      retryLabel: t("retry"),
-      onRetry: () => {
-        void loadStatus();
-      },
-      dismissLabel: t("action.dismiss"),
-      onDismiss: () => setLoadFailure(null)
-    }) : null,
-    commitMenuActions.dialog === null && confirm === null ? actionFeedback : null,
-    body,
-    commitMenuActions.dialog === null ? null : h19(CommitMenuDialog, {
-      key: commitMenuActions.dialog.kind === "deleteBranch" ? `delete:${commitMenuActions.dialog.branch}` : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
-      dialog: commitMenuActions.dialog,
-      t,
-      busy: busy !== null,
-      feedback: actionFeedback,
-      onNameChange: commitMenuActions.setName,
-      onMessageChange: commitMenuActions.setMessage,
-      onCancel: () => commitMenuActions.closeDialog(),
-      onSubmit: commitMenuActions.submitDialog
-    }),
-    confirm === null ? null : h19(FloatingPanel, {
-      key: confirm.kind === "discard" ? `discard:${confirm.entry.path}` : confirm.kind,
-      title: confirmTitle(t, confirm),
-      description: confirmDescription(t, confirm),
-      cancelLabel: t("action.cancel"),
-      submitLabel: confirmActionLabel(t, confirm),
-      busy: busy !== null,
-      feedback: actionFeedback,
-      onCancel: () => requestConfirmation(null),
-      onSubmit: () => {
-        if (refs.busy.current === null) confirmAction();
-      }
-    })
+    h20(
+      "div",
+      { className: "dshgg-stage" },
+      h20(
+        "div",
+        { className: "dshgg-content", ...underlayProps },
+        repo === null ? null : h20(CommitBox, {
+          t,
+          message,
+          hint: commitHint,
+          placeholder,
+          busy,
+          onChange: setMessage,
+          onCommit: requestCommit
+        }),
+        loadFailure !== null && status !== null ? h20(Banner, {
+          title: t("error.title"),
+          detail: errorText(t, loadFailure),
+          retryLabel: t("retry"),
+          onRetry: () => {
+            void loadStatus();
+          },
+          dismissLabel: t("action.dismiss"),
+          onDismiss: () => setLoadFailure(null)
+        }) : null,
+        promptMotion === null ? actionFeedback : null,
+        body
+      ),
+      detailsMotion
+    ),
+    promptMotion
   );
 }
 
 // src/client/styles/base.css
-var base_default = "/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host's `--dsw-*`\n * theme tokens, and text uses the host's `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH's\n * own sidebar surfaces. Sizes follow the host's sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n * The commit graph is the one exception: it reproduces VS Code's Source\n * Control Graph, including its `scmGraph.*` palette and 22px rows.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  position: relative;\n  isolation: isolate;\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n";
+var base_default = "/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host's `--dsw-*`\n * theme tokens, and text uses the host's `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH's\n * own sidebar surfaces. Sizes follow the host's sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n * The commit graph is the one exception: it reproduces VS Code's Source\n * Control Graph, including its `scmGraph.*` palette and 22px rows.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  position: relative;\n  isolation: isolate;\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n\n/* The stage is the positioning box shared by the panel content and the details\n * card that overlays it, so both keep the same height and the card never\n * resizes the content beneath it. */\n.dshgg-stage {\n  position: relative;\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  overflow: clip;\n}\n\n.dshgg-content {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n}\n";
 
 // src/client/styles/branch-menu.css
 var branch_menu_default = "/* ---------------------------------------------------------- branch menu --- */\n\n.dshgg-menu {\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 0;\n  z-index: 20;\n  min-width: 220px;\n  max-width: min(320px, 70vw);\n  max-height: 320px;\n  padding: 4px;\n  overflow-y: auto;\n  background: var(--dsw-specific-menu);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  backdrop-filter: var(--dsw-menu-backdrop-filter);\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-menuItem {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  min-height: 32px;\n  padding: 5px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n.dshgg-menuItem:disabled {\n  color: var(--dsw-alias-label-primary);\n  cursor: default;\n}\n\n@media (hover: hover) {\n  .dshgg-menuItem:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-menuItem:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.dshgg-menuCheck {\n  display: inline-flex;\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-menuCheck svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-menuLabel {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n";
@@ -3950,7 +4306,7 @@ var buttons_default = '/* ------------------------------------------------------
 var commit_box_default = "/* ------------------------------------------------------------ commit box --- */\n\n.dshgg-commitBox {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  gap: 8px;\n  padding: 10px 8px 8px;\n}\n\n/* The message decides the height: one row at rest and ten at most, after which\n   the box scrolls. `panel/autosize.ts` applies it; the line height comes from\n   the font shorthand, and `overflow-y: auto` keeps the message reachable before\n   the first measurement. */\n.dshgg-commitMessage {\n  box-sizing: border-box;\n  width: 100%;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  overflow-y: auto;\n  resize: none;\n  outline: none;\n}\n\n.dshgg-commitMessage::placeholder {\n  color: var(--dsw-alias-label-dimmed);\n}\n\n.dshgg-commitMessage:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-commitMessage:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-commitRow {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.dshgg-commitHint {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n";
 
 // src/client/styles/commit-detail.css
-var commit_detail_default = "/* --------------------------------------------------------- commit detail --- */\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n";
+var commit_detail_default = "/* --------------------------------------------------------- commit detail --- */\n\n/* The details card keeps the scroll frame's scrolling and padding, and adds the\n * border and solid theme surface that separate it from the content it overlays\n * while it slides in and out. The solid surface is the readable fallback for\n * the native frosted material below. */\n.dshgg-root .dshgg-commitCard {\n  flex: 1 1 auto;\n  min-width: 0;\n  min-height: 0;\n  padding: 0 8px 10px;\n  background: var(--dsw-alias-bg-layer-1);\n  border: 0.5px solid var(--dsw-alias-border-l1);\n  border-radius: var(--dsw-radius-lg);\n  pointer-events: auto;\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n/* Match the bottom operation prompt's native frosted material. */\n@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {\n  .dshgg-root .dshgg-commitCard {\n    background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));\n    backdrop-filter: var(--dsw-menu-backdrop-filter);\n    -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);\n  }\n}\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n";
 
 // src/client/styles/confirm.css
 var confirm_default = '/* ------------------------------------------------------------- confirm --- */\n\n/* This local layer never participates in the pane split or intercepts clicks\n   outside the card. No portal, viewport positioning or modal backdrop. */\n.dshgg-root .dshgg-floating-panel-layer {\n  position: absolute;\n  inset: 4px;\n  z-index: 25;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: flex-end;\n  min-width: 0;\n  min-height: 0;\n  pointer-events: none;\n}\n\n.dshgg-root .dshgg-floating-panel {\n  box-sizing: border-box;\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  max-height: 100%;\n  /* If even the wrapping footer exceeds the pane, every action stays reachable. */\n  overflow-x: hidden;\n  overflow-y: auto;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-alias-bg-layer-1);\n  border: 0.5px solid var(--dsw-alias-border-l1);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  pointer-events: auto;\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n/* Keep the solid theme surface on browsers without backdrop filtering. */\n@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {\n  .dshgg-root .dshgg-floating-panel {\n    background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));\n    backdrop-filter: var(--dsw-menu-backdrop-filter);\n    -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);\n  }\n}\n\n.dshgg-root .dshgg-floating-panel-body {\n  flex: 1 1 auto;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px 8px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overflow-wrap: anywhere;\n  overscroll-behavior: contain;\n}\n\n.dshgg-root .dshgg-floating-panel-footer {\n  display: flex;\n  flex: none;\n  flex-wrap: wrap;\n  align-items: center;\n  justify-content: flex-end;\n  gap: 8px;\n  min-width: 0;\n  padding: 10px 8px;\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-root .dshgg-floating-panel-footer .dshgg-btn {\n  flex: 0 1 auto;\n  min-width: 0;\n  max-width: 100%;\n  height: auto;\n  min-height: 28px;\n  padding: 6px 12px;\n  white-space: normal;\n  overflow-wrap: anywhere;\n}\n\n.dshgg-root .dshgg-floating-panel [aria-disabled="true"] {\n  opacity: 0.5;\n  cursor: default;\n}\n\n.dshgg-root .dshgg-floating-panel .dshgg-banner {\n  margin: 10px 0 0;\n}\n\n.dshgg-confirmTitle {\n  font: var(--dsw-font-xs-strong-13);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmDesc {\n  margin-top: 3px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n';
@@ -3962,19 +4318,276 @@ var diff_default = '/* ---------------------------------------------------------
 var feedback_default = "/* -------------------------------------------------------------- feedback --- */\n\n.dshgg-banner {\n  display: flex;\n  align-items: flex-start;\n  gap: 8px;\n  margin: 0 8px 8px;\n  padding: 8px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-bannerText {\n  flex: 1;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerText > span {\n  font-weight: 500;\n}\n\n.dshgg-bannerDetail {\n  max-height: 96px;\n  margin-top: 4px;\n  overflow: auto;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  margin: -4px -4px -4px 0;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn svg {\n  width: 12px;\n  height: 12px;\n}\n\n.dshgg-state {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 6px;\n  padding: 28px 16px;\n  text-align: center;\n}\n\n.dshgg-stateIcon {\n  display: flex;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-stateTitle {\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-stateDesc {\n  max-width: 280px;\n  margin: 0;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-stateAction {\n  margin-top: 8px;\n}\n\n.dshgg-note {\n  padding: 4px 6px 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-menuNote {\n  padding: 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-clean {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n  padding: 20px 12px;\n  text-align: center;\n}\n\n.dshgg-cleanTitle {\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-cleanDesc {\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n";
 
 // src/client/styles/graph.css
-var graph_default = "/* ---------------------------------------------------------------- graph --- */\n\n/* The commit graph reproduces VS Code's Source Control Graph, so its palette\n * is VS Code's `scmGraph.*` color set rather than host tokens: five rotation\n * colors shared by light and dark themes, plus the checked-out (`charts.blue`),\n * upstream (`charts.purple`) and base reference colors. Badge text uses the\n * host's base background, standing in for VS Code's `panel.background`. */\n.dshgg-root {\n  --dshgg-scm-lane1: #ffb000;\n  --dshgg-scm-lane2: #dc267f;\n  --dshgg-scm-lane3: #994f00;\n  --dshgg-scm-lane4: #40b0a6;\n  --dshgg-scm-lane5: #b66dff;\n  --dshgg-scm-ref: #1a85ff;\n  --dshgg-scm-remote: #652d90;\n  --dshgg-scm-base: #ea5c00;\n  --dshgg-scm-label-foreground: var(--dsw-alias-bg-base);\n}\n\nbody[data-ds-dark-theme] .dshgg-root {\n  --dshgg-scm-ref: #3794ff;\n  --dshgg-scm-remote: #b180d7;\n}\n\n/* The rows and the one layer that draws their lines. The layer is positioned so\n * it paints over a row's hover surface, and the row's cell keeps the node. */\n.dshgg-graphBody {\n  --dshgg-graph-inset: 4px;\n  position: relative;\n}\n\n.dshgg-graphLayer {\n  position: absolute;\n  top: 0;\n  left: var(--dshgg-graph-inset);\n  pointer-events: none;\n}\n\n/* VS Code `.history-item`: 22px rows, the graph cell, the label, the badges. */\n.dshgg-graphRow {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 22px;\n  min-width: 0;\n  padding: 0 6px 0 var(--dshgg-graph-inset);\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n@media (hover: hover) {\n  .dshgg-graphRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-graphRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n/* The row's cell is as wide as its graph width and as tall as the row; both come\n * from the element's own attributes. */\n.dshgg-graphSvg {\n  display: block;\n  flex: none;\n}\n\n/* VS Code's one-pixel strokes. Every segment of one color in the whole graph\n * shares an element, so a lane crossing a row boundary is one continuous\n * stroke and no seam can appear between two rows. */\n.dshgg-graphEdge {\n  fill: none;\n  stroke-width: 1px;\n  stroke-linecap: round;\n}\n\n/* VS Code clears its node strokes on hover: the node's outer edge grows by half\n * a stroke. The geometry carries the hover radii; the node gap that also closes\n * is driven by the section's hovered row, because the gap belongs to the line\n * layer rather than to the row. */\n@media (hover: hover) {\n  .dshgg-graphRow:hover .dshgg-graphNode {\n    r: var(--dshgg-node-hover-r);\n  }\n\n  .dshgg-graphRow:hover .dshgg-graphNode[data-paint=\"ring\"] {\n    stroke-width: var(--dshgg-node-hover-stroke);\n  }\n}\n\n/* VS Code `.monaco-icon-label`: subject and description ellipsize together. */\n.dshgg-graphLabel {\n  flex: 1 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  line-height: 22px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphSubject {\n  white-space: pre;\n}\n\n.dshgg-graphAuthor {\n  margin-left: 0.5em;\n  font-size: 0.9em;\n  white-space: pre;\n  opacity: 0.7;\n}\n\n.dshgg-graphRow[data-current=\"true\"] .dshgg-graphSubject,\n.dshgg-graphRow[data-current=\"true\"] .dshgg-graphAuthor {\n  font-weight: 600;\n}\n\n/* VS Code `.label-container` and `.label`. */\n.dshgg-graphBadges {\n  display: flex;\n  flex-shrink: 0;\n  gap: 4px;\n  margin-left: 4px;\n}\n\n.dshgg-graphBadge {\n  display: flex;\n  align-items: center;\n  color: var(--dshgg-scm-label-foreground);\n  line-height: 18px;\n  border-radius: 10px;\n}\n\n.dshgg-graphBadgeCount {\n  padding-left: 4px;\n  font-size: 12px;\n}\n\n.dshgg-graphBadgeIcon {\n  display: flex;\n  padding: 1px;\n}\n\n/* The icon element is sized by its own attributes: 16px, or 12px for branches,\n * matching VS Code's codicon font sizes inside an 18px badge. */\n\n.dshgg-graphBadge[data-icon=\"branch\"] .dshgg-graphBadgeIcon {\n  padding: 3px;\n}\n\n.dshgg-graphBadgeName {\n  max-width: 100px;\n  padding-right: 4px;\n  overflow: hidden;\n  font-size: 12px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* End-of-graph paging: the load control keeps the section's inset instead of a\n * 22-pixel commit row, and a failed page puts its note beside the retry. */\n.dshgg-graphMore {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  margin: 2px 6px 8px;\n}\n\n.dshgg-graphMoreText {\n  min-width: 0;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-graphMoreBtn {\n  margin: 2px 6px 8px;\n}\n\n/* The paging control stays focusable while it loads, so it dims instead of\n * becoming disabled and dropping keyboard focus. */\n.dshgg-graphMoreBtn[data-loading=\"true\"] {\n  opacity: 0.6;\n  cursor: default;\n}\n";
+var graph_default = "/* ---------------------------------------------------------------- graph --- */\n\n/* The commit graph reproduces VS Code's Source Control Graph, so its palette\n * is VS Code's `scmGraph.*` color set rather than host tokens: five rotation\n * colors shared by light and dark themes, plus the checked-out (`charts.blue`),\n * upstream (`charts.purple`) and base reference colors. Badge text uses the\n * host's base background, standing in for VS Code's `panel.background`. */\n.dshgg-root {\n  --dshgg-scm-lane1: #ffb000;\n  --dshgg-scm-lane2: #dc267f;\n  --dshgg-scm-lane3: #994f00;\n  --dshgg-scm-lane4: #40b0a6;\n  --dshgg-scm-lane5: #b66dff;\n  --dshgg-scm-ref: #1a85ff;\n  --dshgg-scm-remote: #652d90;\n  --dshgg-scm-base: #ea5c00;\n  --dshgg-scm-label-foreground: var(--dsw-alias-bg-base);\n}\n\nbody[data-ds-dark-theme] .dshgg-root {\n  --dshgg-scm-ref: #3794ff;\n  --dshgg-scm-remote: #b180d7;\n}\n\n/* The rows and the one layer that draws their lines. The layer is positioned so\n * it paints over a row's hover surface, and the row's cell keeps the node. */\n.dshgg-graphBody {\n  --dshgg-graph-inset: 4px;\n  position: relative;\n}\n\n.dshgg-graphLayer {\n  position: absolute;\n  top: 0;\n  left: var(--dshgg-graph-inset);\n  pointer-events: none;\n}\n\n/* VS Code `.history-item`: 22px rows, the graph cell, the label, the badges. */\n.dshgg-graphRow {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 22px;\n  min-width: 0;\n  padding: 0 6px 0 var(--dshgg-graph-inset);\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n@media (hover: hover) {\n  .dshgg-graphRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-graphRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n/* The row's cell is as wide as its graph width and as tall as the row; both come\n * from the element's own attributes. */\n.dshgg-graphSvg {\n  display: block;\n  flex: none;\n}\n\n/* VS Code's one-pixel strokes. Every segment of one color in the whole graph\n * shares an element, so a lane crossing a row boundary is one continuous\n * stroke and no seam can appear between two rows. */\n.dshgg-graphEdge {\n  fill: none;\n  stroke-width: 1px;\n  stroke-linecap: round;\n}\n\n/* VS Code clears its node strokes on hover: the node's outer edge grows by half\n * a stroke. The geometry carries the hover radii; the node gap that also closes\n * is driven by the section's hovered row, because the gap belongs to the line\n * layer rather than to the row. */\n@media (hover: hover) {\n  .dshgg-graphRow:hover .dshgg-graphNode {\n    r: var(--dshgg-node-hover-r);\n  }\n\n  .dshgg-graphRow:hover .dshgg-graphNode[data-paint=\"ring\"] {\n    stroke-width: var(--dshgg-node-hover-stroke);\n  }\n}\n\n/* VS Code `.monaco-icon-label`: subject and description ellipsize together. */\n.dshgg-graphLabel {\n  flex: 1 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  line-height: 22px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphSubject {\n  white-space: pre;\n}\n\n.dshgg-graphAuthor {\n  margin-left: 0.5em;\n  font-size: 0.9em;\n  white-space: pre;\n  opacity: 0.7;\n}\n\n.dshgg-graphRow[data-current=\"true\"] .dshgg-graphSubject,\n.dshgg-graphRow[data-current=\"true\"] .dshgg-graphAuthor {\n  font-weight: 600;\n}\n\n/* VS Code `.label-container` and `.label`. */\n.dshgg-graphBadges {\n  display: flex;\n  flex-shrink: 0;\n  gap: 4px;\n  margin-left: 4px;\n}\n\n.dshgg-graphBadge {\n  display: flex;\n  align-items: center;\n  color: var(--dshgg-scm-label-foreground);\n  line-height: 18px;\n  border-radius: 10px;\n}\n\n.dshgg-graphBadgeCount {\n  padding-left: 4px;\n  font-size: 12px;\n}\n\n.dshgg-graphBadgeIcon {\n  display: flex;\n  padding: 1px;\n}\n\n/* The icon element is sized by its own attributes: 16px, or 12px for branches,\n * matching VS Code's codicon font sizes inside an 18px badge. */\n\n.dshgg-graphBadge[data-icon=\"branch\"] .dshgg-graphBadgeIcon {\n  padding: 3px;\n}\n\n.dshgg-graphBadgeName {\n  max-width: 100px;\n  padding-right: 4px;\n  overflow: hidden;\n  font-size: 12px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* End-of-graph paging: the load control keeps the section's inset instead of a\n * 22-pixel commit row, and a failed page puts its note beside the retry. */\n.dshgg-graphMore {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  margin: 2px 6px 8px;\n}\n\n.dshgg-graphMoreText {\n  min-width: 0;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-graphMoreBtn {\n  margin: 2px 6px 8px;\n}\n\n/* The paging control stays focusable while it loads, so it dims instead of\n * becoming disabled and dropping keyboard focus. */\n.dshgg-graphMoreBtn[data-loading=\"true\"] {\n  opacity: 0.6;\n  cursor: default;\n}\n\n/* VS Code `.history-item-change`: the rows an expanded commit lists below\n * itself. Each is a 22px row whose graph area is as wide as the commit's\n * outgoing lanes; the lanes themselves come from the section's line layer. */\n.dshgg-graphChange {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 22px;\n  min-width: 0;\n  padding: 0 6px 0 var(--dshgg-graph-inset);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-graphChangeLanes {\n  display: block;\n  flex: none;\n  height: 22px;\n}\n\n/* VS Code's file icon: a 16px icon with 6px before the label. */\n.dshgg-graphChangeIcon {\n  display: flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 22px;\n  margin: 0 6px 0 4px;\n  color: var(--dsw-alias-label-secondary);\n}\n\n.dshgg-graphChangeLabel {\n  flex: 1 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  line-height: 22px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphChangeName {\n  white-space: pre;\n}\n\n/* VS Code `.label-description`: the dimmed directory after the name. */\n.dshgg-graphChangeDir {\n  margin-left: 0.5em;\n  font-size: 0.9em;\n  white-space: pre;\n  opacity: 0.7;\n}\n\n/* VS Code's decoration badge: the status letter at the row's end. */\n.dshgg-graphChangeStatus {\n  margin: 0 3px 0 6px;\n}\n\n.dshgg-graphChangeNote {\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-graphChangeText {\n  flex: 0 1 auto;\n  min-width: 0;\n  margin-left: 4px;\n  overflow: hidden;\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphChangeNote[data-note=\"failure\"] .dshgg-graphChangeText {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-graphChangeRetry {\n  flex: none;\n  margin-left: 8px;\n  padding: 0 4px;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-12);\n  background: none;\n  border: 0;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-graphChangeRetry:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n}\n";
 
 // src/client/styles/graph-dialogs.css
 var graph_dialogs_default = "/* -------------------------------------------------------- graph dialogs --- */\n\n.dshgg-dialogField {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  margin-top: 8px;\n}\n\n.dshgg-dialogLabel,\n.dshgg-dialogHint {\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-dialogHint {\n  margin-top: 4px;\n}\n\n.dshgg-dialogInput {\n  box-sizing: border-box;\n  width: 100%;\n  min-width: 0;\n  max-width: 100%;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  outline: none;\n}\n\n.dshgg-dialogInput:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-dialogInput:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-dialogMessage {\n  min-height: 48px;\n  max-height: 120px;\n  resize: vertical;\n}\n";
 
 // src/client/styles/motion.css
-var motion_default = '/* --------------------------------------------------------------- motion --- */\n\n@media (prefers-reduced-motion: reduce) {\n  .dshgg-iconBtn[data-spinning="true"] svg {\n    animation: none;\n  }\n\n  .dshgg-chevron {\n    transition: none;\n  }\n}\n';
+var motion_default = `/* --------------------------------------------------------------- motion --- */
+
+/* The operation prompt rises from the pane's bottom edge when it opens and
+ * lowers out again when it is dismissed. The card keeps a 4px gap above that
+ * edge, so the leaving card travels its own height plus that gap to clear the
+ * pane.
+ *
+ * This box clips the layer itself. The host's tab body clips at the same
+ * bounds, so the card is cut at the pane's edges exactly as before; clipping
+ * here as well keeps the translated card out of every ancestor's scrollable
+ * area, so a focused prompt button cannot scroll the pane down to reveal
+ * itself while the card is still below the edge. A leaving prompt takes no
+ * pointer input, and the box itself lies out of flow and passes every pointer
+ * event through to the card. */
+.dshgg-root .dshgg-promptMotion {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  overflow: clip;
+  pointer-events: none;
+}
+
+.dshgg-root .dshgg-promptMotion[data-phase="enter"] .dshgg-floating-panel {
+  animation: dshgg-prompt-rise 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dshgg-root .dshgg-promptMotion[data-phase="leave"] .dshgg-floating-panel {
+  animation: dshgg-prompt-lower 180ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+/* The commit details card travels in from the pane's right edge and back out
+ * that way. It overlays the still-mounted change list, graph and commit box,
+ * so the exit reveals them instead of a blank pane. The layer sits inside the
+ * stage's 4px inset, so it clears the pane by its own width plus that gap. A
+ * card on its way out accepts no input either. */
+.dshgg-root .dshgg-commitMotion {
+  position: absolute;
+  inset: 4px;
+  z-index: 15;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+}
+
+.dshgg-root .dshgg-commitMotion[data-phase="enter"] {
+  animation: dshgg-details-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dshgg-root .dshgg-commitMotion[data-phase="leave"] {
+  animation: dshgg-details-leave 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+.dshgg-root .dshgg-commitMotion[data-phase="leave"] .dshgg-commitCard {
+  pointer-events: none;
+}
+
+@keyframes dshgg-prompt-rise {
+  from {
+    transform: translateY(calc(100% + 8px));
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+@keyframes dshgg-prompt-lower {
+  from {
+    transform: none;
+  }
+
+  to {
+    transform: translateY(calc(100% + 8px));
+  }
+}
+
+@keyframes dshgg-details-enter {
+  from {
+    transform: translateX(calc(100% + 8px));
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+@keyframes dshgg-details-leave {
+  from {
+    transform: none;
+  }
+
+  to {
+    transform: translateX(calc(100% + 8px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dshgg-iconBtn[data-spinning="true"] svg {
+    animation: none;
+  }
+
+  .dshgg-chevron {
+    transition: none;
+  }
+
+  /* Both surfaces appear and leave at their final position instead. */
+  .dshgg-root .dshgg-promptMotion[data-phase] .dshgg-floating-panel,
+  .dshgg-root .dshgg-commitMotion[data-phase] {
+    animation: none;
+  }
+}
+`;
 
 // src/client/styles/rows.css
-var rows_default = '/* ----------------------------------------------------------------- rows --- */\n\n.dshgg-row {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n  padding: 0 6px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-fileRow {\n  cursor: pointer;\n  user-select: none;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-fileRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-status {\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n  text-align: center;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-status[data-status="M"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="A"],\n.dshgg-status[data-status="U"] {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-status[data-status="D"] {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-status[data-status="R"],\n.dshgg-status[data-status="C"] {\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-status[data-status="T"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="!"] {\n  color: var(--dsw-alias-state-error-secondary);\n}\n\n.dshgg-fileName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* The dimmed parent directory trails the file name: it disambiguates equally\n   named files without turning the flat list back into a hierarchy. */\n.dshgg-fileDir {\n  flex: 1 1 0;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileName[data-obsolete="true"] {\n  color: var(--dsw-alias-label-secondary);\n  text-decoration: line-through;\n}\n\n.dshgg-fileArrow {\n  flex: none;\n  max-width: 38%;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 0;\n  margin-left: auto;\n  opacity: 0;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover .dshgg-fileActions {\n    opacity: 1;\n  }\n}\n\n.dshgg-fileRow:focus-within .dshgg-fileActions {\n  opacity: 1;\n}\n\n.dshgg-fileActions .dshgg-iconBtn {\n  width: 22px;\n  height: 22px;\n  padding: 4px;\n}\n\n.dshgg-fileActions .dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n';
+var rows_default = `/* ----------------------------------------------------------------- rows --- */
+
+.dshgg-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-md);
+}
+
+.dshgg-fileRow {
+  cursor: pointer;
+  user-select: none;
+}
+
+@media (hover: hover) {
+  .dshgg-fileRow:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dshgg-fileRow:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
+/* The row's own file-type glyph: a fixed square that never squeezes the name.
+ * The application's icon paints itself, so this slot only supplies the fallback
+ * color and the geometry. */
+.dshgg-rowIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dshgg-status {
+  flex: none;
+  width: 14px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-strong-12);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.dshgg-status[data-status="M"] {
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.dshgg-status[data-status="A"],
+.dshgg-status[data-status="U"] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.dshgg-status[data-status="D"] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dshgg-status[data-status="R"],
+.dshgg-status[data-status="C"] {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.dshgg-status[data-status="T"] {
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.dshgg-status[data-status="!"] {
+  color: var(--dsw-alias-state-error-secondary);
+}
+
+.dshgg-fileName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font: var(--dsw-font-xs-13);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The dimmed parent directory trails the file name: it disambiguates equally
+   named files without turning the flat list back into a hierarchy. */
+.dshgg-fileDir {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-fileName[data-obsolete="true"] {
+  color: var(--dsw-alias-label-secondary);
+  text-decoration: line-through;
+}
+
+.dshgg-fileArrow {
+  flex: none;
+  max-width: 38%;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-fileActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0;
+  margin-left: auto;
+  opacity: 0;
+}
+
+@media (hover: hover) {
+  .dshgg-fileRow:hover .dshgg-fileActions {
+    opacity: 1;
+  }
+}
+
+.dshgg-fileRow:focus-within .dshgg-fileActions {
+  opacity: 1;
+}
+
+.dshgg-fileActions .dshgg-iconBtn {
+  width: 22px;
+  height: 22px;
+  padding: 4px;
+}
+
+.dshgg-fileActions .dshgg-iconBtn svg {
+  width: 14px;
+  height: 14px;
+}
+`;
 
 // src/client/styles/scroll.css
-var scroll_default = "/* --------------------------------------------------------------- scroll --- */\n\n.dshgg-scroll {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 2px;\n  min-height: 0;\n  padding: 0 6px 10px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n}\n\n/* A scroll frame's top padding lies above the sticky view rectangle, so a\n * pinned header can never cover content that slides into that strip. Keep the\n * resting inset on the first section instead. */\n.dshgg-scroll > .dshgg-section:first-child {\n  padding-top: 2px;\n}\n";
+var scroll_default = "/* --------------------------------------------------------------- scroll --- */\n\n.dshgg-scroll {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 2px;\n  min-height: 0;\n  padding: 0 6px 10px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n}\n";
 
 // src/client/styles/section.css
 var section_default = `/* -------------------------------------------------------------- section --- */
@@ -3985,13 +4598,15 @@ var section_default = `/* ------------------------------------------------------
   flex-direction: column;
 }
 
-/* The header pins to its own pane's top edge while its section still reaches
- * into the pane. Its containing block is that one section, so a header can
- * never outlive it: the next section's header takes the top edge as the
- * previous one leaves, and only one header is ever pinned. The header owns the
- * opaque pane surface itself, because a stacking context paints its own
- * background below its negative-z-index children. Square corners keep that
- * surface covering the rows up to the edges. */
+/* The header rests flush at the pane's top edge, which is also where it pins.
+ * Its containing block is that one section, so a header can never outlive it:
+ * the next section's header takes the edge as the previous one leaves, and only
+ * one header is ever pinned. Because the header starts at the edge, beginning
+ * to scroll does not shift it and its own opaque surface covers every row that
+ * slides beneath it; nothing can show above it. The header owns the opaque pane
+ * surface itself, because a stacking context paints its own background below
+ * its negative-z-index children. Square corners keep that surface covering the
+ * rows up to the edges. */
 .dshgg-sectionHeader {
   position: sticky;
   top: 0;
@@ -4261,16 +4876,16 @@ function installStyles(target) {
 }
 
 // src/client/titles.ts
-var import_react29 = require("react");
-var h20 = import_react29.createElement;
+var import_react33 = require("react");
+var h21 = import_react33.createElement;
 function GitTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;
-  return h20(
+  return h21(
     "span",
     { className: "dshgg-title" },
-    h20(GitBranchIcon, { size: 14 }),
-    h20("span", { className: "dshgg-titleText" }, title)
+    h21(GitBranchIcon, { size: 14 }),
+    h21("span", { className: "dshgg-titleText" }, title)
   );
 }
 function DiffTabTitle(props) {
@@ -4279,11 +4894,11 @@ function DiffTabTitle(props) {
   const name = typeof params.path === "string" && params.path !== "" ? baseName(params.path) : tabInfo.tab.title;
   const shortOid = typeof params.shortOid === "string" && params.shortOid !== "" ? params.shortOid : typeof params.commit === "string" && params.commit !== "" ? params.commit.slice(0, 7) : "";
   const label = shortOid === "" ? name : `${name} · ${shortOid}`;
-  return h20(
+  return h21(
     "span",
     { className: "dshgg-title" },
-    h20(FileIcon, { size: 14 }),
-    h20("span", { className: "dshgg-titleText" }, label)
+    h21(FileIcon, { size: 14 }),
+    h21("span", { className: "dshgg-titleText" }, label)
   );
 }
 

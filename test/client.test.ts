@@ -152,15 +152,32 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /\.dshgg-splitterLine\s*\{[^}]*background: var\(--dsw-alias-border-l3\);/,
   )
+  // The details card borrows the operation prompt's frosted menu surface and
+  // keeps the solid layer as its fallback; its clipped shadow was removed.
+  assert.match(
+    graphStyles,
+    /\.dshgg-root \.dshgg-commitCard\s*\{[^}]*background: var\(--dsw-alias-bg-layer-1\);[^}]*border: 0\.5px solid var\(--dsw-alias-border-l1\);/,
+  )
+  assert.doesNotMatch(
+    graphStyles,
+    /\.dshgg-root \.dshgg-commitCard\s*\{[^}]*box-shadow:/,
+    'the details card paints no shadow',
+  )
+  assert.match(
+    graphStyles,
+    /@supports \(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\) \{[\s\S]*?\.dshgg-root \.dshgg-commitCard/,
+    'the frosted enhancement reaches the built stylesheet',
+  )
   assert.match(
     graphStyles,
     /\.dshgg-sectionToggle\s*\{[^}]*font: var\(--dsw-font-s-strong-14\);[^}]*font-weight: 600;/,
   )
-  // Section headers pin to their pane's top edge on the host surface, so the
-  // rows pass hidden beneath them. The header owns that surface (a floating tab
-  // paints layer-2 instead of the docked tab host's base fill) and shows the
-  // host hover highlight as a rounded layer above it, so hovering keeps working
-  // while the rows stay masked.
+  // Section headers rest flush at the pane's top edge on the host surface, so
+  // the rows pass hidden beneath them and beginning to scroll never shifts the
+  // header. The header owns that surface (a floating tab uses layer-2 instead
+  // of the docked tab host's base fill) and keeps the host hover highlight as
+  // a rounded layer above the surface, so hovering keeps working while the
+  // rows stay masked.
   assert.match(
     graphStyles,
     /\.dshgg-sectionHeader\s*\{[^}]*position: sticky;[^}]*top: 0;[^}]*z-index: 1;[^}]*background: var\(--dsw-alias-bg-base\);/,
@@ -169,6 +186,8 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /\[data-dockkit-float\] \.dshgg-sectionHeader\s*\{[^}]*background: var\(--dsw-alias-bg-layer-2\);/,
   )
+  assert.doesNotMatch(graphStyles, /--dshgg-section-inset/)
+  assert.doesNotMatch(graphStyles, /\.dshgg-sectionHeader\s*\{[^}]*box-shadow:/)
   assert.match(
     graphStyles,
     /\.dshgg-sectionHeader::before\s*\{[^}]*border-radius: var\(--dsw-radius-md\);[^}]*background: var\(--dsw-alias-interactive-bg-hover\);[^}]*opacity: 0;/,
@@ -177,14 +196,11 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /@media \(hover: hover\) \{\s*\.dshgg-sectionHeader:hover::before \{\s*opacity: 1;\s*\}\s*\}/,
   )
-  // A scroll frame's top padding sits above the sticky view rectangle, so the
-  // resting inset belongs to the first section: a pinned header reaches the
-  // pane's top edge and no row can slide into a strip above it.
-  assert.match(graphStyles, /\.dshgg-scroll\s*\{[^}]*padding: 0 6px 10px;/)
-  assert.match(
-    graphStyles,
-    /\.dshgg-scroll > \.dshgg-section:first-child\s*\{[^}]*padding-top: 2px;/,
-  )
+  // The scroll frame is free of top padding and has no inset above the first
+  // section: the first header starts at the pane's top edge, so its own
+  // surface covers the edge and no row can appear above it.
+  assert.match(graphStyles, /\.dshgg-scroll\s*\{[^}]*gap: 2px;[^}]*padding: 0 6px 10px;/)
+  assert.doesNotMatch(graphStyles, /\.dshgg-scroll > \.dshgg-section:first-child/)
   assert.match(graphStyles, /\.dshgg-paneTop\s*\{[^}]*flex: 0 0 auto;/)
   assert.match(graphStyles, /\.dshgg-paneBottom\s*\{[^}]*flex: 1 1 0;/)
   assert.doesNotMatch(graphStyles, /\.dshgg-cleanIcon/)
@@ -474,7 +490,8 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
   assert.ok(refreshHistory, 'the graph section menu has no refresh action')
   assert.equal(refreshHistory.label, 'menu.refreshHistory')
 
-  // Ordinary commits group checkout and reference creation before the copies.
+  // Ordinary commits lead with View Details, then group checkout and reference
+  // creation before the copies.
   const commit = resolve({
     sessionId: 's1',
     kind: 'commit',
@@ -483,14 +500,18 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
     subject: 'Fix it',
   })
   assert.deepEqual(MENU_IDS(commit), [
+    menuActionId('view-details'),
     menuActionId('checkout-detached'),
     menuActionId('create-branch'),
     menuActionId('create-tag'),
     menuActionId('copy-id'),
     menuActionId('copy-message'),
   ])
-  const [checkoutDetached, createBranch, , copyCommitId, copyCommitSubject] = commit
+  const [viewDetails, checkoutDetached, createBranch, , copyCommitId, copyCommitSubject] = commit
+  assert.ok(viewDetails, 'the commit menu has no view-details action')
+  assert.equal(viewDetails.label, 'menu.viewDetails')
   assert.ok(checkoutDetached, 'the commit menu has no checkout action')
+  assert.equal(checkoutDetached.separatorBefore, true)
   assert.ok(createBranch, 'the commit menu has no create-branch action')
   assert.ok(copyCommitId, 'the commit menu has no copy-id action')
   assert.ok(copyCommitSubject, 'the commit menu has no copy-subject action')

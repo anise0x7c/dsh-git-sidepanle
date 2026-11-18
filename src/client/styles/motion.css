@@ -1,5 +1,102 @@
 /* --------------------------------------------------------------- motion --- */
 
+/* The operation prompt rises from the pane's bottom edge when it opens and
+ * lowers out again when it is dismissed. The card keeps a 4px gap above that
+ * edge, so the leaving card travels its own height plus that gap to clear the
+ * pane.
+ *
+ * This box clips the layer itself. The host's tab body clips at the same
+ * bounds, so the card is cut at the pane's edges exactly as before; clipping
+ * here as well keeps the translated card out of every ancestor's scrollable
+ * area, so a focused prompt button cannot scroll the pane down to reveal
+ * itself while the card is still below the edge. A leaving prompt takes no
+ * pointer input, and the box itself lies out of flow and passes every pointer
+ * event through to the card. */
+.dshgg-root .dshgg-promptMotion {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  overflow: clip;
+  pointer-events: none;
+}
+
+.dshgg-root .dshgg-promptMotion[data-phase="enter"] .dshgg-floating-panel {
+  animation: dshgg-prompt-rise 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dshgg-root .dshgg-promptMotion[data-phase="leave"] .dshgg-floating-panel {
+  animation: dshgg-prompt-lower 180ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+/* The commit details card travels in from the pane's right edge and back out
+ * that way. It overlays the still-mounted change list, graph and commit box,
+ * so the exit reveals them instead of a blank pane. The layer sits inside the
+ * stage's 4px inset, so it clears the pane by its own width plus that gap. A
+ * card on its way out accepts no input either. */
+.dshgg-root .dshgg-commitMotion {
+  position: absolute;
+  inset: 4px;
+  z-index: 15;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+}
+
+.dshgg-root .dshgg-commitMotion[data-phase="enter"] {
+  animation: dshgg-details-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dshgg-root .dshgg-commitMotion[data-phase="leave"] {
+  animation: dshgg-details-leave 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+.dshgg-root .dshgg-commitMotion[data-phase="leave"] .dshgg-commitCard {
+  pointer-events: none;
+}
+
+@keyframes dshgg-prompt-rise {
+  from {
+    transform: translateY(calc(100% + 8px));
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+@keyframes dshgg-prompt-lower {
+  from {
+    transform: none;
+  }
+
+  to {
+    transform: translateY(calc(100% + 8px));
+  }
+}
+
+@keyframes dshgg-details-enter {
+  from {
+    transform: translateX(calc(100% + 8px));
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+@keyframes dshgg-details-leave {
+  from {
+    transform: none;
+  }
+
+  to {
+    transform: translateX(calc(100% + 8px));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dshgg-iconBtn[data-spinning="true"] svg {
     animation: none;
@@ -7,5 +104,11 @@
 
   .dshgg-chevron {
     transition: none;
+  }
+
+  /* Both surfaces appear and leave at their final position instead. */
+  .dshgg-root .dshgg-promptMotion[data-phase] .dshgg-floating-panel,
+  .dshgg-root .dshgg-commitMotion[data-phase] {
+    animation: none;
   }
 }

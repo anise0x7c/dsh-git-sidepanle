@@ -6,12 +6,12 @@
  */
 
 import type React from 'react'
-import { createElement, useCallback, useMemo, useRef, useState } from 'react'
-import { DIFF_KIND } from '../constants.ts'
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { DETAILS_MOTION_MS, DIFF_KIND, PROMPT_MOTION_MS } from '../constants.ts'
 import { errorText } from '../git/format.ts'
 import { sortChangeEntries } from '../git/list.ts'
 import { AlertIcon, GitBranchIcon } from '../icons.ts'
-import type { ChangeEntry, CommitFileRow } from '../types/domain.ts'
+import type { ChangeEntry, CommitFileRow, CommitSummary } from '../types/domain.ts'
 import type {
   ContextMenusService,
   LocaleBinder,
@@ -26,10 +26,12 @@ import { Banner, EmptyState } from './feedback.ts'
 import { useBranches } from './hooks/useBranches.ts'
 import { useChangeActions } from './hooks/useChangeActions.ts'
 import { useCommitDetails } from './hooks/useCommitDetails.ts'
+import { useCommitExpansion } from './hooks/useCommitExpansion.ts'
 import { useCommitMenuActions } from './hooks/useCommitMenuActions.ts'
 import { useHistory } from './hooks/useHistory.ts'
 import { useLiveUpdates } from './hooks/useLiveUpdates.ts'
 import { useMenuCommands } from './hooks/useMenuCommands.ts'
+import { usePresence } from './hooks/usePresence.ts'
 import { useRepoStatus } from './hooks/useRepoStatus.ts'
 import { createMenuTargets, usePanelRefs } from './menu.ts'
 import { isNearEnd } from './scroll.ts'
@@ -80,6 +82,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     statusState
   const history = useHistory({ call, refs })
   const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history
+  const rootPane = useRef<HTMLDivElement | null>(null)
   const graphPane = useRef<HTMLDivElement | null>(null)
 
   // A history refresh starts a new first page and returns the pane to the top,
@@ -97,6 +100,10 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   })
   // The split outlives the commit-details view so returning restores the ratio.
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT_RATIO)
+  // A surface that is leaving keeps rendering the element it rendered last, so
+  // its content does not blink out before its exit animation is over.
+  const lastDetails = useRef<React.ReactNode>(null)
+  const lastPrompt = useRef<React.ReactNode>(null)
   const repo = status?.repo ?? null
   // The change list uses repository-relative paths, so the directory that
   // makes them absolute is the repository root, not the Session directory.
@@ -200,7 +207,39 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     rawRequestCommit()
   }
   const commitState = useCommitDetails({ call, refs })
+  const expansion = useCommitExpansion({ call, refs })
   const selectedCommit = commitState.selected
+  // Escape leaves the details card like its back control. A prompt or the
+  // branch menu owns the key while it is open, and a hidden tab must not react
+  // to keys pressed in another tab.
+  useEffect(() => {
+    if (!visible || selectedCommit === null) return undefined
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (branchMenu || confirm !== null || commitMenuActions.dialog !== null) return
+      // A panel that is merely visible must not react to Escape pressed in
+      // another pane. The focused body counts as in-panel because inerting the
+      // underlay can move focus there.
+      const root = rootPane.current
+      const focus = document.activeElement ?? event.target
+      const focusIsInside =
+        focus === document.body ||
+        (root !== null && focus instanceof Element && root.contains(focus))
+      if (!focusIsInside && root !== null) return
+      event.preventDefault()
+      event.stopPropagation()
+      commitState.closeCommit()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [
+    visible,
+    selectedCommit,
+    branchMenu,
+    confirm,
+    commitMenuActions.dialog,
+    commitState.closeCommit,
+  ])
   const commitRows = useMemo<CommitFileRow[]>(
     () =>
       sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
@@ -226,22 +265,35 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     [tab.actions, repoRoot],
   )
 
-  const openCommitDiff = useCallback(
-    (entry: CommitFileRow): void => {
-      if (selectedCommit === null) return
+  const openFileAtCommit = useCallback(
+    (commit: Pick<CommitSummary, 'oid' | 'shortOid'>, entry: CommitFileRow): void => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
           path: entry.path,
-          commit: selectedCommit.oid,
-          shortOid: selectedCommit.shortOid,
+          commit: commit.oid,
+          shortOid: commit.shortOid,
           status: entry.letter,
           origPath: entry.origPath,
           cwd: repoRoot ?? undefined,
         },
       })
     },
-    [tab.actions, repoRoot, selectedCommit],
+    [tab.actions, repoRoot],
   )
+  const openCommitDiff = useCallback(
+    (entry: CommitFileRow): void => {
+      if (selectedCommit !== null) openFileAtCommit(selectedCommit, entry)
+    },
+    [openFileAtCommit, selectedCommit],
+  )
+  // The details view opens from the commit row's menu; the command names the
+  // commit by id, so it resolves against the rows the graph currently lists.
+  const viewCommit = (oid: string): boolean => {
+    const commit = graph?.find((candidate) => candidate.oid === oid)
+    if (commit === undefined) return false
+    commitState.selectCommit(commit)
+    return true
+  }
 
   const toggleSection = (id: string): void =>
     setOpenSections((current) => ({ ...current, [id]: current[id] !== true }))
@@ -284,6 +336,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     trigger: menuTrigger,
     sectionTarget: targets.sectionTarget,
     commitTarget: targets.commitTarget,
+    fileTarget: (path: string) => targets.rowTarget('commitFile', { section: 'commit', path }),
     onInvoke: commitMenuActions.rememberTrigger,
   }
   // The command bus subscription mounts before the handlers exist, so the
@@ -307,6 +360,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     createBranch: (oid) => requestReference(() => commitMenuActions.createBranch(oid)),
     createTag: (oid) => requestReference(() => commitMenuActions.createTag(oid)),
     deleteBranch: (branch) => requestReference(() => commitMenuActions.deleteBranch(branch)),
+    viewCommit,
     setConfirm: requestConfirmation,
     notify: props.notify,
     openDiff,
@@ -370,7 +424,9 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     return null
   }
 
-  const commitBody =
+  // The details view slides in from the pane's right edge; the presence keeps
+  // the last rendered commit visible while the view slides back out.
+  const detailsNode =
     selectedCommit === null
       ? null
       : h(CommitDetails, {
@@ -386,8 +442,19 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           menuTrigger,
           rowTarget: targets.rowTarget,
         })
+  const detailsPresence = usePresence(detailsNode !== null, DETAILS_MOTION_MS)
+  if (detailsNode !== null) lastDetails.current = detailsNode
+  const shownDetails = detailsNode ?? (detailsPresence.mounted ? lastDetails.current : null)
+  const detailsMotion =
+    shownDetails === null
+      ? null
+      : h(
+          'div',
+          { className: 'dshgg-commitMotion', 'data-phase': detailsPresence.phase },
+          h('div', { className: 'dshgg-scroll dshgg-commitCard' }, shownDetails),
+        )
 
-  const singlePane = renderState() ?? commitBody
+  const singlePane = renderState()
   const body =
     singlePane !== null
       ? h('div', { className: 'dshgg-scroll' }, singlePane)
@@ -431,7 +498,10 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
               void history.loadMore()
             },
             open: openSections.graph === true,
-            onSelect: commitState.selectCommit,
+            onActivate: expansion.toggleCommit,
+            expanded: expansion.expanded,
+            onOpenChange: openFileAtCommit,
+            onRetryChanges: expansion.retryCommit,
             onToggle: () => toggleSection('graph'),
             onRetry: () => {
               void reloadHistory()
@@ -456,9 +526,63 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           onDismiss: () => setActionFailure(null),
         })
 
+  // The operation prompt rises from the pane's bottom edge and lowers away
+  // again before it is removed; the last rendered prompt stays on screen while
+  // it leaves. A reference form replaces an idle confirmation outright, so the
+  // new prompt enters on its own instead of crossfading with the old one.
+  const promptNode =
+    commitMenuActions.dialog !== null
+      ? h(CommitMenuDialog, {
+          key:
+            commitMenuActions.dialog.kind === 'deleteBranch'
+              ? `delete:${commitMenuActions.dialog.branch}`
+              : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
+          dialog: commitMenuActions.dialog,
+          t,
+          busy: busy !== null,
+          feedback: actionFeedback,
+          onNameChange: commitMenuActions.setName,
+          onMessageChange: commitMenuActions.setMessage,
+          onCancel: () => commitMenuActions.closeDialog(),
+          onSubmit: commitMenuActions.submitDialog,
+        })
+      : confirm !== null
+        ? h(FloatingPanel, {
+            key: confirm.kind === 'discard' ? `discard:${confirm.entry.path}` : confirm.kind,
+            title: confirmTitle(t, confirm),
+            description: confirmDescription(t, confirm),
+            cancelLabel: t('action.cancel'),
+            submitLabel: confirmActionLabel(t, confirm),
+            busy: busy !== null,
+            feedback: actionFeedback,
+            onCancel: () => requestConfirmation(null),
+            onSubmit: () => {
+              if (refs.busy.current === null) confirmAction()
+            },
+          })
+        : null
+  const promptPresence = usePresence(promptNode !== null, PROMPT_MOTION_MS)
+  if (promptNode !== null) lastPrompt.current = promptNode
+  const shownPrompt = promptNode ?? (promptPresence.mounted ? lastPrompt.current : null)
+  const promptMotion =
+    shownPrompt === null
+      ? null
+      : h(
+          'div',
+          { className: 'dshgg-promptMotion', 'data-phase': promptPresence.phase },
+          shownPrompt,
+        )
+
+  // The details card overlays content that stays mounted and visible beneath
+  // it. Marking that content inert and hidden keeps keyboard and assistive
+  // technology users in the card; React 18's types do not know `inert`.
+  const underlayProps: React.HTMLAttributes<HTMLDivElement> = detailsPresence.mounted
+    ? ({ 'aria-hidden': 'true', inert: '' } as React.HTMLAttributes<HTMLDivElement>)
+    : {}
+
   return h(
     'div',
-    { className: 'dshgg-root', 'data-dsh-git-graph': '' },
+    { className: 'dshgg-root', 'data-dsh-git-graph': '', ref: rootPane },
     h(BranchHeader, {
       t,
       wrapRef: refs.wrap,
@@ -478,61 +602,40 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
       },
       onRefresh: refreshAll,
     }),
-    repo === null || selectedCommit !== null
-      ? null
-      : h(CommitBox, {
-          t,
-          message,
-          hint: commitHint,
-          placeholder,
-          busy,
-          onChange: setMessage,
-          onCommit: requestCommit,
-        }),
-    loadFailure !== null && status !== null
-      ? h(Banner, {
-          title: t('error.title'),
-          detail: errorText(t, loadFailure),
-          retryLabel: t('retry'),
-          onRetry: () => {
-            void loadStatus()
-          },
-          dismissLabel: t('action.dismiss'),
-          onDismiss: () => setLoadFailure(null),
-        })
-      : null,
-    commitMenuActions.dialog === null && confirm === null ? actionFeedback : null,
-    body,
-    commitMenuActions.dialog === null
-      ? null
-      : h(CommitMenuDialog, {
-          key:
-            commitMenuActions.dialog.kind === 'deleteBranch'
-              ? `delete:${commitMenuActions.dialog.branch}`
-              : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
-          dialog: commitMenuActions.dialog,
-          t,
-          busy: busy !== null,
-          feedback: actionFeedback,
-          onNameChange: commitMenuActions.setName,
-          onMessageChange: commitMenuActions.setMessage,
-          onCancel: () => commitMenuActions.closeDialog(),
-          onSubmit: commitMenuActions.submitDialog,
-        }),
-    confirm === null
-      ? null
-      : h(FloatingPanel, {
-          key: confirm.kind === 'discard' ? `discard:${confirm.entry.path}` : confirm.kind,
-          title: confirmTitle(t, confirm),
-          description: confirmDescription(t, confirm),
-          cancelLabel: t('action.cancel'),
-          submitLabel: confirmActionLabel(t, confirm),
-          busy: busy !== null,
-          feedback: actionFeedback,
-          onCancel: () => requestConfirmation(null),
-          onSubmit: () => {
-            if (refs.busy.current === null) confirmAction()
-          },
-        }),
+    h(
+      'div',
+      { className: 'dshgg-stage' },
+      h(
+        'div',
+        { className: 'dshgg-content', ...underlayProps },
+        repo === null
+          ? null
+          : h(CommitBox, {
+              t,
+              message,
+              hint: commitHint,
+              placeholder,
+              busy,
+              onChange: setMessage,
+              onCommit: requestCommit,
+            }),
+        loadFailure !== null && status !== null
+          ? h(Banner, {
+              title: t('error.title'),
+              detail: errorText(t, loadFailure),
+              retryLabel: t('retry'),
+              onRetry: () => {
+                void loadStatus()
+              },
+              dismissLabel: t('action.dismiss'),
+              onDismiss: () => setLoadFailure(null),
+            })
+          : null,
+        promptMotion === null ? actionFeedback : null,
+        body,
+      ),
+      detailsMotion,
+    ),
+    promptMotion,
   )
 }

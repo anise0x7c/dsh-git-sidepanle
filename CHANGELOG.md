@@ -3,6 +3,46 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## Unreleased
+
+- Activating a commit row in the graph now expands the commit's changed files
+  inline below it, as VS Code's Source Control Graph does: 22px file rows with
+  an icon, the name, the dimmed directory and the status letter, the commit's
+  outgoing lanes running through them (its own lane three pixels wide from the
+  commit's node down), several
+  commits expandable at once, and inline loading, empty, failure/retry and
+  capped-list rows.
+- Files listed under an expanded commit now carry the Web application's
+  file-type icon for their path (the per-type glyph and color its file explorer
+  uses), falling back to the plugin's plain document icon when the application
+  provides no such icon set.
+- The merge-conflicts, staged and changes lists now show the same per-type file
+  icon before each file's name, so every flat file-row list in the panel matches
+  the host's explorer; the plain document icon remains the fallback when the
+  host provides no file-type icon set.
+- A commit's details view now shows the same per-type file icon before each
+  changed file's name, with the plain document icon as the fallback when the
+  host provides no file-type icon set.
+- The merge-conflicts, staged and changes lists and the commit-details file
+  list now put each file's status letter at the row's end in that status's
+  color, matching the files listed under an expanded commit; file icons,
+  names, dimmed directories, rename arrows and hover actions keep their
+  places.
+- The commit-details view now opens from a new first commit-menu action,
+  **View Details** (查看详情), which stays available while another operation
+  runs; a stale target is reported instead of opening an empty view.
+- The commit-details view now opens as a bordered, frosted card above the
+  still-mounted change list, graph and commit box, using the same theme-derived
+  translucency and backdrop blur as the bottom operation prompt with a solid
+  fallback where filtering is unavailable, so sliding it back out reveals that
+  content instead of leaving a blank pane. Escape closes the card through the
+  same transition while no operation prompt or branch menu owns it.
+- The bottom operation prompt now rises from the pane's bottom edge when it
+  opens and lowers out of view before it is removed, and the commit-details
+  view slides in from the right edge and slides back out before the change
+  list returns. Both respect reduced motion. The prompt's motion box clips the
+  card itself, so its travel never scrolls the pane or shifts its content.
+
 ## 0.12.1
 
 The refactoring rounds since 0.12.0 now pass the stricter TypeScript rules

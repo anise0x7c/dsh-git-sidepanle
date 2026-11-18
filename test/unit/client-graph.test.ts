@@ -19,7 +19,10 @@ import {
   bindReferenceTargets,
   computeGraph,
   graphLayer,
+  graphPlaceholderPaths,
+  graphPlaceholderWidth,
   graphRowGeometry,
+  HIGHLIGHT_STROKE_WIDTH,
   LANE_COLORS,
   ROW_OVERHANG,
   refBadges,
@@ -30,7 +33,12 @@ import {
 } from '../../src/client/git/graph.ts'
 import type { GraphReferences } from '../../src/client/types/domain.ts'
 import type { OracleItem } from '../support/vscode-scm-history.ts'
-import { renderGraph, toViewModels } from '../support/vscode-scm-history.ts'
+import {
+  placeholderHighlightIndex,
+  renderGraph,
+  renderGraphPlaceholder,
+  toViewModels,
+} from '../support/vscode-scm-history.ts'
 
 /**
  * Build one history commit record.
@@ -662,6 +670,121 @@ describe('graphLayer', () => {
   test('has no paths and no gaps for no rows', () => {
     assert.deepEqual(graphLayer([]), { paths: [], gaps: [], width: 0, height: 0 })
   })
+
+  test('runs an expanded commit lanes through its inserted rows', () => {
+    const rows = computeGraph([
+      commit('tip', ['main', 'side']),
+      commit('main', ['base']),
+      commit('side', ['base']),
+      commit('base'),
+    ])
+    const plain = graphLayer(rows)
+    const layer = graphLayer(rows, [2])
+    assert.equal(layer.height, plain.height + 2 * SWIMLANE_HEIGHT)
+    assert.deepEqual(
+      layer.paths.map((path) => [path.color, path.width]),
+      [
+        ['lane2', undefined],
+        ['lane1', HIGHLIGHT_STROKE_WIDTH],
+        ['lane1', undefined],
+      ],
+      'the node lane gets its own wide element from the commit row down',
+    )
+    assert.equal(
+      layer.paths[1]?.d,
+      'M 11 11 V 22 M 11 22 V 44 M 11 44 V 66',
+      'the node lane is wide in its own row and through both inserted rows',
+    )
+    assert.match(
+      String(layer.paths[0]?.d),
+      /^M 11 11 A 11 11 0 0 1 22 22 M 11 11 H 11 M 22 22 V 44 M 22 44 V 66 M 22 65 V 66 /,
+      'the merge lane continues one pixel wide and the next row bridges into it',
+    )
+    assert.deepEqual(
+      layer.gaps.map((gap) => gap.cy),
+      [11, 77, 99, 121],
+      'the nodes below move down by the inserted rows',
+    )
+  })
+
+  test("widens the expanded commit row's lane below its node only", () => {
+    const rows = computeGraph([commit('c3', ['c2']), commit('c2', ['c1']), commit('c1')])
+    const row = rows[1]
+    assert.ok(row)
+    assert.deepEqual(graphRowGeometry(row, 22).paths, [
+      { d: 'M 11 22 V 33', color: 'lane1' },
+      { d: 'M 11 33 V 44', color: 'lane1' },
+    ])
+    assert.deepEqual(
+      graphRowGeometry(row, 22, true).paths,
+      [
+        { d: 'M 11 22 V 33', color: 'lane1' },
+        { d: 'M 11 33 V 44', color: 'lane1', width: HIGHLIGHT_STROKE_WIDTH },
+      ],
+      'the wide line starts at the node and runs into the listed rows; the segment arriving from the commit above stays one pixel wide',
+    )
+  })
+
+  test('keeps every other line of an expanded row one pixel wide', () => {
+    const rows = computeGraph([commit('tip', ['main', 'side']), commit('main'), commit('side')])
+    const tip = rows[0]
+    assert.ok(tip)
+    assert.deepEqual(
+      graphRowGeometry(tip, 0, true)
+        .paths.filter((path) => path.width !== undefined)
+        .map((path) => path.d),
+      ['M 11 11 V 22'],
+      'only the node lane widens; the merge curve stays one pixel',
+    )
+  })
+
+  test('leaves every commit row geometry unchanged except for its offset', () => {
+    const rows = computeGraph(randomHistory(7, 12))
+    const inserted = rows.map((_, index) => (index % 3 === 0 ? index % 4 : 0))
+    const layer = graphLayer(rows, inserted)
+    let top = 0
+    rows.forEach((row, index) => {
+      const geometry = graphRowGeometry(row, top, (inserted[index] ?? 0) > 0)
+      for (const path of geometry.bridge) {
+        const element = layer.paths.find(
+          (candidate) => candidate.color === path.color && candidate.width === undefined,
+        )
+        assert.ok(element?.d.includes(path.d), `row ${index} bridges ${path.d} one pixel wide`)
+      }
+      for (const path of geometry.paths) {
+        const element = layer.paths.find(
+          (candidate) => candidate.color === path.color && candidate.width === path.width,
+        )
+        assert.ok(element?.d.includes(path.d), `row ${index} keeps ${path.d}`)
+      }
+      top += SWIMLANE_HEIGHT * (1 + (inserted[index] ?? 0))
+    })
+    assert.equal(layer.height, top)
+  })
+
+  test('ignores missing or non-positive insert counts', () => {
+    const rows = computeGraph([commit('c2', ['c1']), commit('c1')])
+    assert.deepEqual(graphLayer(rows, [0, -1]), graphLayer(rows))
+  })
+})
+
+describe('graphPlaceholderPaths', () => {
+  test('draws one vertical line per outgoing lane and widens the node lane', () => {
+    const [row] = computeGraph([commit('tip', ['main', 'side']), commit('main'), commit('side')])
+    assert.ok(row)
+    assert.deepEqual(graphPlaceholderPaths(row, 22), [
+      { d: 'M 11 22 V 44', color: 'lane1', width: HIGHLIGHT_STROKE_WIDTH },
+      { d: 'M 22 22 V 44', color: 'lane2' },
+    ])
+    assert.equal(graphPlaceholderWidth(row), 33)
+  })
+
+  test('draws nothing for a root commit without outgoing lanes', () => {
+    const [row] = computeGraph([commit('root')])
+    assert.ok(row)
+    assert.deepEqual(graphPlaceholderPaths(row), [])
+    assert.equal(graphPlaceholderWidth(row), SWIMLANE_WIDTH)
+  })
 })
 
 /**
@@ -765,6 +888,16 @@ describe('equivalence with VS Code', () => {
           row.input.length,
           `${where} one overhang segment per incoming lane`,
         )
+        const placeholder = renderGraphPlaceholder(
+          model.outputSwimlanes,
+          placeholderHighlightIndex(model),
+        )
+        assert.deepEqual(
+          graphPlaceholderPaths(row).map((path) => [path.d, path.color, path.width ?? 1]),
+          placeholder.paths.map((path) => [path.d, path.color, path.strokeWidth]),
+          `${where} expanded-row lanes`,
+        )
+        assert.equal(graphPlaceholderWidth(row), placeholder.width, `${where} expanded-row width`)
         assert.deepEqual(
           row.refs.map((ref) => [ref.id, ref.color]),
           (model.historyItem.references ?? []).map((ref) => [ref.id, ref.color]),

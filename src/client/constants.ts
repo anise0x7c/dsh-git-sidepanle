@@ -18,6 +18,18 @@ export const POLL_INTERVAL_MS = 5000
  */
 export const LIVE_POLL_INTERVAL_MS = 700
 export const MAX_RENDERED_DIFF_LINES = 4000
+/**
+ * How long the bottom operation prompt takes to rise into place or to leave,
+ * in milliseconds. The stylesheet's motion rules use the same duration, so the
+ * leaving card is removed exactly when its animation ends.
+ */
+export const PROMPT_MOTION_MS = 180
+/**
+ * How long the commit details view takes to slide in or out, in milliseconds.
+ * The stylesheet's motion rules use the same duration, so the leaving view is
+ * removed exactly when its animation ends.
+ */
+export const DETAILS_MOTION_MS = 200
 export const MENU_TARGET = 'gitGraphItem'
 export const MENU_CONTRIBUTION_ID = 'git-graph.actions'
 

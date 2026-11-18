@@ -57,6 +57,7 @@ src/
     styles/                   per-area CSS sections and the ordered cascade assembly
     styles.ts                 effect-owned, refcounted style lease
     icons.ts                  SVG renderers
+    host-file-icon.ts         the host's file-type glyph, resolved softly with the plugin icon as fallback
     data/caller.ts            the only fetch layer
     git/{format,list,graph}.ts pure formatting, list ordering, VS Code graph port
     menu/                     targets, triggers, clipboard, actions, command bus
@@ -72,9 +73,9 @@ src/
       split.ts                pure split-ratio range, pointer mapping and key steps
       scroll.ts               pure near-end rule that pages the commit history
       autosize.ts             commit-message height rule and its one element pass
-      hooks/                  repository/history/branches/details/action hooks
+      hooks/                  repository/history/branches/details/expansion/action hooks
       views/                  branch/commit/change/graph sections, reference dialogs and the split view
-        graph/                shared SVG artwork and commit row/badge presentation
+        graph/                shared SVG artwork, commit row/badge and expanded change-row presentation
       GitPanel.ts             hook and view assembly
     diff/                     diff panel and pure diff rendering
     titles.ts, plugin.ts      tab titles and plugin registration assembly
@@ -93,8 +94,9 @@ test/
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
-panel/views/* -> { panel/FloatingPanel, panel/autosize, panel/controls, panel/split, icons, git/format, git/graph }
+panel/views/* -> { panel/FloatingPanel, panel/autosize, panel/controls, panel/split, icons, host-file-icon, git/format, git/graph }
 pure git/menu/locale logic -> no React, no ctx
+host-file-icon -> { icons, react, one guarded host-module request }
 host: http/* -> nothing; git/paths -> errors; git/exec -> errors
       git/files -> { exec, paths }; git/changes -> { exec, paths, files, ignore }
       git/mutations -> { exec, branches }; readers -> { exec, paths, files as needed }
@@ -151,8 +153,15 @@ every public export or semantic branch has a consumer.
    closes for the hovered row.
 5. The body is a resizable split: change groups scroll above the graph in their
    own pane, and `panel/split.ts` owns the 20%–80% ratio mapped from pointer and
-   keyboard gestures. `GitPanel` keeps the ratio so commit details can replace
-   the split and return to it, while commit metadata and files load lazily.
+   keyboard gestures. `GitPanel` keeps the ratio so commit details (opened from
+   the commit row's View Details menu action) can overlay the still-mounted
+   split as a card and reveal it again, while commit metadata and files load
+   lazily. Activating a commit row instead toggles `useCommitExpansion`, which
+   reads each expanded commit's files
+   with its own request token; `GraphSection` derives one list of inserted rows
+   per commit and hands its lengths to `graphLayer`, which offsets the commit
+   rows below and draws VS Code's graph-placeholder lanes through the inserted
+   rows (the node lane in a separate three-pixel element).
 6. Change actions share a busy lock, failure handling, confirmation and refresh
    path. Commit/checkout also refresh history. The commit box sizes itself to its
    message (`panel/autosize.ts`): one line at rest, ten at most, re-measured from

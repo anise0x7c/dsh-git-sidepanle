@@ -1,5 +1,31 @@
 /* --------------------------------------------------------- commit detail --- */
 
+/* The details card keeps the scroll frame's scrolling and padding, and adds the
+ * border and solid theme surface that separate it from the content it overlays
+ * while it slides in and out. The solid surface is the readable fallback for
+ * the native frosted material below. */
+.dshgg-root .dshgg-commitCard {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 8px 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-lg);
+  pointer-events: auto;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* Match the bottom operation prompt's native frosted material. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .dshgg-root .dshgg-commitCard {
+    background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));
+    backdrop-filter: var(--dsw-menu-backdrop-filter);
+    -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);
+  }
+}
+
 .dshgg-commitView {
   display: flex;
   flex: none;

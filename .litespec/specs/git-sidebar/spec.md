@@ -38,18 +38,44 @@ The panel SHALL show the repository it resolved from the Session's working direc
 The panel SHALL list the repository's changes as three groups in VS Code's
 order: merge conflicts, staged changes, and changes not yet staged. Within a
 group, every changed file SHALL appear as one row in a single-layer list with
-no folder rows, sorted by its repository-relative path. Every row SHALL carry
-the status letter identifying added, modified, deleted, renamed, untracked, or
-conflicted state and the file's repository-relative path. A file with both
-staged and unstaged modifications SHALL appear in both the staged and the
-unstaged group. A file that Git reports as conflicted SHALL appear under merge
-conflicts with the conflicted status letter and SHALL remain listed until the
-conflict is resolved.
+no folder rows, sorted by its repository-relative path. Every row SHALL show
+the Web application's own file-type icon for that file's path before the file
+name, drawn as the application's workspace explorer draws it, the file's
+repository-relative path, and the status letter identifying added, modified,
+deleted, renamed, untracked, or conflicted state at the row's end in that
+status's color, matching the files listed under an expanded commit. When the
+application provides no file-type icon set, the row SHALL show the plugin's
+plain document icon instead. A file with both staged and unstaged
+modifications SHALL appear in both the staged and the unstaged group. A file
+that Git reports as conflicted SHALL appear under merge conflicts with the
+conflicted status letter and SHALL remain listed until the conflict is
+resolved.
 
 #### Scenario: Partially staged file
 
 - **WHEN** a tracked file has staged edits and further unstaged edits
 - **THEN** the file appears under staged changes and again under changes not yet staged
+
+#### Scenario: File type icons
+
+- **GIVEN** a repository changed a JavaScript file, a stylesheet and an image
+- **WHEN** the change lists are shown
+- **THEN** every row shows the application's glyph for its path before the file
+  name, its status letter stays at the row's end, and the stage, unstage and
+  discard controls keep their positions
+
+#### Scenario: Status letter at the row's end
+
+- **WHEN** the change groups are shown
+- **THEN** every row shows its status letter after the file name and dimmed
+  directory and in that status's color, as the last element of the row
+
+#### Scenario: The application provides no file-type icons
+
+- **GIVEN** the application does not provide its file-type icon set
+- **WHEN** the change lists are shown
+- **THEN** every row shows the plugin's plain document icon, and staging,
+  unstaging, discarding and opening a diff keep working
 
 #### Scenario: Nested files
 
@@ -387,38 +413,122 @@ through its inline controls.
 ### Requirement: Commit details
 
 The panel SHALL show a commit's changed files, that commit's metadata, and a
-way back to the change list when the user activates the commit's row in the
-graph. The changed files SHALL carry their change status letters and their
-repository-relative paths in a single-layer list with no folder rows, sorted by
-path, and a renamed file SHALL show its original path. The metadata SHALL
-identify the commit by its short identifier and show its subject, author,
-relative time, and message body when present. Activating a changed file SHALL
-open that file's diff for the commit. A commit that changed no files SHALL be
-presented as such rather than as an empty list, a failed read SHALL be reported
-with a retry path, and returning from the details view SHALL restore the change
-list and graph without changing the repository.
+way back to the change list when the user chooses the View Details action from
+the commit row's context menu. The changed files SHALL be listed in a
+single-layer list with no folder rows, sorted by path; each row SHALL show the
+file's repository-relative path with the Web application's own file-type icon
+for that path before the file name, drawn as the application's workspace
+explorer draws it, and the status letter identifying the file's change at the
+row's end in that status's color. When the application provides no such icon
+set, the row SHALL show the plugin's plain document icon instead. A renamed
+file SHALL show its original path. The metadata SHALL identify the commit by
+its short identifier and show its subject, author, relative time, and message
+body when present. Activating a changed file SHALL open that file's diff for
+the commit. A commit that changed no files SHALL be presented as such rather
+than as an empty list, a failed read SHALL be reported with a retry path, and
+returning from the details view SHALL restore the change list and graph
+without changing the repository. The details view SHALL open as a card above
+the panel's content, with its own separating border and a translucent,
+backdrop-blurred theme surface with a readable solid fallback where filtering
+is unavailable, so the change list, graph and commit box stay mounted beneath
+it and are already in place when the card leaves. The card SHALL slide in from the
+panel's right edge when it opens and SHALL slide back out to that edge, and the
+content beneath it SHALL accept no pointer or keyboard input while the card is
+present. Pressing Escape in the Git panel while the card is open SHALL dismiss it
+through the same transition as the back control, without running Git or
+changing the repository; an open operation prompt or branch menu SHALL keep
+priority for Escape instead. A View Details action for a commit that is no longer listed
+SHALL be reported as stale instead of opening an empty view. When the system
+asks for reduced motion the card SHALL appear and leave at its final position
+without moving.
 
 #### Scenario: Open a commit's details
 
-- **WHEN** the user activates a commit row in the graph
+- **WHEN** the user chooses View Details from a commit row's context menu
 - **THEN** the panel shows that commit's short identifier, subject, author,
-  relative time and changed files with their status letters and paths, and the
-  change list is replaced until the user returns
+  relative time and changed files with their status letters and paths, as a
+  card above the change list and graph, which stay mounted beneath it
 
-#### Scenario: Keyboard activation
+#### Scenario: The card matches the operation prompt's material
 
-- **WHEN** a commit row has keyboard focus and the user presses Enter or Space
-- **THEN** the same commit details open without changing the repository
+- **GIVEN** the details card is open
+- **WHEN** the browser can filter the background behind the card
+- **THEN** the card uses the same translucent menu surface and backdrop blur as
+  the bottom operation prompt, with its separating border and no shadow
+
+#### Scenario: Frosting unavailable
+
+- **WHEN** the browser cannot filter the background behind the card
+- **THEN** the card remains readable on the solid theme surface
+
+#### Scenario: The content beneath the card stays in place
+
+- **GIVEN** the user has scrolled the change list or graph and chosen a split ratio
+- **WHEN** the user opens a commit's details
+- **THEN** the change list, graph and commit box remain mounted beneath the card
+  with that split ratio and those scroll positions, and the content is already
+  in place while the card arrives
+
+#### Scenario: The content beneath accepts no input
+
+- **WHEN** the details card is open or sliding away
+- **THEN** the change list, graph and commit box beneath it accept no pointer or
+  keyboard input and are hidden from assistive technology
+
+#### Scenario: Escape closes the details
+
+- **GIVEN** a commit's details are open, the Git panel has keyboard focus, and no
+  operation prompt or branch menu is open
+- **WHEN** the user presses Escape
+- **THEN** the card slides back out to the right edge like the back control,
+  reveals the content beneath it, and no Git command runs
+
+#### Scenario: Escape keeps the surface that owns it
+
+- **GIVEN** a commit's details are open and an operation prompt or the branch menu is open
+- **WHEN** the user presses Escape
+- **THEN** that prompt or menu is dismissed and the details card stays open
+
+#### Scenario: Escape without details
+
+- **WHEN** the details view is closed and the user presses Escape in the Git panel
+- **THEN** no details view opens and existing Escape behavior elsewhere is unchanged
+
+#### Scenario: Activating the row does not open the details
+
+- **WHEN** the user activates a commit row by pointer or keyboard
+- **THEN** the commit's changes expand inline and the details view does not open
+
+#### Scenario: A changed file shows its type icon
+
+- **GIVEN** a commit changed a JavaScript file, a Markdown file and an image
+- **WHEN** the user opens that commit's details
+- **THEN** each file row shows the application's glyph for its path before the
+  file name, while its status letter, name, dimmed directory and rename arrow
+  keep their places
+
+#### Scenario: Status letter at the row's end
+
+- **WHEN** the user opens a commit's details
+- **THEN** every changed file shows its status letter at the end of its row in
+  that status's color, as the files under an expanded commit do
+
+#### Scenario: The application provides no file-type icons
+
+- **GIVEN** the application does not provide its file-type icon set
+- **WHEN** the user opens that commit's details
+- **THEN** every file row shows the plugin's plain document icon, the list still
+  opens as usual, and its rows still open their diffs
 
 #### Scenario: Commit with a rename
 
-- **WHEN** a commit renamed a file and the user opens that commit
+- **WHEN** a commit renamed a file and the user opens that commit's details
 - **THEN** the renamed file is listed with its new path and its original path
 
 #### Scenario: Commit without file changes
 
-- **WHEN** the user opens a commit that changed no files relative to its first
-  parent
+- **WHEN** the user opens the details of a commit that changed no files
+  relative to its first parent
 - **THEN** the details view says that the commit has no file changes instead of
   showing an empty list
 
@@ -432,8 +542,28 @@ list and graph without changing the repository.
 #### Scenario: Return to the changes
 
 - **WHEN** the user activates the back control in the details view
-- **THEN** the change list and graph are shown again with the repository
-  unchanged
+- **THEN** the card travels towards the right edge and reveals the change list
+  and graph already in place beneath it, with the repository unchanged, the same
+  split ratio, the same scroll positions and the same commits expanded as before
+
+#### Scenario: Details arrive from the right edge
+
+- **WHEN** the details view opens for a commit
+- **THEN** it starts out beyond the panel's right edge and moves leftwards into
+  place above the content instead of appearing where it will stay
+
+#### Scenario: Reduced motion keeps the details still
+
+- **WHEN** the system asks for reduced motion and the user opens a commit's
+  details and then returns
+- **THEN** the card appears and leaves at its final position without moving, and
+  the change list and graph stay in place beneath it
+
+#### Scenario: Stale View Details
+
+- **WHEN** a View Details action arrives for a commit the graph no longer lists
+- **THEN** the panel reports a stale target and keeps showing the change list
+  and graph
 
 ### Requirement: Commit graph swimlanes
 
@@ -674,8 +804,8 @@ relative time.
 
 - **WHEN** the user hovers a commit row
 - **THEN** the tooltip shows every reference, the short identifier, subject,
-  author and relative time, and activating the row still opens the commit
-  details
+  author and relative time, and activating the row still toggles the commit's
+  inline file list
 
 ### Requirement: Branch switching
 
@@ -701,7 +831,9 @@ The user SHALL be able to move the divider by dragging it, and both panes SHALL
 keep a usable minimum height. Scrolling one pane SHALL NOT move the other or
 change its scroll position. The divider SHALL be reachable by keyboard and
 SHALL change the split with the arrow keys. Opening a commit's details SHALL
-replace the split, and returning SHALL restore the ratio the user chose.
+overlay the split with a card without resizing or unmounting either pane, and
+returning SHALL reveal the same split with the ratio and scroll positions the
+user left.
 
 #### Scenario: Change list scrolls on its own
 
@@ -723,10 +855,18 @@ replace the split, and returning SHALL restore the ratio the user chose.
 - **WHEN** the user drags the divider to either extreme
 - **THEN** both panes remain at least a usable minimum height
 
+#### Scenario: Details do not move the split
+
+- **GIVEN** the change list and graph are visible at a user-selected ratio
+- **WHEN** the user opens a commit's details
+- **THEN** the card covers the split, and both panes keep their geometry and
+  scroll positions underneath it
+
 #### Scenario: Returning from commit details
 
 - **WHEN** the user opens a commit's details and then returns to the split
-- **THEN** the change list and graph return with the ratio they had before
+- **THEN** the change list and graph are revealed with the ratio and scroll
+  positions they had before
 
 ### Requirement: Clean workspace state
 
@@ -795,16 +935,18 @@ graph SHALL NOT offer another page.
 
 Each collapsible section header SHALL remain visible at the top edge of its
 scrolling pane for as long as any part of its own section still reaches below
-that edge. A pinned header SHALL paint the host's surface, so the rows scrolling
-beneath it are hidden. A pinned header SHALL also cover the pane's top edge
-itself, including the inset above the content, so no part of a row is visible
-above the header. A header SHALL show the host's hover highlight over that
-surface while the pointer is over it, and the highlight SHALL stay inside the
-header's rounded corners. At most one header SHALL be pinned at a time: while a
-header is pinned, the next section's header SHALL keep its normal position until
-the pinned header's section has left the top edge, and SHALL then take that
-place. A pinned header SHALL keep its toggle, its count where it shows one, and
-its context menu usable. A pane whose content fits without scrolling SHALL show
+that edge. A header SHALL already rest at the pane's top edge in both its
+normal and pinned positions, so beginning to scroll its pane SHALL NOT shift
+the header; only the rows SHALL move beneath it. A pinned header SHALL paint
+the host's opaque surface from the pane's top edge down, so the rows scrolling
+beneath it are hidden and no part of a row is visible above or through the
+header. A header SHALL show the host's hover highlight over that surface while
+the pointer is over it, and the highlight SHALL stay inside the header's
+rounded corners. At most one header SHALL be pinned at a time: while a header
+is pinned, the next section's header SHALL keep its normal position until the
+pinned header's section has left the top edge, and SHALL then take that place.
+A pinned header SHALL keep its toggle, its count where it shows one, and its
+context menu usable. A pane whose content fits without scrolling SHALL show
 every header in its normal position.
 
 #### Scenario: A group header stays while its rows scroll
@@ -813,16 +955,22 @@ every header in its normal position.
 - **WHEN** the user scrolls the change list down
 - **THEN** the changes header stays at the top edge of that pane while its rows pass beneath it
 
+#### Scenario: Scrolling does not shift the header
+
+- **GIVEN** a change group is taller than its pane and the pane is at its top
+- **WHEN** the user begins to scroll the pane
+- **THEN** the group header stays flush at the pane's top edge from the first scrolled pixel, and only the rows move beneath it
+
 #### Scenario: Rows do not show through a pinned header
 
 - **WHEN** rows scroll under a pinned header
-- **THEN** the header's surface hides them
+- **THEN** the header's opaque surface hides them
 
 #### Scenario: Nothing shows above a pinned header
 
 - **GIVEN** a group is taller than its pane
 - **WHEN** the user scrolls so that a row crosses the top edge of the pane
-- **THEN** the header covers the pane's top edge and no sliver of the row appears above the header
+- **THEN** the header's surface begins at the pane's top edge and no sliver of the row appears above the header
 
 #### Scenario: Hovering a header highlights it
 
@@ -958,23 +1106,28 @@ rows, the panel SHALL reload the newest graph page.
 
 ### Requirement: Commit graph context-menu structure
 
-A commit row SHALL present actions in this order: a checkout submenu when the commit carries any local branch head, detached checkout, a separator, branch creation, a deletion submenu when it carries a deletable local branch head, a separator after the branch group, tag creation, a separator, full commit-hash copy, and commit-message copy. Submenus SHALL contain the available local branch heads at that commit, in name order, and SHALL NOT contain remote-tracking branches, tags, or HEAD markers. The current head MAY be disabled in the checkout submenu and SHALL NOT be offered for deletion. Menus and submenus SHALL use the application's shared native menu presentation and theme.
+A commit row SHALL present actions in this order: View Details, a separator, a checkout submenu when the commit carries any local branch head, detached checkout, a separator, branch creation, a deletion submenu when it carries a deletable local branch head, a separator after the branch group, tag creation, a separator, full commit-hash copy, and commit-message copy. View Details SHALL stay available while another operation is running, because it does not change the repository. Submenus SHALL contain the available local branch heads at that commit, in name order, and SHALL NOT contain remote-tracking branches, tags, or HEAD markers. The current head MAY be disabled in the checkout submenu and SHALL NOT be offered for deletion. Menus and submenus SHALL use the application's shared native menu presentation and theme.
 
 #### Scenario: Ordinary commit
 
 - **WHEN** the user invokes the menu on a commit with no local branch heads
-- **THEN** it offers detached checkout, create branch, create tag, copy commit hash and copy commit message, with the specified separators and no checkout or deletion submenu
+- **THEN** it offers view details, detached checkout, create branch, create tag, copy commit hash and copy commit message, with the specified separators and no checkout or deletion submenu
 
 #### Scenario: Branch-head commit
 
 - **GIVEN** a commit carries local branches `feature` and `main` plus `origin/main`
 - **WHEN** the user invokes its menu
-- **THEN** native checkout and deletion submenus precede the create-branch and subsequent groups, and their entries contain only `feature` and `main` where applicable, never `origin/main`
+- **THEN** View Details comes first, native checkout and deletion submenus precede the create-branch and subsequent groups, and their entries contain only `feature` and `main` where applicable, never `origin/main`
 
 #### Scenario: Opening a submenu has no side effects
 
 - **WHEN** the user opens checkout or deletion choices but selects none
 - **THEN** no Git command runs and the repository remains unchanged
+
+#### Scenario: View Details while busy
+
+- **WHEN** another panel operation is running and the user invokes a commit row's menu
+- **THEN** View Details is enabled while the repository-changing actions are disabled
 
 ### Requirement: Checkout from commit history
 
@@ -1081,13 +1234,36 @@ file counts.
 
 ### Requirement: Floating operation panels
 
-The panel SHALL present discard confirmations, stage-all-and-commit confirmation, reference naming and branch deletion in a consistent rounded bottom-anchored floating surface within the Git panel, without changing the change-list or graph pane geometry or split ratio. The surface SHALL use the host theme's colors, typography, borders, controls and focus treatment, with translucency and backdrop blur where supported and a readable solid fallback otherwise. Only one operation prompt SHALL be visible at a time; requesting another idle prompt SHALL replace the previous one without executing it.
+The panel SHALL present discard confirmations, stage-all-and-commit
+confirmation, reference naming and branch deletion in a consistent rounded
+bottom-anchored floating surface within the Git panel, without changing the
+change-list or graph pane geometry or split ratio. The surface SHALL use the
+host theme's colors, typography, borders, controls and focus treatment, with
+translucency and backdrop blur where supported and a readable solid fallback
+otherwise. The surface SHALL rise into place from the panel's bottom edge when
+it opens and SHALL lower out of the panel before it is removed when it is
+dismissed, and it SHALL accept no input while it leaves. Its motion SHALL NOT
+scroll the pane or shift its content: the pane keeps its scroll position and
+its header and lists stay where they are while the card rises or lowers. Only
+one operation prompt SHALL be visible at a time; requesting another idle prompt
+SHALL replace the previous one without executing it. When the system asks for
+reduced motion the surface SHALL appear and disappear at its final position
+without moving.
 
 #### Scenario: Confirm without resizing the lists
 
 - **GIVEN** the change list and graph are visible at a user-selected split ratio
 - **WHEN** the user opens a discard confirmation
-- **THEN** a rounded frosted card appears above the bottom of the panel while the panes and their split ratio retain their geometry
+- **THEN** a rounded frosted card rises from the pane's bottom edge and settles
+  above the bottom of the panel while the panes and their split ratio retain
+  their geometry
+
+#### Scenario: The moving prompt leaves the pane still
+
+- **GIVEN** the change list or graph is scrolled within its pane
+- **WHEN** the user opens a confirmation and then dismisses it
+- **THEN** the pane keeps that scroll position and neither the branch header,
+  the lists nor the graph jump while the card rises or lowers
 
 #### Scenario: Reuse for reference forms
 
@@ -1104,6 +1280,18 @@ The panel SHALL present discard confirmations, stage-all-and-commit confirmation
 
 - **WHEN** the browser cannot filter the background behind the floating surface
 - **THEN** the surface remains readable on a solid theme-derived background
+
+#### Scenario: A dismissed prompt leaves the pane
+
+- **WHEN** the user cancels an idle prompt
+- **THEN** the card moves down out of the pane before it is removed, it accepts
+  no further input on the way out, and no Git command runs
+
+#### Scenario: Reduced motion keeps the prompt in place
+
+- **WHEN** the system asks for reduced motion and the user opens and dismisses an
+  operation prompt
+- **THEN** the card appears and disappears at its final position without moving
 
 ### Requirement: Adaptive operation-panel content
 
@@ -1307,3 +1495,135 @@ The Host MUST prevent asynchronous watch setup from acquiring or replacing repos
 
 - **WHEN** an already disposed registry is disposed again or receives a watch request
 - **THEN** it remains idle without opening watchers or timers
+
+### Requirement: Inline commit changes
+
+Activating a commit row in the graph, by pointer or by Enter or Space while
+the row has keyboard focus, SHALL toggle a list of the files that commit
+changed relative to its first parent directly below the row, as VS Code's
+Source Control Graph expands a history item. The row SHALL expose whether it is
+expanded to assistive technology. Several commits SHALL be able to stay
+expanded at the same time, and activating an expanded row SHALL collapse its list. Each listed file
+SHALL take one 22-pixel row showing the Web application's own file-type icon
+for that file's path, drawn as the application's workspace explorer draws it,
+the file name, its dimmed repository-relative directory when it has one, and
+its status letter at the row's end in that status's color; the files SHALL be
+sorted by path, and a renamed file's tooltip SHALL name its original path. When
+the application provides no file-type icon set, the row SHALL show the plugin's
+plain document icon instead and SHALL otherwise stay unchanged. Activating a
+listed file, by pointer or keyboard, SHALL open that file's diff for the
+commit. While the file list is read the commit SHALL show one loading row; a
+commit without file changes SHALL show one row saying so; a failed read SHALL
+show one row with the failure and a retry control; a capped list SHALL end with
+a row saying that only the first files are shown. Listed files SHALL keep the
+copy-only context menu of past-commit files. Expanding or collapsing SHALL NOT
+change the repository and SHALL NOT replace the change list or the graph.
+
+#### Scenario: Expand a commit
+
+- **WHEN** the user activates a collapsed commit row
+- **THEN** the commit's changed files appear directly below it in path order,
+  each with its icon, name, dimmed directory and status letter, while the change
+  list, the rest of the graph and the commit box stay in place
+
+#### Scenario: Collapse a commit
+
+- **WHEN** the user activates a commit row whose files are listed
+- **THEN** its file rows disappear and the next commit row follows it directly
+
+#### Scenario: File type icons
+
+- **GIVEN** a commit changed `src/app.ts`, `assets/logo.png` and a file with no
+  recognized type
+- **WHEN** the user expands that commit
+- **THEN** the rows show the application's glyphs for those paths, a TypeScript
+  glyph, an image glyph and its generic document glyph, while the row height,
+  name, dimmed directory and status letter stay unchanged
+
+#### Scenario: The application provides no file-type icons
+
+- **GIVEN** the application does not provide its file-type icon set
+- **WHEN** the user expands a commit
+- **THEN** every file row shows the plugin's plain document icon, the list opens
+  as usual, and its rows still open their diffs
+
+#### Scenario: Keyboard toggle
+
+- **WHEN** a commit row has keyboard focus and the user presses Enter or Space
+- **THEN** its file list expands, or collapses when it is already expanded,
+  without changing the repository
+
+#### Scenario: Several commits expanded
+
+- **GIVEN** one commit's file list is expanded
+- **WHEN** the user activates another commit row
+- **THEN** both commits list their files below their own rows
+
+#### Scenario: Open a file from an expanded commit
+
+- **WHEN** the user activates a file row under an expanded commit
+- **THEN** a diff tab shows the change that commit made to the file relative to
+  its first parent and identifies the commit
+
+#### Scenario: Expanded commit without file changes
+
+- **WHEN** the user expands a commit that changed no files relative to its
+  first parent
+- **THEN** one row under the commit says that it has no file changes
+
+#### Scenario: Expanded commit cannot be read
+
+- **WHEN** reading an expanded commit's file list fails
+- **THEN** one row under the commit reports the failure, and activating its
+  retry control reads the list again
+
+#### Scenario: Context menu of an expanded file
+
+- **WHEN** the user invokes the context menu on a file row under an expanded
+  commit
+- **THEN** it offers only the relative-path and absolute-path copy actions
+
+### Requirement: Expanded commit drawing
+
+The rows listed under an expanded commit SHALL continue the commit graph as VS
+Code draws an expanded history item's changes: every line that leaves the
+commit's row at its bottom edge SHALL continue vertically in its own position
+and color through each listed row, the line in the commit node's position SHALL
+be drawn three pixels wide and the others one pixel wide, and the next commit
+row's lines SHALL join them at its top edge without a break. The expanded
+commit's own row SHALL draw the line in its node's position three pixels wide
+only from the node down to the row's bottom edge, so the wide line begins at the
+node and continues unbroken into the listed rows, while the segment arriving
+from the commit above the node SHALL stay one pixel wide; a collapsed commit row
+SHALL keep one-pixel lines, and a lane the commit is not on SHALL keep one pixel
+in both cases. A listed row's icon SHALL begin just after a graph area one
+position wider than the number of lines leaving the commit. Expanded rows SHALL
+NOT move the nodes, curves or colors of any commit row.
+
+#### Scenario: Lanes run through the expanded rows
+
+- **GIVEN** three lines leave an expanded commit's row and the commit's node
+  sits in the second position
+- **WHEN** its file rows are shown
+- **THEN** three vertical lines in their own colors run through every file
+  row, the second one three pixels wide, and the file icons begin after a
+  four-position graph area
+
+#### Scenario: The wide line starts at the expanded node
+
+- **WHEN** the user expands a commit row
+- **THEN** the line below its node is three pixels wide and runs unbroken into
+  its file rows, while the line above the node and the commit rows above and
+  below keep one-pixel lines
+
+#### Scenario: A collapsed row keeps one-pixel lines
+
+- **WHEN** the user collapses an expanded commit row
+- **THEN** the line through that row is one pixel wide again and only its node
+  still marks it
+
+#### Scenario: The next commit keeps its geometry
+
+- **WHEN** a commit above another is expanded
+- **THEN** the lower commit's node, curves and colors are drawn exactly as when
+  nothing is expanded, only lower by the height of the inserted rows

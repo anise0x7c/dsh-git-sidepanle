@@ -3,8 +3,8 @@
 A VS Code-style Git source-control sidebar for the DeepSeek Harness Web GUI.
 It adds a **Source control** tab to the right Sidebar: staged/unstaged/merge
 changes as flat, path-sorted lists, a commit box, unified diff tabs, a commit graph
-whose commits open a details view of the files they changed, branch switching,
-and right-click menus for every row.
+whose commits expand inline to list the files they changed (with a details view
+one menu item away), branch switching, and right-click menus for every row.
 
 - Host source: `src/host-entry.ts` + `src/host/**`, a guarded local Git RPC route.
 - Browser source: `src/client-entry.ts` + `src/client/**`, the React panel and

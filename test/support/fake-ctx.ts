@@ -37,8 +37,20 @@ import type {
   StyleTagStub,
   TestComponent,
   TestContextMenusService,
+  TestEvent,
   TestMenuActionView,
 } from './types.ts'
+
+/** Document-level keydown listeners registered by the mounted bundle. */
+const documentKeydownListeners = new Set<(event: TestEvent) => void>()
+
+/**
+ * Dispatch one keydown to the listeners the bundle registered on `document`.
+ * @param event - keyboard event stand-in.
+ */
+export function dispatchDocumentKeydown(event: TestEvent): void {
+  for (const listener of [...documentKeydownListeners]) listener(event)
+}
 
 /**
  * Translation stand-in: returns the key, filling `{name}` placeholders when the
@@ -105,8 +117,16 @@ export async function loadClientBundle(): Promise<LoadedBrowser> {
   }
   globals.document = {
     querySelector: findStyle,
-    addEventListener() {},
-    removeEventListener() {},
+    addEventListener(type, listener) {
+      if (type === 'keydown' && typeof listener === 'function') {
+        documentKeydownListeners.add(listener as (event: TestEvent) => void)
+      }
+    },
+    removeEventListener(type, listener) {
+      if (type === 'keydown') {
+        documentKeydownListeners.delete(listener as (event: TestEvent) => void)
+      }
+    },
     createElement() {
       const attributes: Record<string, string> = {}
       const tag: StyleTagStub = {

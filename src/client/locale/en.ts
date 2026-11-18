@@ -55,6 +55,7 @@ export const en = {
   'menu.addToGitignore': 'Add to .gitignore',
   'menu.ignored': 'Added {path} to .gitignore',
   'menu.ignoredTracked': 'Added {path} to .gitignore; tracked files remain tracked.',
+  'menu.viewDetails': 'View Details',
   'menu.checkout': 'Checkout',
   'menu.checkoutDetached': 'Checkout (Detached)',
   'menu.detached': 'Checked out with detached HEAD',

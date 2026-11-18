@@ -186,3 +186,96 @@ body[data-ds-dark-theme] .dshgg-root {
   opacity: 0.6;
   cursor: default;
 }
+
+/* VS Code `.history-item-change`: the rows an expanded commit lists below
+ * itself. Each is a 22px row whose graph area is as wide as the commit's
+ * outgoing lanes; the lanes themselves come from the section's line layer. */
+.dshgg-graphChange {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 22px;
+  min-width: 0;
+  padding: 0 6px 0 var(--dshgg-graph-inset);
+  border-radius: var(--dsw-radius-md);
+}
+
+.dshgg-graphChangeLanes {
+  display: block;
+  flex: none;
+  height: 22px;
+}
+
+/* VS Code's file icon: a 16px icon with 6px before the label. */
+.dshgg-graphChangeIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 22px;
+  margin: 0 6px 0 4px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dshgg-graphChangeLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font: var(--dsw-font-xs-13);
+  line-height: 22px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-graphChangeName {
+  white-space: pre;
+}
+
+/* VS Code `.label-description`: the dimmed directory after the name. */
+.dshgg-graphChangeDir {
+  margin-left: 0.5em;
+  font-size: 0.9em;
+  white-space: pre;
+  opacity: 0.7;
+}
+
+/* VS Code's decoration badge: the status letter at the row's end. */
+.dshgg-graphChangeStatus {
+  margin: 0 3px 0 6px;
+}
+
+.dshgg-graphChangeNote {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dshgg-graphChangeText {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 4px;
+  overflow: hidden;
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-graphChangeNote[data-note="failure"] .dshgg-graphChangeText {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dshgg-graphChangeRetry {
+  flex: none;
+  margin-left: 8px;
+  padding: 0 4px;
+  color: var(--dsw-alias-state-business-primary);
+  font: var(--dsw-font-xxs-12);
+  background: none;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+}
+
+.dshgg-graphChangeRetry:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+}
