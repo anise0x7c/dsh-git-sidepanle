@@ -4295,10 +4295,21 @@ var motion_default = `/* -------------------------------------------------------
 /* The operation prompt rises from the pane's bottom edge when it opens and
  * lowers out again when it is dismissed. The card keeps a 4px gap above that
  * edge, so the leaving card travels its own height plus that gap to clear the
- * pane; the host's tab body clips it below the edge, so it never paints over
- * the rest of the application. A leaving prompt takes no pointer input. */
+ * pane.
+ *
+ * This box clips the layer itself. The host's tab body clips at the same
+ * bounds, so the card is cut at the pane's edges exactly as before; clipping
+ * here as well keeps the translated card out of every ancestor's scrollable
+ * area, so a focused prompt button cannot scroll the pane down to reveal
+ * itself while the card is still below the edge. A leaving prompt takes no
+ * pointer input, and the box itself lies out of flow and passes every pointer
+ * event through to the card. */
 .dshgg-root .dshgg-promptMotion {
-  display: contents;
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  overflow: clip;
+  pointer-events: none;
 }
 
 .dshgg-root .dshgg-promptMotion[data-phase="enter"] .dshgg-floating-panel {

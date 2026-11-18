@@ -1164,10 +1164,13 @@ host theme's colors, typography, borders, controls and focus treatment, with
 translucency and backdrop blur where supported and a readable solid fallback
 otherwise. The surface SHALL rise into place from the panel's bottom edge when
 it opens and SHALL lower out of the panel before it is removed when it is
-dismissed, and it SHALL accept no input while it leaves. Only one operation
-prompt SHALL be visible at a time; requesting another idle prompt SHALL replace
-the previous one without executing it. When the system asks for reduced motion
-the surface SHALL appear and disappear at its final position without moving.
+dismissed, and it SHALL accept no input while it leaves. Its motion SHALL NOT
+scroll the pane or shift its content: the pane keeps its scroll position and
+its header and lists stay where they are while the card rises or lowers. Only
+one operation prompt SHALL be visible at a time; requesting another idle prompt
+SHALL replace the previous one without executing it. When the system asks for
+reduced motion the surface SHALL appear and disappear at its final position
+without moving.
 
 #### Scenario: Confirm without resizing the lists
 
@@ -1176,6 +1179,13 @@ the surface SHALL appear and disappear at its final position without moving.
 - **THEN** a rounded frosted card rises from the pane's bottom edge and settles
   above the bottom of the panel while the panes and their split ratio retain
   their geometry
+
+#### Scenario: The moving prompt leaves the pane still
+
+- **GIVEN** the change list or graph is scrolled within its pane
+- **WHEN** the user opens a confirmation and then dismisses it
+- **THEN** the pane keeps that scroll position and neither the branch header,
+  the lists nor the graph jump while the card rises or lowers
 
 #### Scenario: Reuse for reference forms
 

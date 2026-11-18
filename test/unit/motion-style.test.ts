@@ -32,7 +32,15 @@ function keyframes(name: string): string {
 
 test('the operation prompt rises from the pane bottom and lowers away again', () => {
   const wrapper = declarations('.dshgg-root .dshgg-promptMotion')
-  assert.match(wrapper, /\bdisplay:\s*contents\s*;/, 'the motion wrapper has no box of its own')
+  assert.match(wrapper, /\bposition:\s*absolute\s*;/, 'the motion box lies out of flow')
+  assert.match(wrapper, /\binset:\s*0\s*;/, 'it spans the pane it clips')
+  assert.match(
+    wrapper,
+    /\boverflow:\s*clip\s*;/,
+    'a translated card must not extend an ancestor scroll area or be scrolled into view',
+  )
+  assert.doesNotMatch(wrapper, /\bdisplay:\s*contents\s*;/)
+  assert.match(wrapper, /\bpointer-events:\s*none\s*;/, 'the box passes pointer input through')
   const enter = declarations(
     '.dshgg-root .dshgg-promptMotion[data-phase="enter"] .dshgg-floating-panel',
   )

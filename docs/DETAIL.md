@@ -32,7 +32,7 @@ Git failures stay in their existing inline banner or open operation form; a fail
 
 ## Operation panels
 
-Discard confirmations, the offer to stage all changes before committing, and branch/tag forms float above the bottom of the Git panel without shrinking the change list or graph or moving their divider. They rise from the pane's bottom edge when they open and lower out of view again when dismissed. They expand with the pane width, overlaying the content beneath them with equal 4px gaps at the left, right and bottom. They share a rounded, translucent frosted surface that follows the native theme, with a solid background fallback when backdrop filtering is unavailable.
+Discard confirmations, the offer to stage all changes before committing, and branch/tag forms float above the bottom of the Git panel without shrinking the change list or graph or moving their divider. They rise from the pane's bottom edge when they open and lower out of view again when dismissed, and the pane's content and scroll position stay put while they move. They expand with the pane width, overlaying the content beneath them with equal 4px gaps at the left, right and bottom. They share a rounded, translucent frosted surface that follows the native theme, with a solid background fallback when backdrop filtering is unavailable.
 
 Copy and fields appear above a separate action footer. Long filenames, branch names and button labels wrap in narrow panes; taller forms scroll internally while their actions remain reachable. Reference-operation failures appear inside the open form and keep the entered values. Uncovered areas of the panel stay usable; requesting another prompt replaces the idle prompt rather than stacking cards or executing the replaced operation.
 

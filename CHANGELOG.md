@@ -29,7 +29,8 @@ is the `engines.dsh` range in `package.json`.
 - The bottom operation prompt now rises from the pane's bottom edge when it
   opens and lowers out of view before it is removed, and the commit-details
   view slides in from the right edge and slides back out before the change
-  list returns. Both respect reduced motion.
+  list returns. Both respect reduced motion. The prompt's motion box clips the
+  card itself, so its travel never scrolls the pane or shifts its content.
 
 ## 0.12.1
 
