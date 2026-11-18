@@ -2425,7 +2425,7 @@ function FileRow(props) {
       ...rowProps
     },
     h9("span", { className: "dshgg-status", "data-status": letter }, letter),
-    props.icon === true ? h9("span", { className: "dshgg-rowIcon" }, h9(HostFileIcon, { path: entry.path, size: 16 })) : null,
+    h9("span", { className: "dshgg-rowIcon" }, h9(HostFileIcon, { path: entry.path, size: 16 })),
     h9("span", { className: "dshgg-fileName" }, name),
     entry.origPath === void 0 ? null : h9(
       "span",
@@ -2446,7 +2446,6 @@ function renderFileRows(entries, context) {
       t: context.t,
       busy: context.busy,
       mode: context.mode,
-      ...context.icon === true ? { icon: true } : {},
       onOpen: context.onOpen,
       onStage: context.onStage,
       onUnstage: context.onUnstage,
@@ -2742,7 +2741,6 @@ function CommitDetails(props) {
       t,
       busy: false,
       mode: "commit",
-      icon: true,
       onOpen: props.onOpenFile,
       onStage: () => {
       },

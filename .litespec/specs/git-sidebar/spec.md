@@ -40,16 +40,34 @@ order: merge conflicts, staged changes, and changes not yet staged. Within a
 group, every changed file SHALL appear as one row in a single-layer list with
 no folder rows, sorted by its repository-relative path. Every row SHALL carry
 the status letter identifying added, modified, deleted, renamed, untracked, or
-conflicted state and the file's repository-relative path. A file with both
-staged and unstaged modifications SHALL appear in both the staged and the
-unstaged group. A file that Git reports as conflicted SHALL appear under merge
-conflicts with the conflicted status letter and SHALL remain listed until the
-conflict is resolved.
+conflicted state, the Web application's own file-type icon for that file's path
+before the file name, drawn as the application's workspace explorer draws it,
+and the file's repository-relative path. When the application provides no
+file-type icon set, the row SHALL show the plugin's plain document icon
+instead. A file with both staged and unstaged modifications SHALL appear in
+both the staged and the unstaged group. A file that Git reports as conflicted
+SHALL appear under merge conflicts with the conflicted status letter and SHALL
+remain listed until the conflict is resolved.
 
 #### Scenario: Partially staged file
 
 - **WHEN** a tracked file has staged edits and further unstaged edits
 - **THEN** the file appears under staged changes and again under changes not yet staged
+
+#### Scenario: File type icons
+
+- **GIVEN** a repository changed a JavaScript file, a stylesheet and an image
+- **WHEN** the change lists are shown
+- **THEN** every row shows the application's glyph for its path before the file
+  name, its status letter and path stay in place, and the stage, unstage and
+  discard controls keep their positions
+
+#### Scenario: The application provides no file-type icons
+
+- **GIVEN** the application does not provide its file-type icon set
+- **WHEN** the change lists are shown
+- **THEN** every row shows the plugin's plain document icon, and staging,
+  unstaging, discarding and opening a diff keep working
 
 #### Scenario: Nested files
 
@@ -1477,4 +1495,3 @@ curves or colors of any commit row.
 - **WHEN** a commit above another is expanded
 - **THEN** the lower commit's node, curves and colors are drawn exactly as when
   nothing is expanded, only lower by the height of the inserted rows
-
