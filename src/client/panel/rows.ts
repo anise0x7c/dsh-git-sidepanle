@@ -6,6 +6,7 @@
 import type React from 'react'
 import { createElement } from 'react'
 import { splitPath, statusKey } from '../git/format.ts'
+import { HostFileIcon } from '../host-file-icon.ts'
 import { MinusIcon, PlusIcon, UndoIcon } from '../icons.ts'
 import type { MenuTarget, MenuTriggerFactory } from '../menu/trigger.ts'
 import type { LocaleBinder } from '../types/dsh.ts'
@@ -44,6 +45,8 @@ export interface FileRowProps<Entry extends FileRowEntry = FileRowEntry> {
   readonly busy?: boolean
   /** Group the row belongs to. */
   readonly mode: FileRowMode
+  /** Whether the row leads with the file's own file-type icon. */
+  readonly icon?: boolean
   /** Open the row's diff. */
   readonly onOpen: (entry: Entry) => void
   /** Stage the row. */
@@ -155,6 +158,9 @@ export function FileRow<Entry extends FileRowEntry>(
       ...rowProps,
     },
     h('span', { className: 'dshgg-status', 'data-status': letter }, letter),
+    props.icon === true
+      ? h('span', { className: 'dshgg-rowIcon' }, h(HostFileIcon, { path: entry.path, size: 16 }))
+      : null,
     h('span', { className: 'dshgg-fileName' }, name),
     entry.origPath === undefined
       ? null
@@ -176,6 +182,8 @@ export interface FileRowsContext<Entry extends FileRowEntry> {
   readonly busy: boolean
   /** Group the rows belong to. */
   readonly mode: FileRowMode
+  /** Whether every row leads with its file's own file-type icon. */
+  readonly icon?: boolean
   /** Open one row's diff. */
   readonly onOpen: (entry: Entry) => void
   /** Stage one row. */
@@ -209,6 +217,7 @@ export function renderFileRows<Entry extends FileRowEntry>(
       t: context.t,
       busy: context.busy,
       mode: context.mode,
+      ...(context.icon === true ? { icon: true } : {}),
       onOpen: context.onOpen,
       onStage: context.onStage,
       onUnstage: context.onUnstage,

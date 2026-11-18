@@ -90,6 +90,7 @@ export function CommitDetails(props: CommitDetailsProps): React.ReactElement {
       t,
       busy: false,
       mode: 'commit',
+      icon: true,
       onOpen: props.onOpenFile,
       onStage: () => {},
       onUnstage: () => {},

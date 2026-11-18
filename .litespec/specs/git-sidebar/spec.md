@@ -391,14 +391,17 @@ way back to the change list when the user chooses the View Details action from
 the commit row's context menu. The changed files SHALL carry their change
 status letters and their repository-relative paths in a single-layer list with
 no folder rows, sorted by path, and a renamed file SHALL show its original
-path. The metadata SHALL identify the commit by its short identifier and show
-its subject, author, relative time, and message body when present. Activating a
-changed file SHALL open that file's diff for the commit. A commit that changed
-no files SHALL be presented as such rather than as an empty list, a failed read
-SHALL be reported with a retry path, and returning from the details view SHALL
-restore the change list and graph without changing the repository. A View
-Details action for a commit that is no longer listed SHALL be reported as stale
-instead of opening an empty view.
+path. Each changed file SHALL also show the Web application's own file-type
+icon for its path before the file name, drawn as the application's workspace
+explorer draws it, and SHALL show the plugin's plain document icon instead when
+the application provides no such icon set. The metadata SHALL identify the
+commit by its short identifier and show its subject, author, relative time, and
+message body when present. Activating a changed file SHALL open that file's
+diff for the commit. A commit that changed no files SHALL be presented as such
+rather than as an empty list, a failed read SHALL be reported with a retry path,
+and returning from the details view SHALL restore the change list and graph
+without changing the repository. A View Details action for a commit that is no
+longer listed SHALL be reported as stale instead of opening an empty view.
 
 #### Scenario: Open a commit's details
 
@@ -411,6 +414,21 @@ instead of opening an empty view.
 
 - **WHEN** the user activates a commit row by pointer or keyboard
 - **THEN** the commit's changes expand inline and the details view does not open
+
+#### Scenario: A changed file shows its type icon
+
+- **GIVEN** a commit changed a JavaScript file, a Markdown file and an image
+- **WHEN** the user opens that commit's details
+- **THEN** each file row shows the application's glyph for its path before the
+  file name, while its status letter, name, dimmed directory and rename arrow
+  keep their places
+
+#### Scenario: The application provides no file-type icons
+
+- **GIVEN** the application does not provide its file-type icon set
+- **WHEN** the user opens a commit's details
+- **THEN** every file row shows the plugin's plain document icon, the list still
+  opens as usual, and its rows still open their diffs
 
 #### Scenario: Commit with a rename
 

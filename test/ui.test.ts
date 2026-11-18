@@ -918,6 +918,59 @@ test('commit details replace the split and return with the chosen ratio', async 
   await mounted.harness.dispose()
 })
 
+test('commit details draw the host file-type icon for every file', async () => {
+  const mounted = await mountGit({
+    hostModules: {
+      '@deepseek-ai/dsh-client-ui-primitives': {
+        FileTypeIcon: (props: { path: string; size: number }) => ({
+          type: 'svg',
+          props: { 'data-file-type': props.path },
+          children: [],
+        }),
+      },
+    },
+  })
+  assert.equal(
+    mounted.harness.findAll((element) =>
+      String(element.props?.className ?? '').includes('dshgg-rowIcon'),
+    ).length,
+    0,
+    'the change lists keep their current rows',
+  )
+  await openCommitDetails(mounted)
+  const fileRows = mounted.harness.findAll((element) =>
+    String(element.props?.className ?? '').includes('dshgg-fileRow'),
+  )
+  assert.equal(fileRows.length, 4)
+  const icons = collectElements(
+    fileRows,
+    (element) => element.props['data-file-type'] !== undefined,
+  )
+  assert.deepEqual(
+    icons.map((element) => element.props['data-file-type']).sort(),
+    ['docs/gone.md', 'src/added.js', 'src/app.js', 'src/renamed.js'],
+    'each details row passes its path to the host icon',
+  )
+  await mounted.harness.dispose()
+})
+
+test('commit details keep the plain icon without a usable host icon', async () => {
+  const mounted = await mountGit()
+  await openCommitDetails(mounted)
+  const icons = mounted.harness.findAll((element) =>
+    String(element.props?.className ?? '').includes('dshgg-rowIcon'),
+  )
+  assert.equal(icons.length, 4)
+  const svgs = icons.flatMap((icon) =>
+    collectElements(
+      icon,
+      (element) => element.type === 'svg' && element.props.viewBox === '0 0 16 16',
+    ),
+  )
+  assert.equal(svgs.length, 4, 'every row falls back to the document icon')
+  await mounted.harness.dispose()
+})
+
 test('a clean repository shows the clean text without a check icon', async () => {
   const mounted = await mountGit({ status: createStatus({ files: [] }) })
   const clean = mounted.harness.findAll(

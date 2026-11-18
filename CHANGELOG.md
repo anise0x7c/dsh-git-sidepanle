@@ -16,6 +16,10 @@ is the `engines.dsh` range in `package.json`.
   file-type icon for their path (the per-type glyph and color its file explorer
   uses), falling back to the plugin's plain document icon when the application
   provides no such icon set.
+- A commit's details view now shows the same per-type file icon before each
+  changed file's name, with the plain document icon as the fallback when the
+  host provides no file-type icon set; the working-tree change lists keep their
+  current rows.
 - The commit-details view now opens from a new first commit-menu action,
   **View Details** (查看详情), which stays available while another operation
   runs; a stale target is reported instead of opening an empty view.

@@ -2319,11 +2319,30 @@ function BranchHeader(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var import_react21 = require("react");
+var import_react22 = require("react");
 
 // src/client/panel/rows.ts
+var import_react20 = require("react");
+
+// src/client/host-file-icon.ts
 var import_react19 = require("react");
-var h9 = import_react19.createElement;
+function resolveHostIcon() {
+  try {
+    const hostModule = require("@deepseek-ai/dsh-client-ui-primitives");
+    const icon = hostModule?.FileTypeIcon;
+    return typeof icon === "function" ? icon : void 0;
+  } catch {
+    return void 0;
+  }
+}
+var hostIcon = resolveHostIcon();
+function HostFileIcon(props) {
+  const size = props.size ?? 16;
+  return hostIcon === void 0 ? (0, import_react19.createElement)(FileIcon, { size }) : (0, import_react19.createElement)(hostIcon, { path: props.path, size });
+}
+
+// src/client/panel/rows.ts
+var h9 = import_react20.createElement;
 function FileRow(props) {
   const entry = props.entry;
   const letter = props.letter;
@@ -2406,6 +2425,7 @@ function FileRow(props) {
       ...rowProps
     },
     h9("span", { className: "dshgg-status", "data-status": letter }, letter),
+    props.icon === true ? h9("span", { className: "dshgg-rowIcon" }, h9(HostFileIcon, { path: entry.path, size: 16 })) : null,
     h9("span", { className: "dshgg-fileName" }, name),
     entry.origPath === void 0 ? null : h9(
       "span",
@@ -2426,6 +2446,7 @@ function renderFileRows(entries, context) {
       t: context.t,
       busy: context.busy,
       mode: context.mode,
+      ...context.icon === true ? { icon: true } : {},
       onOpen: context.onOpen,
       onStage: context.onStage,
       onUnstage: context.onUnstage,
@@ -2437,8 +2458,8 @@ function renderFileRows(entries, context) {
 }
 
 // src/client/panel/Section.ts
-var import_react20 = require("react");
-var h10 = import_react20.createElement;
+var import_react21 = require("react");
+var h10 = import_react21.createElement;
 function Section(props) {
   const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
@@ -2476,7 +2497,7 @@ function Section(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var h11 = import_react21.createElement;
+var h11 = import_react22.createElement;
 function ChangeGroups(props) {
   const t = props.t;
   const sectionActions = {
@@ -2536,7 +2557,7 @@ function ChangeGroups(props) {
     menuTarget: (entry) => props.rowTarget("file", { section: mode, path: entry.path })
   });
   return h11(
-    import_react21.Fragment,
+    import_react22.Fragment,
     null,
     props.mergeRows.length === 0 ? null : h11(
       Section,
@@ -2593,7 +2614,7 @@ function ChangeGroups(props) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var import_react22 = require("react");
+var import_react23 = require("react");
 
 // src/client/panel/autosize.ts
 var COMMIT_MESSAGE_MAX_LINES = 10;
@@ -2640,11 +2661,11 @@ function autoGrowTextArea(area) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var h12 = import_react22.createElement;
+var h12 = import_react23.createElement;
 function CommitBox(props) {
   const t = props.t;
-  const messageArea = (0, import_react22.useRef)(null);
-  (0, import_react22.useLayoutEffect)(() => {
+  const messageArea = (0, import_react23.useRef)(null);
+  (0, import_react23.useLayoutEffect)(() => {
     const area = messageArea.current;
     if (area === null) return;
     return autoGrowTextArea(area);
@@ -2688,8 +2709,8 @@ function CommitBox(props) {
 }
 
 // src/client/panel/views/CommitDetails.ts
-var import_react23 = require("react");
-var h13 = import_react23.createElement;
+var import_react24 = require("react");
+var h13 = import_react24.createElement;
 function CommitDetails(props) {
   const t = props.t;
   const summary = props.summary;
@@ -2721,6 +2742,7 @@ function CommitDetails(props) {
       t,
       busy: false,
       mode: "commit",
+      icon: true,
       onOpen: props.onOpenFile,
       onStage: () => {
       },
@@ -2778,11 +2800,11 @@ function CommitDetails(props) {
 }
 
 // src/client/panel/views/CommitMenuDialog.ts
-var import_react24 = require("react");
-var h14 = import_react24.createElement;
+var import_react25 = require("react");
+var h14 = import_react25.createElement;
 function CommitMenuDialog(props) {
   const { dialog, t } = props;
-  const composing = (0, import_react24.useRef)(false);
+  const composing = (0, import_react25.useRef)(false);
   const title = dialog.kind === "createBranch" ? t("menu.createBranch") : dialog.kind === "createTag" ? t("menu.createTag") : t("menu.deleteBranch");
   const description = dialog.kind === "createBranch" ? t("menu.createBranchAt", { hash: dialog.oid.slice(0, 7) }) : dialog.kind === "createTag" ? t("menu.createTagAt", { hash: dialog.oid.slice(0, 7) }) : t("menu.deleteBranchConfirm", { name: dialog.branch });
   const progress = dialog.kind === "createBranch" ? t("menu.creatingBranch") : dialog.kind === "createTag" ? t("menu.creatingTag") : t("menu.deletingBranch");
@@ -3249,25 +3271,6 @@ function refBadges(refs) {
 
 // src/client/panel/views/graph/CommitChangeRows.ts
 var import_react26 = require("react");
-
-// src/client/host-file-icon.ts
-var import_react25 = require("react");
-function resolveHostIcon() {
-  try {
-    const hostModule = require("@deepseek-ai/dsh-client-ui-primitives");
-    const icon = hostModule?.FileTypeIcon;
-    return typeof icon === "function" ? icon : void 0;
-  } catch {
-    return void 0;
-  }
-}
-var hostIcon = resolveHostIcon();
-function HostFileIcon(props) {
-  const size = props.size ?? 16;
-  return hostIcon === void 0 ? (0, import_react25.createElement)(FileIcon, { size }) : (0, import_react25.createElement)(hostIcon, { path: props.path, size });
-}
-
-// src/client/panel/views/graph/CommitChangeRows.ts
 var h15 = import_react26.createElement;
 function changeRowItems(expansion) {
   if (expansion.failure !== null) return [{ kind: "failure", failure: expansion.failure }];
@@ -4249,7 +4252,150 @@ var graph_dialogs_default = "/* ------------------------------------------------
 var motion_default = '/* --------------------------------------------------------------- motion --- */\n\n@media (prefers-reduced-motion: reduce) {\n  .dshgg-iconBtn[data-spinning="true"] svg {\n    animation: none;\n  }\n\n  .dshgg-chevron {\n    transition: none;\n  }\n}\n';
 
 // src/client/styles/rows.css
-var rows_default = '/* ----------------------------------------------------------------- rows --- */\n\n.dshgg-row {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  height: 28px;\n  padding: 0 6px;\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-fileRow {\n  cursor: pointer;\n  user-select: none;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-fileRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-status {\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n  text-align: center;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-status[data-status="M"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="A"],\n.dshgg-status[data-status="U"] {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-status[data-status="D"] {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-status[data-status="R"],\n.dshgg-status[data-status="C"] {\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-status[data-status="T"] {\n  color: var(--dsw-alias-state-warn-label);\n}\n\n.dshgg-status[data-status="!"] {\n  color: var(--dsw-alias-state-error-secondary);\n}\n\n.dshgg-fileName {\n  flex: 0 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* The dimmed parent directory trails the file name: it disambiguates equally\n   named files without turning the flat list back into a hierarchy. */\n.dshgg-fileDir {\n  flex: 1 1 0;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileName[data-obsolete="true"] {\n  color: var(--dsw-alias-label-secondary);\n  text-decoration: line-through;\n}\n\n.dshgg-fileArrow {\n  flex: none;\n  max-width: 38%;\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-fileActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 0;\n  margin-left: auto;\n  opacity: 0;\n}\n\n@media (hover: hover) {\n  .dshgg-fileRow:hover .dshgg-fileActions {\n    opacity: 1;\n  }\n}\n\n.dshgg-fileRow:focus-within .dshgg-fileActions {\n  opacity: 1;\n}\n\n.dshgg-fileActions .dshgg-iconBtn {\n  width: 22px;\n  height: 22px;\n  padding: 4px;\n}\n\n.dshgg-fileActions .dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n';
+var rows_default = `/* ----------------------------------------------------------------- rows --- */
+
+.dshgg-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-md);
+}
+
+.dshgg-fileRow {
+  cursor: pointer;
+  user-select: none;
+}
+
+@media (hover: hover) {
+  .dshgg-fileRow:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dshgg-fileRow:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
+/* The row's own file-type glyph: a fixed square that never squeezes the name.
+ * The application's icon paints itself, so this slot only supplies the fallback
+ * color and the geometry. */
+.dshgg-rowIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dshgg-status {
+  flex: none;
+  width: 14px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-strong-12);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.dshgg-status[data-status="M"] {
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.dshgg-status[data-status="A"],
+.dshgg-status[data-status="U"] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.dshgg-status[data-status="D"] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dshgg-status[data-status="R"],
+.dshgg-status[data-status="C"] {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.dshgg-status[data-status="T"] {
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.dshgg-status[data-status="!"] {
+  color: var(--dsw-alias-state-error-secondary);
+}
+
+.dshgg-fileName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font: var(--dsw-font-xs-13);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The dimmed parent directory trails the file name: it disambiguates equally
+   named files without turning the flat list back into a hierarchy. */
+.dshgg-fileDir {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-fileName[data-obsolete="true"] {
+  color: var(--dsw-alias-label-secondary);
+  text-decoration: line-through;
+}
+
+.dshgg-fileArrow {
+  flex: none;
+  max-width: 38%;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dshgg-fileActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0;
+  margin-left: auto;
+  opacity: 0;
+}
+
+@media (hover: hover) {
+  .dshgg-fileRow:hover .dshgg-fileActions {
+    opacity: 1;
+  }
+}
+
+.dshgg-fileRow:focus-within .dshgg-fileActions {
+  opacity: 1;
+}
+
+.dshgg-fileActions .dshgg-iconBtn {
+  width: 22px;
+  height: 22px;
+  padding: 4px;
+}
+
+.dshgg-fileActions .dshgg-iconBtn svg {
+  width: 14px;
+  height: 14px;
+}
+`;
 
 // src/client/styles/scroll.css
 var scroll_default = "/* --------------------------------------------------------------- scroll --- */\n\n.dshgg-scroll {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 2px;\n  min-height: 0;\n  padding: 0 6px 10px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n}\n";
