@@ -3,6 +3,18 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## Unreleased
+
+- Activating a commit row in the graph now expands the commit's changed files
+  inline below it, as VS Code's Source Control Graph does: 22px file rows with
+  an icon, the name, the dimmed directory and the status letter, the commit's
+  outgoing lanes running through them (its own lane three pixels wide), several
+  commits expandable at once, and inline loading, empty, failure/retry and
+  capped-list rows.
+- The commit-details view now opens from a new first commit-menu action,
+  **View Details** (查看详情), which stays available while another operation
+  runs; a stale target is reported instead of opening an empty view.
+
 ## 0.12.1
 
 The refactoring rounds since 0.12.0 now pass the stricter TypeScript rules

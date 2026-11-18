@@ -5,8 +5,8 @@
 `@local/dsh-git-graph` — a DSH bundle that adds a VS Code-style Git
 source-control surface to the Web GUI's right Sidebar: staged/unstaged/merge
 changes as flat, path-sorted lists, a commit box, unified diff tabs, a commit graph
-whose commits open a details view of the files they changed, branch switching,
-and right-click menus.
+whose commits expand inline to list the files they changed (the details view
+opens from the commit menu's View Details), branch switching, and right-click menus.
 
 - One bundle, two TypeScript halves: Host (`src/host-entry.ts` + `src/host/**`)
   and browser (`src/client-entry.ts` + `src/client/**`). Shared wire types live
@@ -17,7 +17,7 @@ and right-click menus.
 - Both halves compile to committed JavaScript: `index.js`, `client.js` and
   their maps. A prepared plugin directory needs no compiler at install time.
 - Behavior truth lives in `.litespec/specs/git-sidebar/spec.md`
-  (40 requirements after the 2026-11-18 maintenance changes). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
+  (42 requirements after the 2026-11-18 inline commit-expansion change). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
   `docs/DETAIL.zh.md` (Chinese). Architecture: `docs/ARCHITECTURE.md`.
   `docs/REFACTOR-PLAN.md` records the 0.3.0 split that produced the current
   layout and subsequent maintenance rounds — read completed sections for rationale,
