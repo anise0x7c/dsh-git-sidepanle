@@ -795,16 +795,18 @@ graph SHALL NOT offer another page.
 
 Each collapsible section header SHALL remain visible at the top edge of its
 scrolling pane for as long as any part of its own section still reaches below
-that edge. A pinned header SHALL paint the host's surface, so the rows scrolling
-beneath it are hidden. A pinned header SHALL also cover the pane's top edge
-itself, including the inset above the content, so no part of a row is visible
-above the header. A header SHALL show the host's hover highlight over that
-surface while the pointer is over it, and the highlight SHALL stay inside the
-header's rounded corners. At most one header SHALL be pinned at a time: while a
-header is pinned, the next section's header SHALL keep its normal position until
-the pinned header's section has left the top edge, and SHALL then take that
-place. A pinned header SHALL keep its toggle, its count where it shows one, and
-its context menu usable. A pane whose content fits without scrolling SHALL show
+that edge. A header SHALL already rest at the pane's top edge in both its
+normal and pinned positions, so beginning to scroll its pane SHALL NOT shift
+the header; only the rows SHALL move beneath it. A pinned header SHALL paint
+the host's opaque surface from the pane's top edge down, so the rows scrolling
+beneath it are hidden and no part of a row is visible above or through the
+header. A header SHALL show the host's hover highlight over that surface while
+the pointer is over it, and the highlight SHALL stay inside the header's
+rounded corners. At most one header SHALL be pinned at a time: while a header
+is pinned, the next section's header SHALL keep its normal position until the
+pinned header's section has left the top edge, and SHALL then take that place.
+A pinned header SHALL keep its toggle, its count where it shows one, and its
+context menu usable. A pane whose content fits without scrolling SHALL show
 every header in its normal position.
 
 #### Scenario: A group header stays while its rows scroll
@@ -813,16 +815,22 @@ every header in its normal position.
 - **WHEN** the user scrolls the change list down
 - **THEN** the changes header stays at the top edge of that pane while its rows pass beneath it
 
+#### Scenario: Scrolling does not shift the header
+
+- **GIVEN** a change group is taller than its pane and the pane is at its top
+- **WHEN** the user begins to scroll the pane
+- **THEN** the group header stays flush at the pane's top edge from the first scrolled pixel, and only the rows move beneath it
+
 #### Scenario: Rows do not show through a pinned header
 
 - **WHEN** rows scroll under a pinned header
-- **THEN** the header's surface hides them
+- **THEN** the header's opaque surface hides them
 
 #### Scenario: Nothing shows above a pinned header
 
 - **GIVEN** a group is taller than its pane
 - **WHEN** the user scrolls so that a row crosses the top edge of the pane
-- **THEN** the header covers the pane's top edge and no sliver of the row appears above the header
+- **THEN** the header's surface begins at the pane's top edge and no sliver of the row appears above the header
 
 #### Scenario: Hovering a header highlights it
 

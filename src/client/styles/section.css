@@ -6,13 +6,15 @@
   flex-direction: column;
 }
 
-/* The header pins to its own pane's top edge while its section still reaches
- * into the pane. Its containing block is that one section, so a header can
- * never outlive it: the next section's header takes the top edge as the
- * previous one leaves, and only one header is ever pinned. The header owns the
- * opaque pane surface itself, because a stacking context paints its own
- * background below its negative-z-index children. Square corners keep that
- * surface covering the rows up to the edges. */
+/* The header rests flush at the pane's top edge, which is also where it pins.
+ * Its containing block is that one section, so a header can never outlive it:
+ * the next section's header takes the edge as the previous one leaves, and only
+ * one header is ever pinned. Because the header starts at the edge, beginning
+ * to scroll does not shift it and its own opaque surface covers every row that
+ * slides beneath it; nothing can show above it. The header owns the opaque pane
+ * surface itself, because a stacking context paints its own background below
+ * its negative-z-index children. Square corners keep that surface covering the
+ * rows up to the edges. */
 .dshgg-sectionHeader {
   position: sticky;
   top: 0;

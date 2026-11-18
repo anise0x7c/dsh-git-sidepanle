@@ -156,11 +156,12 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /\.dshgg-sectionToggle\s*\{[^}]*font: var\(--dsw-font-s-strong-14\);[^}]*font-weight: 600;/,
   )
-  // Section headers pin to their pane's top edge on the host surface, so the
-  // rows pass hidden beneath them. The header owns that surface (a floating tab
-  // paints layer-2 instead of the docked tab host's base fill) and shows the
-  // host hover highlight as a rounded layer above it, so hovering keeps working
-  // while the rows stay masked.
+  // Section headers rest flush at the pane's top edge on the host surface, so
+  // the rows pass hidden beneath them and beginning to scroll never shifts the
+  // header. The header owns that surface (a floating tab uses layer-2 instead
+  // of the docked tab host's base fill) and keeps the host hover highlight as
+  // a rounded layer above the surface, so hovering keeps working while the
+  // rows stay masked.
   assert.match(
     graphStyles,
     /\.dshgg-sectionHeader\s*\{[^}]*position: sticky;[^}]*top: 0;[^}]*z-index: 1;[^}]*background: var\(--dsw-alias-bg-base\);/,
@@ -169,6 +170,8 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /\[data-dockkit-float\] \.dshgg-sectionHeader\s*\{[^}]*background: var\(--dsw-alias-bg-layer-2\);/,
   )
+  assert.doesNotMatch(graphStyles, /--dshgg-section-inset/)
+  assert.doesNotMatch(graphStyles, /\.dshgg-sectionHeader\s*\{[^}]*box-shadow:/)
   assert.match(
     graphStyles,
     /\.dshgg-sectionHeader::before\s*\{[^}]*border-radius: var\(--dsw-radius-md\);[^}]*background: var\(--dsw-alias-interactive-bg-hover\);[^}]*opacity: 0;/,
@@ -177,14 +180,11 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /@media \(hover: hover\) \{\s*\.dshgg-sectionHeader:hover::before \{\s*opacity: 1;\s*\}\s*\}/,
   )
-  // A scroll frame's top padding sits above the sticky view rectangle, so the
-  // resting inset belongs to the first section: a pinned header reaches the
-  // pane's top edge and no row can slide into a strip above it.
-  assert.match(graphStyles, /\.dshgg-scroll\s*\{[^}]*padding: 0 6px 10px;/)
-  assert.match(
-    graphStyles,
-    /\.dshgg-scroll > \.dshgg-section:first-child\s*\{[^}]*padding-top: 2px;/,
-  )
+  // The scroll frame is free of top padding and has no inset above the first
+  // section: the first header starts at the pane's top edge, so its own
+  // surface covers the edge and no row can appear above it.
+  assert.match(graphStyles, /\.dshgg-scroll\s*\{[^}]*gap: 2px;[^}]*padding: 0 6px 10px;/)
+  assert.doesNotMatch(graphStyles, /\.dshgg-scroll > \.dshgg-section:first-child/)
   assert.match(graphStyles, /\.dshgg-paneTop\s*\{[^}]*flex: 0 0 auto;/)
   assert.match(graphStyles, /\.dshgg-paneBottom\s*\{[^}]*flex: 1 1 0;/)
   assert.doesNotMatch(graphStyles, /\.dshgg-cleanIcon/)
