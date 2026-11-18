@@ -11,7 +11,7 @@
 import type React from 'react'
 import { createElement } from 'react'
 import { errorText, splitPath, statusKey } from '../../../git/format.ts'
-import { FileIcon } from '../../../icons.ts'
+import { HostFileIcon } from '../../../host-file-icon.ts'
 import type { MenuTarget, MenuTriggerFactory } from '../../../menu/trigger.ts'
 import type { CommitFileRow, Failure } from '../../../types/domain.ts'
 import type { LocaleBinder } from '../../../types/dsh.ts'
@@ -118,7 +118,11 @@ function ChangeFileRow(props: {
       ...rowProps,
     },
     graphArea(props.graphWidth),
-    h('span', { className: 'dshgg-graphChangeIcon' }, h(FileIcon, { size: 16 })),
+    h(
+      'span',
+      { className: 'dshgg-graphChangeIcon' },
+      h(HostFileIcon, { path: entry.path, size: 16 }),
+    ),
     h(
       'span',
       { className: 'dshgg-graphChangeLabel' },

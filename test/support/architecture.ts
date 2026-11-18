@@ -23,6 +23,13 @@ import * as ts from 'typescript'
 export const HOST_ENTRY = 'src/host-entry.ts'
 /** Virtual path of the distribution browser entry. */
 export const CLIENT_ENTRY = 'src/client-entry.ts'
+/**
+ * The bundle's one non-React runtime request, resolved from the host's frozen
+ * module table instead of being bundled.
+ */
+const HOST_FILE_TYPE_ICON_REQUEST = '@deepseek-ai/dsh-client-ui-primitives'
+/** The only client module allowed to reach that host entry. */
+const HOST_FILE_TYPE_ICON_MODULE = 'src/client/host-file-icon.ts'
 
 /** Architecture rule a violation belongs to. */
 export type ArchitectureRule =
@@ -349,7 +356,7 @@ function checkDependencies(
     }
 
     if (record.half === 'host' || record.half === 'client') {
-      const message = externalDiagnostic(record.half, dependency)
+      const message = externalDiagnostic(record.half, dependency, record.path)
       if (message !== undefined) violations.push({ rule: 'external-runtime', message })
     }
   }
@@ -365,7 +372,11 @@ function checkDependencies(
   return violations
 }
 
-function externalDiagnostic(half: Half, dependency: ModuleDependency): string | undefined {
+function externalDiagnostic(
+  half: Half,
+  dependency: ModuleDependency,
+  source: string,
+): string | undefined {
   if (dependency.resource) {
     return half === 'client'
       ? undefined
@@ -374,6 +385,13 @@ function externalDiagnostic(half: Half, dependency: ModuleDependency): string | 
   if (!dependency.external) return undefined
   if (half === 'host' && isBuiltin(dependency.specifier)) return undefined
   if (half === 'client' && dependency.specifier === 'react') return undefined
+  if (
+    half === 'client' &&
+    source === HOST_FILE_TYPE_ICON_MODULE &&
+    dependency.specifier === HOST_FILE_TYPE_ICON_REQUEST
+  ) {
+    return undefined
+  }
   return `external runtime import '${dependency.specifier}' is not allowed in the ${half} half`
 }
 

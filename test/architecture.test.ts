@@ -381,3 +381,51 @@ test('runtime externals stay within the half allowlists', () => {
     /'node:fake' is not allowed in the host half/,
   )
 })
+
+test('only the host file-icon wrapper may request the shared primitives', () => {
+  assert.deepEqual(
+    check({
+      [HOST_ENTRY]: `export const inject = []\nexport function apply(): void {}`,
+      [CLIENT_ENTRY]: `
+        import { createElement } from 'react'
+        import { HostFileIcon } from './client/host-file-icon.ts'
+        export function apply(): unknown { return createElement('div', null, HostFileIcon()) }
+      `,
+      'src/client/host-file-icon.ts': `
+        export function HostFileIcon(): unknown {
+          return require('@deepseek-ai/dsh-client-ui-primitives')
+        }
+      `,
+    }).violations,
+    [],
+  )
+  assertViolation(
+    {
+      [HOST_ENTRY]: `export const inject = []\nexport function apply(): void {}`,
+      [CLIENT_ENTRY]: `import { icon } from './client/icons.ts'\nexport function apply(): unknown { return icon() }`,
+      'src/client/icons.ts': `
+        export function icon(): unknown {
+          return require('@deepseek-ai/dsh-client-ui-primitives')
+        }
+      `,
+    },
+    'external-runtime',
+    /'@deepseek-ai\/dsh-client-ui-primitives' is not allowed in the client half/,
+  )
+  assertViolation(
+    {
+      [HOST_ENTRY]: `export const inject = []\nexport function apply(): void {}`,
+      [CLIENT_ENTRY]: `
+        import { HostFileIcon } from './client/host-file-icon.ts'
+        export function apply(): unknown { return HostFileIcon() }
+      `,
+      'src/client/host-file-icon.ts': `
+        export function HostFileIcon(): unknown {
+          return require('@deepseek-ai/dsh-client-ui-sidebar-files')
+        }
+      `,
+    },
+    'external-runtime',
+    /'@deepseek-ai\/dsh-client-ui-sidebar-files' is not allowed in the client half/,
+  )
+})

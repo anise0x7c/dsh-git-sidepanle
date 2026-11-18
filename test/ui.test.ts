@@ -97,6 +97,8 @@ interface MountOptions {
   menus?: boolean
   /** Provide the optional shared notification/menu service to `ctx.inject`. */
   menuService?: boolean
+  /** Module-table entries beside React the bundle may request. */
+  hostModules?: Record<string, unknown>
   tabInfo?: UiTabInfo
 }
 
@@ -306,10 +308,10 @@ async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
     panel: { id: 'pane-1', isFloating: false },
     tab,
   })
-  const components = loadComponents(
-    harness,
-    options.menuService === undefined ? {} : { contextMenus: options.menuService },
-  )
+  const components = loadComponents(harness, {
+    ...(options.menuService === undefined ? {} : { contextMenus: options.menuService }),
+    ...(options.hostModules === undefined ? {} : { hostModules: options.hostModules }),
+  })
   const component = options.diff === true ? components.diff : components.git
   const menu = createMenuMock()
   harness.setComponent(component, {
@@ -334,15 +336,17 @@ function slotComponent(seats: Map<string, TestComponent>, seat: string): TestCom
  * Load the bundle's slot components, mirroring the host's Slot composition:
  * each registration's inject face is merged into the props its component sees.
  * @param harness - mini React runtime the bundle requires.
- * @param options - optional host-service availability.
+ * @param options - optional host-service and module-table availability.
  * @returns components, service recorders and a lifetime disposer.
  */
 function loadComponents(
   harness: TestHarness,
-  options: { contextMenus?: boolean } = {},
+  options: { contextMenus?: boolean; hostModules?: Record<string, unknown> } = {},
 ): LoadedComponents {
   const module = registration.factory((specifier) => {
     if (specifier === 'react') return harness.React
+    const hostModule = options.hostModules?.[specifier]
+    if (hostModule !== undefined) return hostModule
     throw new Error(`unexpected require("${specifier}")`)
   })
   const fake =
@@ -2076,6 +2080,62 @@ test('clicking a commit expands its files inline and a file opens the commit dif
     'collapsing reads nothing',
   )
   await mounted.harness.dispose()
+})
+
+test('the expanded file rows draw the host file-type icon for their path', async () => {
+  const requested: Array<{ path: string; size: number }> = []
+  const mounted = await mountGit({
+    hostModules: {
+      '@deepseek-ai/dsh-client-ui-primitives': {
+        FileTypeIcon: (props: { path: string; size: number }) => {
+          requested.push({ path: props.path, size: props.size })
+          return { type: 'svg', props: { 'data-file-type': props.path }, children: [] }
+        },
+      },
+    },
+  })
+  mounted.harness.click(graphRows(mounted.harness)[0])
+  await mounted.harness.flush()
+  const icons = mounted.harness.findAll((element) => element.props['data-file-type'] !== undefined)
+  assert.deepEqual(
+    icons.map((element) => element.props['data-file-type']),
+    ['docs/gone.md', 'src/added.js', 'src/app.js', 'src/renamed.js'],
+    'each row passes the changed file path to the host icon',
+  )
+  assert.ok(
+    requested.length >= icons.length && requested.every((props) => props.size === 16),
+    'the host icon keeps the row 16-pixel slot',
+  )
+  await mounted.harness.dispose()
+})
+
+test('the file rows keep the plain icon without a usable host icon', async () => {
+  const plain = (mounted: MountedGit): TestElement[] =>
+    collectElements(changeRows(mounted.harness), (element) =>
+      String(element.props?.className ?? '').includes('dshgg-graphChangeIcon'),
+    ).flatMap((icon) =>
+      collectElements(
+        icon,
+        (element) => element.type === 'svg' && element.props.viewBox === '0 0 16 16',
+      ),
+    )
+  const cases: Array<Record<string, unknown> | undefined> = [
+    undefined,
+    { '@deepseek-ai/dsh-client-ui-primitives': { FileTypeIcon: 'nope' } },
+  ]
+  for (const hostModules of cases) {
+    const mounted = hostModules === undefined ? await mountGit() : await mountGit({ hostModules })
+    mounted.harness.click(graphRows(mounted.harness)[0])
+    await mounted.harness.flush()
+    assert.equal(changeRows(mounted.harness).length, 4)
+    assert.equal(plain(mounted).length, 4, 'every row falls back to the document icon')
+    assert.equal(
+      mounted.harness.findAll((element) => element.props['data-file-type'] !== undefined).length,
+      0,
+      'no host icon is drawn',
+    )
+    await mounted.harness.dispose()
+  }
 })
 
 test('the line layer runs the expanded commit lanes through its file rows', async () => {

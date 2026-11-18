@@ -33,7 +33,7 @@ opens from the commit menu's View Details), branch switching, and right-click me
 | `src/host/git/` | `exec.ts` (literal-path Git execution + repository discovery), `paths.ts` (containment), `files.ts` (safe direct untracked access), `changes.ts` (file actions), `mutations.ts` (commit/ref writes), `status.ts`, `history.ts`, `references.ts` (graph's checked-out/upstream/base refs), `branches.ts`, `diff.ts`, `ignore.ts` |
 | `src/host/watch/` | `classify.ts` (watch-event to change-kind rules, pure), `registry.ts` (shared per-repository watchers, debounce, subscription lifetime, change counters) |
 | `src/host/` | `rpc.ts` (dispatch + route paths), `validation.ts` (wire fields), `session.ts`, `errors.ts` |
-| `src/client/**` | Browser half, layered: `constants`, `locale/`, `styles/` (per-area CSS + ordered assembly in `index.ts`) and `styles.ts` (style lease), `icons`, `data/caller`, `git/` (pure), `menu/` (pure + clipboard), `panel/` component files, `panel/hooks`, `panel/views`, `panel/GitPanel.ts`, `diff/`, `titles.ts`, `plugin.ts` |
+| `src/client/**` | Browser half, layered: `constants`, `locale/`, `styles/` (per-area CSS + ordered assembly in `index.ts`) and `styles.ts` (style lease), `icons`, `host-file-icon` (the host's file-type glyph with a local fallback), `data/caller`, `git/` (pure), `menu/` (pure + clipboard), `panel/` component files, `panel/hooks`, `panel/views`, `panel/GitPanel.ts`, `diff/`, `titles.ts`, `plugin.ts` |
 | `src/client-entry.ts` | Build entry: exports `{ inject, apply }` from `src/client/plugin.ts` |
 | `index.js`, `index.js.map`, `client.js`, `client.js.map` | **Generated** by `scripts/build.ts` — never hand-edit; committed |
 | `scripts/build.ts` | esbuild build: `pnpm build`, `pnpm dev` (watch), `pnpm check:build` |
@@ -78,8 +78,9 @@ to force a fresh version, and never chase patch releases the day they ship.
    factory must be side-effect free and return `{ inject, apply }`; styles,
    timers, listeners and registrations belong inside `apply` via `ctx.effect`.
    `require` resolves only the platform table plus declared package externals —
-   in this bundle only `react`. Never bundle or re-export React. The bundler
-   wrapper lives in `scripts/build.ts`; do not hand-edit its output.
+   in this bundle `react` and the one host file-type icon request described in
+   contract 3. Never bundle or re-export React. The bundler wrapper lives in
+   `scripts/build.ts`; do not hand-edit its output.
 2. **Shared context-menu registry contract.** Registering a contribution
    (`ctx.contextMenus.register({ id, target, order, resolve })`) means the
    registry calls `resolve` with the **captured target's value**, not with the
@@ -89,7 +90,11 @@ to force a fresh version, and never chase patch releases the day they ship.
    `scripts/verify-contract.ts` checks it against the real registry.
 3. **Slot standard props.** The panel receives `props.useContextMenu` from the
    root standard props; call it once inside `useMemo`. Do not import DSH client
-   packages or UI primitives directly.
+   packages or UI primitives directly. The single exception is
+   `src/client/host-file-icon.ts`: it resolves the host's `FileTypeIcon` from the
+   shell's frozen module table inside a guarded `require` and falls back to the
+   plugin's own document icon, and the architecture gate rejects that request
+   from every other module.
 4. **Host route and trust fence.** One route family:
    `/api/dsh-git-graph/rpc` plus `/api/dsh-git-graph/health`. A request must
    come from a loopback socket with a loopback `Host`, send the bundle header
@@ -121,9 +126,10 @@ to force a fresh version, and never chase patch releases the day they ship.
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
-panel/views/* -> { panel/autosize, panel/controls, panel/split, icons, git/format, git/graph }
+panel/views/* -> { panel/autosize, panel/controls, panel/split, icons, host-file-icon, git/format, git/graph }
 pure logic (git/*, menu/actions, constants, locale/*) -> no React, no ctx
 icons -> React only (presentational SVG, no ctx)
+host-file-icon -> { icons, react, one guarded host-module request }
 host: http/* -> no project imports; git/exec -> errors; git/paths -> errors
       git/files -> { exec, paths }; git/changes -> { exec, paths, files, ignore }
       git/mutations -> { exec, branches }; readers -> exec/paths/files as needed

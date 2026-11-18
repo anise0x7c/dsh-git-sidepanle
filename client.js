@@ -1235,7 +1235,7 @@ function resolveMenuActions(value, t, notify) {
 }
 
 // src/client/panel/GitPanel.ts
-var import_react30 = require("react");
+var import_react31 = require("react");
 
 // src/client/git/list.ts
 function sortChangeEntries(entries) {
@@ -2867,7 +2867,7 @@ function CommitMenuDialog(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var import_react28 = require("react");
+var import_react29 = require("react");
 
 // src/client/git/graph.ts
 var SWIMLANE_HEIGHT = 22;
@@ -3248,8 +3248,27 @@ function refBadges(refs) {
 }
 
 // src/client/panel/views/graph/CommitChangeRows.ts
+var import_react26 = require("react");
+
+// src/client/host-file-icon.ts
 var import_react25 = require("react");
-var h15 = import_react25.createElement;
+function resolveHostIcon() {
+  try {
+    const hostModule = require("@deepseek-ai/dsh-client-ui-primitives");
+    const icon = hostModule?.FileTypeIcon;
+    return typeof icon === "function" ? icon : void 0;
+  } catch {
+    return void 0;
+  }
+}
+var hostIcon = resolveHostIcon();
+function HostFileIcon(props) {
+  const size = props.size ?? 16;
+  return hostIcon === void 0 ? (0, import_react25.createElement)(FileIcon, { size }) : (0, import_react25.createElement)(hostIcon, { path: props.path, size });
+}
+
+// src/client/panel/views/graph/CommitChangeRows.ts
+var h15 = import_react26.createElement;
 function changeRowItems(expansion) {
   if (expansion.failure !== null) return [{ kind: "failure", failure: expansion.failure }];
   if (expansion.loading) return [{ kind: "loading" }];
@@ -3292,7 +3311,11 @@ function ChangeFileRow(props) {
       ...rowProps
     },
     graphArea(props.graphWidth),
-    h15("span", { className: "dshgg-graphChangeIcon" }, h15(FileIcon, { size: 16 })),
+    h15(
+      "span",
+      { className: "dshgg-graphChangeIcon" },
+      h15(HostFileIcon, { path: entry.path, size: 16 })
+    ),
     h15(
       "span",
       { className: "dshgg-graphChangeLabel" },
@@ -3345,11 +3368,11 @@ function renderCommitChangeRows(props) {
 }
 
 // src/client/panel/views/graph/CommitGraphRow.ts
-var import_react27 = require("react");
+var import_react28 = require("react");
 
 // src/client/panel/views/graph/GraphArtwork.ts
-var import_react26 = require("react");
-var h16 = import_react26.createElement;
+var import_react27 = require("react");
+var h16 = import_react27.createElement;
 function graphColorValue(color) {
   return `var(--dshgg-scm-${color})`;
 }
@@ -3455,7 +3478,7 @@ function GraphCell(props) {
 }
 
 // src/client/panel/views/graph/CommitGraphRow.ts
-var h17 = import_react27.createElement;
+var h17 = import_react28.createElement;
 function badgeIconElement(icon) {
   if (icon === "target") return h17(TargetIcon, { size: 16 });
   if (icon === "cloud") return h17(CloudIcon, { size: 16 });
@@ -3536,12 +3559,12 @@ function GraphRow(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var h18 = import_react28.createElement;
+var h18 = import_react29.createElement;
 function GraphSection(props) {
   const t = props.t;
   const commits = Array.isArray(props.commits) ? props.commits : null;
   const references = props.references ?? null;
-  const rowsLayout = (0, import_react28.useMemo)(
+  const rowsLayout = (0, import_react29.useMemo)(
     () => computeGraph(
       bindReferenceTargets(
         (commits ?? []).map((commit) => ({
@@ -3557,21 +3580,21 @@ function GraphSection(props) {
   );
   const graphId = props.graphId ?? "git-graph";
   const expanded = props.expanded ?? null;
-  const inserted = (0, import_react28.useMemo)(
+  const inserted = (0, import_react29.useMemo)(
     () => (commits ?? []).map((commit) => {
       const expansion = expanded?.get(commit.oid);
       return expansion === void 0 ? [] : changeRowItems(expansion);
     }),
     [commits, expanded]
   );
-  const layer = (0, import_react28.useMemo)(
+  const layer = (0, import_react29.useMemo)(
     () => graphLayer(
       rowsLayout,
       inserted.map((items) => items.length)
     ),
     [rowsLayout, inserted]
   );
-  const [hovered, setHovered] = (0, import_react28.useState)(null);
+  const [hovered, setHovered] = (0, import_react29.useState)(null);
   const menu = props.menu;
   const trigger = menu === void 0 ? null : menu.trigger;
   const rows = [];
@@ -3693,11 +3716,11 @@ function GraphSection(props) {
 }
 
 // src/client/panel/views/SplitView.ts
-var import_react29 = require("react");
-var h19 = import_react29.createElement;
+var import_react30 = require("react");
+var h19 = import_react30.createElement;
 function SplitView(props) {
-  const [dragging, setDragging] = (0, import_react29.useState)(false);
-  const dragStart = (0, import_react29.useRef)(null);
+  const [dragging, setDragging] = (0, import_react30.useState)(false);
+  const dragStart = (0, import_react30.useRef)(null);
   const ratio = clampSplitRatio(props.ratio);
   const percent = `${Math.round(ratio * 1e3) / 10}%`;
   const beginDrag = (event) => {
@@ -3770,7 +3793,7 @@ function SplitView(props) {
 }
 
 // src/client/panel/GitPanel.ts
-var h20 = import_react30.createElement;
+var h20 = import_react31.createElement;
 function GitPanel(props) {
   const t = props.t;
   const tab = props.useTabInfo().tab;
@@ -3786,29 +3809,29 @@ function GitPanel(props) {
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const history = useHistory({ call, refs });
   const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history;
-  const graphPane = (0, import_react30.useRef)(null);
-  const reloadHistory = (0, import_react30.useCallback)(async () => {
+  const graphPane = (0, import_react31.useRef)(null);
+  const reloadHistory = (0, import_react31.useCallback)(async () => {
     await loadGraph();
     if (graphPane.current !== null) graphPane.current.scrollTop = 0;
   }, [loadGraph]);
-  const [openSections, setOpenSections] = (0, import_react30.useState)({
+  const [openSections, setOpenSections] = (0, import_react31.useState)({
     merge: true,
     staged: true,
     changes: true,
     graph: true
   });
-  const [splitRatio, setSplitRatio] = (0, import_react30.useState)(DEFAULT_SPLIT_RATIO);
+  const [splitRatio, setSplitRatio] = (0, import_react31.useState)(DEFAULT_SPLIT_RATIO);
   const repo = status?.repo ?? null;
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
   const files = status?.files ?? [];
-  const groups = (0, import_react30.useMemo)(() => groupChangeEntries(files), [files]);
+  const groups = (0, import_react31.useMemo)(() => groupChangeEntries(files), [files]);
   const { mergeRows, stagedRows, changedRows } = groups;
   const clean = repo !== null && mergeRows.length === 0 && stagedRows.length === 0 && changedRows.length === 0;
-  const handleWorktreeChange = (0, import_react30.useCallback)(() => {
+  const handleWorktreeChange = (0, import_react31.useCallback)(() => {
     void loadStatus({ silent: true });
   }, [loadStatus]);
-  const handleReferencesChange = (0, import_react30.useCallback)(async () => {
+  const handleReferencesChange = (0, import_react31.useCallback)(async () => {
     const next = await refreshReferences();
     await loadStatus({ silent: true });
     const revision = next?.current?.revision;
@@ -3891,14 +3914,14 @@ function GitPanel(props) {
   const commitState = useCommitDetails({ call, refs });
   const expansion = useCommitExpansion({ call, refs });
   const selectedCommit = commitState.selected;
-  const commitRows = (0, import_react30.useMemo)(
+  const commitRows = (0, import_react31.useMemo)(
     () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
       ...file,
       kind: "commit"
     })),
     [commitState.details]
   );
-  const openDiff = (0, import_react30.useCallback)(
+  const openDiff = (0, import_react31.useCallback)(
     (entry, mode) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -3913,7 +3936,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openFileAtCommit = (0, import_react30.useCallback)(
+  const openFileAtCommit = (0, import_react31.useCallback)(
     (commit, entry) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -3928,7 +3951,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openCommitDiff = (0, import_react30.useCallback)(
+  const openCommitDiff = (0, import_react31.useCallback)(
     (entry) => {
       if (selectedCommit !== null) openFileAtCommit(selectedCommit, entry);
     },
@@ -4518,8 +4541,8 @@ function installStyles(target) {
 }
 
 // src/client/titles.ts
-var import_react31 = require("react");
-var h21 = import_react31.createElement;
+var import_react32 = require("react");
+var h21 = import_react32.createElement;
 function GitTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;

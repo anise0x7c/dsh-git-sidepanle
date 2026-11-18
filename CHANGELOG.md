@@ -12,6 +12,10 @@ is the `engines.dsh` range in `package.json`.
   commit row down), several
   commits expandable at once, and inline loading, empty, failure/retry and
   capped-list rows.
+- Files listed under an expanded commit now carry the Web application's
+  file-type icon for their path (the per-type glyph and color its file explorer
+  uses), falling back to the plugin's plain document icon when the application
+  provides no such icon set.
 - The commit-details view now opens from a new first commit-menu action,
   **View Details** (查看详情), which stays available while another operation
   runs; a stale target is reported instead of opening an empty view.

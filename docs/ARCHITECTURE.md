@@ -57,6 +57,7 @@ src/
     styles/                   per-area CSS sections and the ordered cascade assembly
     styles.ts                 effect-owned, refcounted style lease
     icons.ts                  SVG renderers
+    host-file-icon.ts         the host's file-type glyph, resolved softly with the plugin icon as fallback
     data/caller.ts            the only fetch layer
     git/{format,list,graph}.ts pure formatting, list ordering, VS Code graph port
     menu/                     targets, triggers, clipboard, actions, command bus
@@ -93,8 +94,9 @@ test/
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
 GitPanel -> panel/hooks/* -> { data/caller, menu/actions, git/*, menu/bus }
-panel/views/* -> { panel/FloatingPanel, panel/autosize, panel/controls, panel/split, icons, git/format, git/graph }
+panel/views/* -> { panel/FloatingPanel, panel/autosize, panel/controls, panel/split, icons, host-file-icon, git/format, git/graph }
 pure git/menu/locale logic -> no React, no ctx
+host-file-icon -> { icons, react, one guarded host-module request }
 host: http/* -> nothing; git/paths -> errors; git/exec -> errors
       git/files -> { exec, paths }; git/changes -> { exec, paths, files, ignore }
       git/mutations -> { exec, branches }; readers -> { exec, paths, files as needed }
