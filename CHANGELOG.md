@@ -3,6 +3,10 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## 0.13.1
+
+Commit details now show in file tree which can be collapsed
+
 ## 0.13.0
 
 Commits now expand inline to list the files they changed, a new commit-details
