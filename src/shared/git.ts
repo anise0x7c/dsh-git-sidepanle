@@ -178,10 +178,38 @@ export interface BranchInfo {
   current: boolean
 }
 
+/** One remote-tracking branch. */
+export interface RemoteBranchInfo {
+  /** Display name, `<remote>/<branch>`. */
+  name: string
+  /** Configured remote name. */
+  remote: string
+  /** Branch name within that remote, without the remote prefix. */
+  branch: string
+}
+
 /** Value of the `branches` operation. */
 export interface BranchesResult {
   /** Local branches in Git's ref order. */
   branches: BranchInfo[]
+  /** Remote-tracking branches, excluding symbolic remote HEAD pointers. */
+  remoteBranches: RemoteBranchInfo[]
+}
+
+/** One configured remote. */
+export interface RemoteInfo {
+  /** Configured name such as `origin`. */
+  name: string
+  /** Fetch URL. */
+  fetchUrl: string
+  /** Push URL, which may differ from the fetch URL. */
+  pushUrl: string
+}
+
+/** Value of the `remotes` operation. */
+export interface RemotesResult {
+  /** Remotes in Git's configured order. */
+  remotes: RemoteInfo[]
 }
 
 /**
@@ -309,6 +337,15 @@ export interface GitGraphRpcValues {
   'create-branch': CheckoutResult
   'create-tag': OkResult
   'delete-branch': OkResult
+  'add-remote': OkResult
+  'remove-remote': OkResult
+  'checkout-remote': CheckoutResult
+  remotes: RemotesResult
+  fetch: OkResult
+  pull: OkResult
+  push: OkResult
+  publish: OkResult
+  sync: OkResult
   diff: DiffResult
 }
 
@@ -339,6 +376,15 @@ export interface GitGraphPayloads {
   'create-branch': { oid: string; name: string }
   'create-tag': { oid: string; name: string; message?: string }
   'delete-branch': { branch: string }
+  'add-remote': { name: string; url: string }
+  'remove-remote': { name: string }
+  'checkout-remote': { remote: string; branch: string }
+  remotes: Record<never, never>
+  fetch: Record<never, never>
+  pull: { rebase?: boolean }
+  push: Record<never, never>
+  publish: { remote?: string }
+  sync: Record<never, never>
   diff: { path: string; staged?: boolean; untracked?: boolean; commit?: string; origPath?: string }
 }
 

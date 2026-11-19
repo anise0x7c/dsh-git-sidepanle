@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs'
 import type { GitGraphRpcValue } from '../shared/git.ts'
 import type { HostContext } from './context.ts'
 import { GitGraphError } from './errors.ts'
-import { readBranches } from './git/branches.ts'
+import { readBranches, readRemoteBranches } from './git/branches.ts'
 import { discardPath, ignorePath, stagePaths, unstagePaths } from './git/changes.ts'
 import { readCommitDiff, readDiff } from './git/diff.ts'
 import { findRepositoryRoot } from './git/exec.ts'
@@ -19,12 +19,23 @@ import { readCommitDetails, readHistory } from './git/history.ts'
 import {
   checkoutBranch,
   checkoutDetached,
+  checkoutRemoteBranch,
   commitChanges,
   createBranch,
   createTag,
   deleteBranch,
 } from './git/mutations.ts'
 import { readGraphReferences } from './git/references.ts'
+import {
+  addRemote,
+  fetchAll,
+  publishBranch,
+  pullBranch,
+  pushBranch,
+  readRemotes,
+  removeRemote,
+  syncBranch,
+} from './git/remotes.ts'
 import { readStatus } from './git/status.ts'
 import { resolveSessionDirectory } from './session.ts'
 import {
@@ -35,7 +46,11 @@ import {
   filePathOf,
   historyOffsetOf,
   optionalFilePathOf,
+  optionalRemoteNameOf,
   panelOf,
+  remoteBranchNameOf,
+  remoteNameOf,
+  remoteUrlOf,
   tagMessageOf,
   tagNameOf,
 } from './validation.ts'
@@ -95,8 +110,37 @@ export async function dispatch(
     }
     case 'commit-details':
       return readCommitDetails(root, commitOf(payload.oid))
-    case 'branches':
-      return { branches: await readBranches(root) }
+    case 'branches': {
+      const [branches, remotes] = await Promise.all([readBranches(root), readRemotes(root)])
+      const remoteBranches = await readRemoteBranches(
+        root,
+        remotes.map((remote) => remote.name),
+      )
+      return { branches, remoteBranches }
+    }
+    case 'remotes':
+      return { remotes: await readRemotes(root) }
+    case 'add-remote':
+      await addRemote(root, remoteNameOf(payload.name), remoteUrlOf(payload.url))
+      return { ok: true }
+    case 'remove-remote':
+      await removeRemote(root, remoteNameOf(payload.name))
+      return { ok: true }
+    case 'fetch':
+      await fetchAll(root)
+      return { ok: true }
+    case 'pull':
+      await pullBranch(root, payload.rebase === true)
+      return { ok: true }
+    case 'push':
+      await pushBranch(root)
+      return { ok: true }
+    case 'publish':
+      await publishBranch(root, optionalRemoteNameOf(payload.remote))
+      return { ok: true }
+    case 'sync':
+      await syncBranch(root)
+      return { ok: true }
     case 'stage':
       await stagePaths(root, payload.paths)
       return { ok: true }
@@ -122,6 +166,15 @@ export async function dispatch(
       const branch = await checkoutBranchNameOf(root, payload.branch)
       await checkoutBranch(root, branch)
       return { ok: true, branch }
+    }
+    case 'checkout-remote': {
+      const remote = remoteNameOf(payload.remote)
+      const remotes = await readRemotes(root)
+      if (!remotes.some((entry) => entry.name === remote)) {
+        throw new GitGraphError('unknown-remote', `No remote named "${remote}" is configured.`, 404)
+      }
+      const branch = await remoteBranchNameOf(root, remote, payload.branch)
+      return { ok: true, branch: await checkoutRemoteBranch(root, remote, branch) }
     }
     case 'checkout-detached':
       await checkoutDetached(root, commitOf(payload.oid))

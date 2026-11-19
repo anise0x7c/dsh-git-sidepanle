@@ -5,8 +5,8 @@
 
 import type React from 'react'
 import { createElement } from 'react'
-import { ChevronDownIcon, GitBranchIcon, RefreshIcon } from '../../icons.ts'
-import type { BranchInfo, Failure, RepositoryStatus } from '../../types/domain.ts'
+import { ChevronDownIcon, CloudIcon, GitBranchIcon, MoreIcon, RefreshIcon } from '../../icons.ts'
+import type { BranchInfo, Failure, RemoteBranchInfo, RepositoryStatus } from '../../types/domain.ts'
 import type { LocaleBinder } from '../../types/dsh.ts'
 import { BranchMenu } from '../BranchMenu.ts'
 import { IconButton } from '../controls.ts'
@@ -19,6 +19,16 @@ export interface BranchHeaderProps {
   readonly t: LocaleBinder
   /** Ref for the chip wrapper (outside-click dismissal). */
   readonly wrapRef: React.RefObject<HTMLDivElement>
+  /** Ref for the remote controls wrapper (overflow-menu dismissal). */
+  readonly remoteWrapRef: React.RefObject<HTMLDivElement>
+  /** Whether the overflow menu is open. */
+  readonly remoteMenu: boolean
+  /** Overflow menu node, rendered under the ellipsis; null when closed. */
+  readonly remoteMenuNode: React.ReactNode
+  /** Open or close the overflow menu. */
+  readonly onToggleRemoteMenu: () => void
+  /** Sync the branch, or start the publish flow when it has no upstream. */
+  readonly onRemoteStatus: () => void
   /** Repository record, or null. */
   readonly repo: RepositoryStatus | null
   /** Resolved branch label. */
@@ -31,16 +41,20 @@ export interface BranchHeaderProps {
   readonly busy: string | null
   /** Whether the picker is open. */
   readonly branchMenu: boolean
-  /** Branch list. */
+  /** Local branch list. */
   readonly branches: readonly BranchInfo[] | null
+  /** Remote-tracking branch list. */
+  readonly remoteBranches: readonly RemoteBranchInfo[] | null
   /** Branch list loading. */
   readonly branchLoading: boolean
   /** Branch list failure. */
   readonly branchFailure: Failure | null
   /** Open or close the picker. */
   readonly onToggleMenu: () => void
-  /** Check out a branch. */
+  /** Check out a local branch. */
   readonly onPickBranch: (name: string) => void
+  /** Check out a local branch for one remote-tracking branch. */
+  readonly onPickRemote: (remote: string, branch: string) => void
   /** Retry the branch list. */
   readonly onRetryBranches: () => void
   /** Refresh status and history. */
@@ -55,6 +69,11 @@ export interface BranchHeaderProps {
 export function BranchHeader(props: BranchHeaderProps): React.ReactElement {
   const t = props.t
   const repo = props.repo
+  const upstream = repo?.upstream
+  const remoteLabel =
+    upstream === undefined || upstream === null ? t('remote.statusPublish') : t('remote.statusSync')
+  const remoteDisabled =
+    repo === null || repo.detached === true || repo.unborn === true || props.busy !== null
   return h(
     'div',
     { className: 'dshgg-toolbar' },
@@ -111,9 +130,11 @@ export function BranchHeader(props: BranchHeaderProps): React.ReactElement {
         ? h(BranchMenu, {
             t,
             branches: props.branches,
+            remoteBranches: props.remoteBranches,
             loading: props.branchLoading,
             failure: props.branchFailure,
             onPick: props.onPickBranch,
+            onPickRemote: props.onPickRemote,
             onRetry: props.onRetryBranches,
           })
         : null,
@@ -129,6 +150,36 @@ export function BranchHeader(props: BranchHeaderProps): React.ReactElement {
         onClick: props.onRefresh,
       },
       h(RefreshIcon, { size: 14 }),
+    ),
+    h(
+      'div',
+      { className: 'dshgg-remoteWrap', ref: props.remoteWrapRef },
+      h(
+        IconButton,
+        {
+          label: remoteLabel,
+          title: remoteLabel,
+          disabled: remoteDisabled,
+          spinning: props.busy === 'sync' || props.busy === 'publish',
+          onClick: props.onRemoteStatus,
+        },
+        h(CloudIcon, { size: 14 }),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          className: 'dshgg-iconBtn',
+          'aria-label': t('remote.menu'),
+          title: t('remote.menu'),
+          'aria-haspopup': 'menu',
+          'aria-expanded': props.remoteMenu,
+          disabled: repo === null,
+          onClick: props.onToggleRemoteMenu,
+        },
+        h(MoreIcon, { size: 14 }),
+      ),
+      props.remoteMenuNode,
     ),
   )
 }

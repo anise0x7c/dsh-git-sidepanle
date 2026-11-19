@@ -74,6 +74,55 @@ export async function checkoutBranch(root: string, branch: string): Promise<void
 }
 
 /**
+ * Check out the local branch corresponding to a remote-tracking branch.
+ *
+ * A validated `refs/remotes/<remote>/<branch>` must exist. When a local branch
+ * of the same name already exists it is switched to as-is, so its upstream is
+ * untouched; otherwise a new local branch tracks the remote one.
+ * @param root - repository root.
+ * @param remote - validated remote name.
+ * @param branch - validated branch name within that remote.
+ * @returns the checked-out local branch name.
+ */
+export async function checkoutRemoteBranch(
+  root: string,
+  remote: string,
+  branch: string,
+): Promise<string> {
+  const remoteBranch = `${remote}/${branch}`
+  const exists = await runGit(root, [
+    'rev-parse',
+    '--verify',
+    '--quiet',
+    `refs/remotes/${remoteBranch}`,
+  ])
+  if (!exists.ok) {
+    if (exists.code === 'ENOENT')
+      throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
+    throw new GitGraphError(
+      'unknown-remote-branch',
+      `No remote branch named "${remoteBranch}" exists.`,
+      404,
+    )
+  }
+  if (await branchExists(root, branch)) {
+    await checkoutBranch(root, branch)
+    return branch
+  }
+  const switched = await runGit(root, ['switch', '-c', branch, '--track', remoteBranch])
+  if (!switched.ok) {
+    if (switched.code === 'ENOENT')
+      throw new GitGraphError('git-unavailable', 'Git could not be run on the Host.', 503)
+    throw new GitGraphError(
+      'git-command-failed',
+      `${switched.stdout}\n${switched.stderr}`.trim() || 'git switch failed',
+      409,
+    )
+  }
+  return branch
+}
+
+/**
  * Detach HEAD at a validated commit.
  * @param root - repository root.
  * @param oid - full commit identifier.

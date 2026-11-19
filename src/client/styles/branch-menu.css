@@ -67,3 +67,43 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* ------------------------------------------------- remote controls --- */
+
+.dshgg-remoteWrap {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.dshgg-menuEnd {
+  right: 0;
+  left: auto;
+}
+
+.dshgg-menuSeparator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--dsw-alias-border-l3);
+}
+
+.dshgg-menuDisclosure {
+  justify-content: space-between;
+}
+
+.dshgg-menuCaret {
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
+  transition: transform 120ms ease;
+}
+
+.dshgg-menuDisclosure[aria-expanded="true"] .dshgg-menuCaret {
+  transform: rotate(180deg);
+}
+
+.dshgg-menuGroup {
+  display: flex;
+  flex-direction: column;
+  padding-left: 8px;
+}

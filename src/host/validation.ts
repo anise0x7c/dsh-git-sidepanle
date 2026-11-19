@@ -12,6 +12,32 @@ const FULL_OID = /^[0-9a-f]{40}$/
 const PANEL_ID = /^[A-Za-z0-9._:-]{1,80}$/
 
 /**
+ * Whether a remote name carries whitespace or a control character.
+ * @param value - candidate remote name.
+ * @returns true when a forbidden character is present.
+ */
+function hasForbiddenCharacter(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f || /\s/.test(character)) return true
+  }
+  return false
+}
+
+/**
+ * Whether a value carries a NUL or other control character.
+ * @param value - candidate text.
+ * @returns true when a control character is present.
+ */
+function hasControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f) return true
+  }
+  return false
+}
+
+/**
  * Read a full commit identity from a mutation request.
  * @param value - untrusted wire value.
  * @returns full commit identifier.
@@ -133,6 +159,94 @@ export async function tagNameOf(root: string, value: unknown): Promise<string> {
   const formatted = await runGit(root, ['check-ref-format', `refs/tags/${value}`])
   if (!formatted.ok)
     throw new GitGraphError('bad-request', `"${value}" is not a valid tag name.`, 400)
+  return value
+}
+
+/**
+ * Validate a configured remote name before it becomes a Git argument.
+ *
+ * Git still validates the final name; this only rejects option-shaped,
+ * whitespace-bearing and obviously malformed values early.
+ * @param value - untrusted wire value.
+ * @returns the validated remote name.
+ */
+export function remoteNameOf(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 200 ||
+    value.startsWith('-') ||
+    hasForbiddenCharacter(value) ||
+    /[~^:?*[\\]/.test(value) ||
+    value.includes('..') ||
+    value.includes('@{') ||
+    value.endsWith('/') ||
+    value.endsWith('.') ||
+    value.endsWith('.lock')
+  ) {
+    throw new GitGraphError('bad-request', 'A valid remote name is required.', 400)
+  }
+  return value
+}
+
+/**
+ * Validate an optional remote name.
+ * @param value - untrusted wire value.
+ * @returns undefined when absent, otherwise the validated remote name.
+ */
+export function optionalRemoteNameOf(value: unknown): string | undefined {
+  return value === undefined ? undefined : remoteNameOf(value)
+}
+
+/**
+ * Validate a remote URL before it becomes a Git argument.
+ *
+ * The scheme stays unrestricted: any transport Git accepts is allowed. The URL
+ * is otherwise only fenced against option-shaped input and control characters.
+ * @param value - untrusted wire value.
+ * @returns the validated remote URL.
+ */
+export function remoteUrlOf(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 4096 ||
+    value.startsWith('-') ||
+    hasControlCharacter(value)
+  ) {
+    throw new GitGraphError('bad-request', 'A valid remote URL is required.', 400)
+  }
+  return value
+}
+
+/**
+ * Validate a branch name inside one configured remote.
+ *
+ * The remote name is validated by the caller; this rejects option-shaped and
+ * control-bearing values, the symbolic `HEAD` pointer, and anything Git would
+ * not accept as `refs/remotes/<remote>/<value>`.
+ * @param root - resolved repository root.
+ * @param remote - validated remote name.
+ * @param value - untrusted branch name.
+ * @returns the validated branch name.
+ */
+export async function remoteBranchNameOf(
+  root: string,
+  remote: string,
+  value: unknown,
+): Promise<string> {
+  if (
+    typeof value !== 'string' ||
+    value === '' ||
+    value.startsWith('-') ||
+    value === 'HEAD' ||
+    hasControlCharacter(value)
+  ) {
+    throw new GitGraphError('bad-request', 'A valid remote branch name is required.', 400)
+  }
+  const formatted = await runGit(root, ['check-ref-format', `refs/remotes/${remote}/${value}`])
+  if (!formatted.ok)
+    throw new GitGraphError('bad-request', `"${value}" is not a valid remote branch name.`, 400)
   return value
 }
 

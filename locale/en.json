@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Git source control",
-    "description": "A VS Code-style Git sidebar in the right Sidebar: review changes, stage and unstage files, commit, inspect unified diffs, and follow the commit graph.",
+    "description": "A VS Code-style Git sidebar in the right Sidebar: review changes, stage and unstage files, commit, inspect unified diffs, follow the commit graph, and synchronize with and manage remotes.",
     "detail": "docs/DETAIL.md"
   }
 }

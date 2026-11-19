@@ -36,12 +36,13 @@ src/
     git/paths.ts              lexical repository containment, including Windows drive boundaries
     git/files.ts              bounded no-follow untracked previews and verified untracked deletion
     git/changes.ts            stage/unstage/discard/ignore file operations
-    git/mutations.ts          commit and reference mutations with stable failure mapping
+    git/mutations.ts          commit and reference mutations, including remote-branch checkout
+    git/remotes.ts            remote listing/configuration and network synchronization operations
     validation.ts             untrusted RPC field validation, not repository dispatch
     git/status.ts             porcelain parser and repository status
     git/history.ts            history, commit metadata and changed-file parsing
     git/references.ts         graph references: checked-out, upstream, base
-    git/branches.ts           branch list + branch existence
+    git/branches.ts           local and remote-tracking branch listing, plus branch existence
     git/ignore.ts             literal root-anchored .gitignore rules and append handling
     git/diff.ts               working-tree/commit diffs and unified parser
     watch/classify.ts         watch-event classification (pure)
@@ -102,9 +103,10 @@ pure git/menu/locale logic -> no React, no ctx
 host-file-icon -> { icons, react, one guarded host-module request }
 host: http/* -> nothing; git/paths -> errors; git/exec -> errors
       git/files -> { exec, paths }; git/changes -> { exec, paths, files, ignore }
-      git/mutations -> { exec, branches }; readers -> { exec, paths, files as needed }
+      git/mutations -> { exec, branches }; git/remotes -> { exec }
+      readers -> { exec, paths, files as needed }
       validation -> { errors, git/exec }; watch/* -> git/exec
-      rpc -> { validation, session, errors, git/exec, readers, changes, mutations, watch }
+      rpc -> { validation, session, errors, git/exec, readers, changes, mutations, remotes, watch }
       host-entry -> { rpc, http/*, watch, errors }
 either half -- import type --> shared/git
 ```
@@ -193,6 +195,22 @@ every public export or semantic branch has a consumer.
    cancels. Ignoring appends a literal escaped path rule at the repository root,
    not in the Session's subdirectory. A no-follow descriptor rejects links and
    non-regular targets, then reads and appends through one regular-file handle.
+
+## Remote data flow
+
+The toolbar's cloud control and overflow menu call the guarded RPC like every
+other panel action. `remotes` reads `git remote -v` into name, fetch URL and
+push URL; publish uses that list to prefer `origin`, offer a choice, or report
+that none exists. `fetch`, `pull`, `push`, `sync` and `publish` run on the Host
+with the shared literal argument-vector executor, a longer bounded timeout,
+terminal prompts disabled, and `GIT_MERGE_AUTOEDIT=no` so a merge never waits
+for an editor. Pull merges (`--no-rebase`), Pull (Rebase) rebases, and Sync
+stops before pushing when its pull fails. `add-remote` and `remove-remote`
+write repository configuration; `checkout-remote` creates or switches to the
+local branch tracking a listed remote branch. Successful writes use the same
+busy lock, success Toast and post-write status refresh as local actions; a
+failed network action still refreshes the status so conflicts and partially
+fetched refs appear.
 
 ## Runtime contracts
 

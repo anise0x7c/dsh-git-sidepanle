@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Git 源代码管理",
-    "description": "右侧栏中的 VS Code 风格 Git 侧栏：查看更改、暂存与取消暂存、提交、查看统一差异，并浏览提交图。",
+    "description": "右侧栏中的 VS Code 风格 Git 侧栏：查看更改、暂存与取消暂存、提交、查看统一差异、浏览提交图，并与远程仓库同步、管理远程仓库。",
     "detail": "docs/DETAIL.zh.md"
   }
 }

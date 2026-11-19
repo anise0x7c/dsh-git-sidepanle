@@ -1715,3 +1715,300 @@ NOT move the nodes, curves or colors of any commit row.
 - **WHEN** a commit above another is expanded
 - **THEN** the lower commit's node, curves and colors are drawn exactly as when
   nothing is expanded, only lower by the height of the inserted rows
+
+### Requirement: Remote synchronization actions
+
+The panel SHALL offer Fetch, Pull, Pull (Rebase), Push, and Sync for the
+current branch, and SHALL run only the action the user chooses. Fetch SHALL
+update remote-tracking branches from every configured remote and SHALL prune
+remote-tracking branches whose remote ref no longer exists. Pull SHALL
+integrate the upstream into the current branch by merging, and Pull (Rebase)
+SHALL integrate it by rebasing. Push SHALL send the current branch's commits to
+its upstream. Sync SHALL pull by merging and then push, and when the pull fails
+it SHALL NOT push.
+
+#### Scenario: Fetch updates remote-tracking state
+
+- **GIVEN** a remote has new commits that the local repository has not fetched
+- **WHEN** the user chooses Fetch
+- **THEN** the fetched remote-tracking branches update and the refreshed header
+  shows the new ahead or behind counts
+
+#### Scenario: Pull merges the upstream
+
+- **GIVEN** the current branch has an upstream with commits not yet local
+- **WHEN** the user chooses Pull
+- **THEN** the upstream is merged into the current branch and the change list,
+  branch summary and graph refresh
+
+#### Scenario: Pull with rebase replays local commits
+
+- **GIVEN** the current branch has an upstream and local commits
+- **WHEN** the user chooses Pull (Rebase)
+- **THEN** Git rebases the local commits onto the upstream and the refreshed
+  graph shows the replayed commits
+
+#### Scenario: Push sends local commits
+
+- **GIVEN** the current branch tracks an upstream and is ahead of it
+- **WHEN** the user chooses Push
+- **THEN** the local commits reach the upstream and the refreshed header no
+  longer reports them as ahead
+
+#### Scenario: Sync pulls before it pushes
+
+- **WHEN** the user chooses Sync on a branch whose upstream can be merged
+- **THEN** the panel pulls first and pushes only after the pull succeeds
+
+#### Scenario: A failed pull stops Sync
+
+- **GIVEN** a pull from the upstream fails
+- **WHEN** the user chooses Sync
+- **THEN** the panel reports the pull failure and does not push
+
+### Requirement: Publish branch
+
+When the current branch has commits and no upstream, the panel SHALL offer
+Publish Branch. Publishing SHALL push the branch to a configured remote and
+SHALL set that remote branch as its upstream. The panel SHALL prefer `origin`
+when it exists, otherwise the first configured remote, SHALL ask the user to
+choose when several remotes are configured, and SHALL report when no remote is
+configured without changing the repository.
+
+#### Scenario: Publish to the only remote
+
+- **GIVEN** the current branch has no upstream and exactly one remote is configured
+- **WHEN** the user chooses Publish Branch
+- **THEN** the branch is pushed to that remote, its upstream is set, and the
+  refreshed header shows the tracking branch
+
+#### Scenario: Choose among several remotes
+
+- **GIVEN** the current branch has no upstream and several remotes are configured
+- **WHEN** the user chooses Publish Branch
+- **THEN** the panel asks which remote to publish to before running Git
+
+#### Scenario: No remotes configured
+
+- **GIVEN** the current branch has no upstream and no remote is configured
+- **WHEN** the user chooses Publish Branch
+- **THEN** the panel reports that a remote must be added and does not run a
+  network operation
+
+#### Scenario: Detached or unborn branch
+
+- **WHEN** HEAD is detached or the branch has no commits
+- **THEN** Publish Branch is unavailable and no network operation runs
+
+### Requirement: Remote status control
+
+The toolbar SHALL provide one remote control for the current branch. When the
+branch has an upstream, activating the control SHALL sync it; when the branch
+has no upstream, activating the control SHALL publish it. The control SHALL be
+disabled while another Git operation runs and SHALL not act when there is no
+repository, HEAD is detached, or the branch has no commits. The existing ahead
+and behind counts SHALL remain visible alongside it.
+
+#### Scenario: Sync from the status control
+
+- **GIVEN** the current branch tracks an upstream
+- **WHEN** the user activates the remote status control
+- **THEN** the panel syncs the branch, with the control showing that the
+  operation is running
+
+#### Scenario: Publish from the status control
+
+- **GIVEN** the current branch has no upstream
+- **WHEN** the user activates the remote status control
+- **THEN** the panel starts the same publish flow as Publish Branch
+
+#### Scenario: No usable branch
+
+- **WHEN** there is no repository, HEAD is detached, or the branch has no commits
+- **THEN** the remote status control is unavailable and runs no Git command
+
+### Requirement: Remote operation feedback and refresh
+
+A successful remote operation SHALL show a localized success message and SHALL
+refresh the repository summary and commit graph. A failed remote operation
+SHALL be reported in the existing inline failure presentation, SHALL NOT show
+a success message, and SHALL also refresh the repository summary so conflicts
+or partially fetched refs become visible. The panel SHALL run only one remote
+operation at a time, SHALL keep an open publish form's entered remote and
+failure visible after a failure, and SHALL close the form after success.
+
+#### Scenario: Successful sync is reported
+
+- **WHEN** a Sync succeeds
+- **THEN** a localized success message is shown and the header, change list and
+  graph reflect the synchronized state
+
+#### Scenario: Failed pull keeps the repository readable
+
+- **GIVEN** a pull stops with a merge conflict
+- **WHEN** the failure is reported
+- **THEN** the change list refreshes and lists the conflicted files, and no
+  success message is shown
+
+#### Scenario: One remote operation at a time
+
+- **WHEN** a remote operation is running
+- **THEN** remote actions and other repository writes are unavailable until it
+  finishes
+
+### Requirement: Non-interactive remote execution
+
+The Host MUST execute remote operations in the Session's repository without a
+shell, MUST NOT accept a repository path from the browser, MUST validate every
+remote name and URL before using it as a Git argument, and MUST NOT wait
+indefinitely for an interactive credential prompt. It MUST disable the
+terminal prompts Git controls and MUST bound every remote command. A remote
+operation that exceeds the Host's time bound MUST fail with a reported timeout
+instead of remaining pending. Adding a remote URL SHALL be treated as
+user-authorized repository configuration; Git's configured transports,
+credential helpers and hooks remain part of the local trust boundary.
+
+#### Scenario: Option-like input is rejected
+
+- **WHEN** a request supplies a remote name or URL that begins with a dash or
+  is otherwise not a valid remote name or URL
+- **THEN** the Host rejects the request before running Git and the repository
+  is unchanged
+
+#### Scenario: Credentials are unavailable
+
+- **GIVEN** a remote requires an interactive credential that the Host cannot obtain
+- **WHEN** the user fetches, pulls, or pushes
+- **THEN** the operation ends with Git's message or the Host's timeout error
+  instead of waiting indefinitely for input
+
+#### Scenario: A remote operation times out
+
+- **GIVEN** a remote operation runs longer than the Host allows
+- **WHEN** the bound is reached
+- **THEN** the Host stops the Git process and reports a timeout failure
+
+### Requirement: Remote configuration
+
+The panel SHALL list the repository's configured remotes and SHALL offer Add
+Remote and Remove Remote. Add Remote SHALL require a name and a URL, SHALL
+reject an empty, malformed, or duplicate name and an empty or malformed URL
+without changing the repository, and SHALL configure the remote on success.
+Remove Remote SHALL require confirmation, SHALL remove only the chosen
+configured remote, and SHALL report a failure without pretending the remote was
+removed. Cancelling either form SHALL run no Git command.
+
+#### Scenario: Add a remote
+
+- **WHEN** the user enters a valid name and URL and submits Add Remote
+- **THEN** the remote is configured, the remotes list refreshes, and a localized
+  success message names it
+
+#### Scenario: Invalid remote input
+
+- **WHEN** the name or URL is empty, starts with a dash, or is not valid for Git
+- **THEN** the form reports the problem, keeps the entered text, and the
+  repository configuration is unchanged
+
+#### Scenario: Remove a remote
+
+- **GIVEN** the repository has a configured remote
+- **WHEN** the user chooses it in Remove Remote and confirms
+- **THEN** the remote and its remote-tracking branches are removed and the
+  branch summary refreshes
+
+#### Scenario: Removing a remote fails
+
+- **WHEN** Git refuses to remove the chosen remote
+- **THEN** the panel reports Git's message and the remote list refreshes from the
+  repository
+
+#### Scenario: Cancel a remote form
+
+- **WHEN** the user cancels Add Remote or Remove Remote
+- **THEN** no Git command runs and the repository is unchanged
+
+### Requirement: Remote branch listing
+
+The branch picker SHALL list remote-tracking branches in a group separate from
+local branches, SHALL show each as the remote name and branch name separated by a slash (for example `origin/main`) with its remote and
+branch parts, and SHALL exclude symbolic remote `HEAD` pointers. The current
+local branch SHALL remain marked, and the local and remote groups SHALL report
+loading, failure and empty states without hiding the other group.
+
+#### Scenario: Remote branches appear separately
+
+- **GIVEN** the repository has local branches and remote-tracking branches
+- **WHEN** the user opens the branch picker
+- **THEN** local branches are listed first and remote-tracking branches follow
+  under their own heading, each named the remote name and branch name separated by a slash (for example `origin/main`)
+
+#### Scenario: Remote HEAD pointer is not a branch
+
+- **GIVEN** a remote publishes a symbolic `HEAD` pointer
+- **WHEN** the branch picker lists remote-tracking branches
+- **THEN** the pointer is not listed as a selectable branch
+
+#### Scenario: Branch list failure
+
+- **WHEN** the branch list cannot be read
+- **THEN** the picker reports the failure with a retry and the panel remains
+  usable
+
+### Requirement: Remote branch checkout
+
+Selecting a remote-tracking branch SHALL check out a local branch with the same
+short name. When that local branch does not exist, the panel SHALL create it
+with the selected remote branch as its upstream. When it already exists, the
+panel SHALL check out the existing local branch and SHALL leave its upstream
+unchanged. A failed checkout SHALL be reported and SHALL leave the previously
+checked-out branch in effect. A successful checkout SHALL refresh the branch
+summary and graph.
+
+#### Scenario: Create a tracking branch from a remote branch
+
+- **GIVEN** no local branch has the remote branch's short name
+- **WHEN** the user picks that remote branch
+- **THEN** a local branch is created, checked out, and set to track the selected
+  remote branch
+
+#### Scenario: A local branch already exists
+
+- **GIVEN** a local branch with the remote branch's short name exists
+- **WHEN** the user picks the remote branch
+- **THEN** the existing local branch is checked out and its upstream is
+  unchanged
+
+#### Scenario: Checkout is rejected
+
+- **WHEN** Git refuses to check out the selected remote branch
+- **THEN** the panel reports Git's message and the previous branch stays checked
+  out
+
+### Requirement: Remote management feedback and refresh
+
+A successful remote configuration change or remote-branch checkout SHALL show
+localized success feedback and SHALL refresh the remotes list, repository
+summary and commit graph as applicable. A failure SHALL be reported in the
+existing inline failure presentation or the open form, SHALL keep the form's
+entered values, and SHALL NOT show success feedback. Remote management SHALL
+run only one Git operation at a time and SHALL be unavailable while another
+operation runs.
+
+#### Scenario: Success refreshes the panel
+
+- **WHEN** adding a remote, removing a remote, or checking out a remote branch
+  succeeds
+- **THEN** the affected lists, branch summary and graph reflect the new state
+  and a localized success message is shown
+
+#### Scenario: Failure keeps the form usable
+
+- **WHEN** adding a remote fails
+- **THEN** the error appears inside the open form, the entered name and URL stay
+  editable, and no success message is shown
+
+#### Scenario: Busy panel
+
+- **WHEN** another Git operation is running
+- **THEN** remote management and remote-branch checkout are unavailable

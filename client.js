@@ -218,6 +218,14 @@ function errorText(t, failure) {
   if (code === "discard-unborn") return t("error.discardUnborn");
   if (code === "unknown-commit") return t("error.unknownCommit");
   if (code === "not-untracked") return t("error.notUntracked");
+  if (code === "no-upstream") return t("remote.noUpstream");
+  if (code === "no-current-branch") return t("remote.noBranch");
+  if (code === "unborn-branch") return t("remote.unborn");
+  if (code === "unknown-remote") return t("remote.unknownRemote");
+  if (code === "remote-exists") return t("remote.exists");
+  if (code === "unknown-remote-branch") return t("remote.unknownBranch");
+  if (code === "no-remotes") return t("remote.noRemotes");
+  if (code === "remote-timeout") return t("remote.timeout");
   return failure.message || t("error.unknown");
 }
 
@@ -297,6 +305,18 @@ function UndoIcon(props) {
 function CheckIcon(props) {
   const size = props?.size ?? 14;
   return svgIcon(size, h("path", { d: "M3 8.5 6.2 11.5 13 4.5" }));
+}
+function MoreIcon(props) {
+  const size = props?.size ?? 16;
+  return svgIcon(
+    size,
+    [
+      h("circle", { key: "a", cx: 3.5, cy: 8, r: 1.1, fill: "currentColor", stroke: "none" }),
+      h("circle", { key: "b", cx: 8, cy: 8, r: 1.1, fill: "currentColor", stroke: "none" }),
+      h("circle", { key: "c", cx: 12.5, cy: 8, r: 1.1, fill: "currentColor", stroke: "none" })
+    ],
+    { className: props?.className }
+  );
 }
 function CloseIcon(props) {
   const size = props?.size ?? 12;
@@ -460,6 +480,7 @@ function usePanelRefs() {
   const mounted = (0, import_react4.useRef)(true);
   const watching = (0, import_react4.useRef)(false);
   const wrap = (0, import_react4.useRef)(null);
+  const remoteWrap = (0, import_react4.useRef)(null);
   (0, import_react4.useEffect)(
     () => () => {
       mounted.current = false;
@@ -467,8 +488,8 @@ function usePanelRefs() {
     []
   );
   return (0, import_react4.useMemo)(
-    () => ({ inFlight, busy, confirm, mounted, watching, wrap }),
-    [inFlight, busy, confirm, mounted, watching, wrap]
+    () => ({ inFlight, busy, confirm, mounted, watching, wrap, remoteWrap }),
+    [inFlight, busy, confirm, mounted, watching, wrap, remoteWrap]
   );
 }
 function createMenuTargets(options) {
@@ -687,6 +708,55 @@ var en = {
   "branch.menu": "Switch branch",
   "branch.loading": "Loading branches…",
   "branch.empty": "No local branches",
+  "branch.remoteHeading": "Remote branches",
+  "branch.checkedOutRemote": "Checked out {name}",
+  "remote.menu": "Remote actions",
+  "remote.statusSync": "Sync branch",
+  "remote.statusPublish": "Publish branch",
+  "remote.fetch": "Fetch",
+  "remote.pull": "Pull",
+  "remote.pullRebase": "Pull (Rebase)",
+  "remote.push": "Push",
+  "remote.publishBranch": "Publish Branch",
+  "remote.sync": "Sync",
+  "remote.loading": "Loading remotes…",
+  "remote.loadFailed": "Could not read the configured remotes.",
+  "remote.group": "Remote",
+  "remote.add": "Add Remote",
+  "remote.remove": "Remove Remote",
+  "remote.addTitle": "Add remote",
+  "remote.addDesc": "Configure a new remote for this repository.",
+  "remote.nameField": "Name",
+  "remote.urlField": "URL",
+  "remote.urlPlaceholder": "https://example.com/repo.git",
+  "remote.addAction": "Add",
+  "remote.adding": "Adding {name}…",
+  "remote.addDone": "Added remote {name}",
+  "remote.removeTitle": "Remove remote",
+  "remote.removeLabel": "Remote to remove",
+  "remote.removeDesc": "Remove {name} from this repository. Its remote-tracking branches are deleted too; this cannot be undone.",
+  "remote.removeAction": "Remove",
+  "remote.removing": "Removing {name}…",
+  "remote.removeDone": "Removed remote {name}",
+  "remote.exists": "A remote with that name is already configured.",
+  "remote.unknownBranch": "That remote branch does not exist.",
+  "remote.publishTitle": "Publish branch",
+  "remote.publishDesc": "Push {branch} to a remote and set it as its upstream.",
+  "remote.selectRemote": "Remote",
+  "remote.publishAction": "Publish",
+  "remote.publishing": "Publishing {branch}…",
+  "remote.fetchDone": "Fetched from every remote",
+  "remote.pullDone": "Pulled the upstream",
+  "remote.pullRebaseDone": "Rebased onto the upstream",
+  "remote.pushDone": "Pushed the branch",
+  "remote.syncDone": "Synced the branch",
+  "remote.publishDone": "Published the branch",
+  "remote.noRemotes": "No remote is configured. Add a remote before publishing.",
+  "remote.noUpstream": "The current branch has no upstream to pull from or push to.",
+  "remote.noBranch": "There is no current branch to publish.",
+  "remote.unborn": "The branch has no commits to publish.",
+  "remote.unknownRemote": "That remote is not configured.",
+  "remote.timeout": "The remote did not answer in time.",
   "commit.placeholder": "Message (Ctrl+Enter to commit on {branch})",
   "commit.action": "Commit",
   "commit.committing": "Committing…",
@@ -826,6 +896,55 @@ var zh = {
   "branch.menu": "切换分支",
   "branch.loading": "正在加载分支…",
   "branch.empty": "没有本地分支",
+  "branch.remoteHeading": "远程分支",
+  "branch.checkedOutRemote": "已签出 {name}",
+  "remote.menu": "远程操作",
+  "remote.statusSync": "同步分支",
+  "remote.statusPublish": "发布分支",
+  "remote.fetch": "获取",
+  "remote.pull": "拉取",
+  "remote.pullRebase": "拉取（变基）",
+  "remote.push": "推送",
+  "remote.publishBranch": "发布分支",
+  "remote.sync": "同步",
+  "remote.loading": "正在加载远程仓库…",
+  "remote.loadFailed": "无法读取已配置的远程仓库。",
+  "remote.group": "远程",
+  "remote.add": "添加远程仓库",
+  "remote.remove": "移除远程仓库",
+  "remote.addTitle": "添加远程仓库",
+  "remote.addDesc": "为此仓库配置一个新的远程仓库。",
+  "remote.nameField": "名称",
+  "remote.urlField": "URL",
+  "remote.urlPlaceholder": "https://example.com/repo.git",
+  "remote.addAction": "添加",
+  "remote.adding": "正在添加 {name}…",
+  "remote.addDone": "已添加远程仓库 {name}",
+  "remote.removeTitle": "移除远程仓库",
+  "remote.removeLabel": "要移除的远程仓库",
+  "remote.removeDesc": "将从本仓库移除 {name}，其远程跟踪分支也会一并删除，此操作无法撤销。",
+  "remote.removeAction": "移除",
+  "remote.removing": "正在移除 {name}…",
+  "remote.removeDone": "已移除远程仓库 {name}",
+  "remote.exists": "已存在同名远程仓库。",
+  "remote.unknownBranch": "该远程分支不存在。",
+  "remote.publishTitle": "发布分支",
+  "remote.publishDesc": "将 {branch} 推送到远程仓库并设置为它的上游分支。",
+  "remote.selectRemote": "远程仓库",
+  "remote.publishAction": "发布",
+  "remote.publishing": "正在发布 {branch}…",
+  "remote.fetchDone": "已从所有远程仓库获取",
+  "remote.pullDone": "已拉取上游分支",
+  "remote.pullRebaseDone": "已变基到上游分支",
+  "remote.pushDone": "已推送分支",
+  "remote.syncDone": "已同步分支",
+  "remote.publishDone": "已发布分支",
+  "remote.noRemotes": "尚未配置远程仓库，请先添加远程仓库再发布。",
+  "remote.noUpstream": "当前分支没有可拉取或推送的上游分支。",
+  "remote.noBranch": "当前没有可发布的分支。",
+  "remote.unborn": "分支尚未提交，无法发布。",
+  "remote.unknownRemote": "该远程仓库未配置。",
+  "remote.timeout": "远程操作超时。",
   "commit.placeholder": "提交信息（Ctrl+Enter 提交到 {branch}）",
   "commit.action": "提交",
   "commit.committing": "正在提交…",
@@ -1237,7 +1356,7 @@ function resolveMenuActions(value, t, notify) {
 }
 
 // src/client/panel/GitPanel.ts
-var import_react32 = require("react");
+var import_react35 = require("react");
 
 // src/client/git/list.ts
 function sortChangeEntries(entries) {
@@ -1368,9 +1487,10 @@ function FloatingPanel(props) {
 // src/client/panel/hooks/useBranches.ts
 var import_react8 = require("react");
 function useBranches(options) {
-  const { call, refs, perform } = options;
+  const { call, t, refs, perform } = options;
   const [branchMenu, setBranchMenu] = (0, import_react8.useState)(false);
   const [branches, setBranches] = (0, import_react8.useState)(null);
+  const [remoteBranches, setRemoteBranches] = (0, import_react8.useState)(null);
   const [branchLoading, setBranchLoading] = (0, import_react8.useState)(false);
   const [branchFailure, setBranchFailure] = (0, import_react8.useState)(null);
   const loadBranches = (0, import_react8.useCallback)(async () => {
@@ -1379,6 +1499,7 @@ function useBranches(options) {
       const value = await call("branches");
       if (!refs.mounted.current) return;
       setBranches(Array.isArray(value.branches) ? value.branches : []);
+      setRemoteBranches(Array.isArray(value.remoteBranches) ? value.remoteBranches : []);
       setBranchFailure(null);
     } catch (error) {
       if (!refs.mounted.current) return;
@@ -1409,8 +1530,12 @@ function useBranches(options) {
     setBranchMenu(next);
     if (next && branches === null && branchFailure === null) void loadBranches();
   };
+  const closeBranchMenu = () => {
+    setBranchMenu(false);
+  };
   const resetBranches = (0, import_react8.useCallback)(() => {
     setBranches(null);
+    setRemoteBranches(null);
     setBranchFailure(null);
   }, []);
   const checkout = (branch) => {
@@ -1420,14 +1545,25 @@ function useBranches(options) {
       after: resetBranches
     });
   };
+  const checkoutRemote = (remote, branch) => {
+    setBranchMenu(false);
+    void perform("checkout-remote", () => call("checkout-remote", { remote, branch }), {
+      graph: true,
+      after: resetBranches,
+      notice: t("branch.checkedOutRemote", { name: `${remote}/${branch}` })
+    });
+  };
   return {
     branchMenu,
     branches,
+    remoteBranches,
     branchLoading,
     branchFailure,
     loadBranches,
     toggleBranchMenu,
+    closeBranchMenu,
     checkout,
+    checkoutRemote,
     resetBranches
   };
 }
@@ -1459,7 +1595,10 @@ function useChangeActions(options) {
         if (actionOptions.graph === true) await loadGraph();
         return result;
       } catch (error) {
-        if (refs.mounted.current) setActionFailure(toFailure(error));
+        if (refs.mounted.current) {
+          setActionFailure(toFailure(error));
+          if (actionOptions.refreshOnFailure === true) await loadStatus({ silent: true });
+        }
         return void 0;
       } finally {
         refs.busy.current = null;
@@ -2141,17 +2280,273 @@ function usePresence(open, exitMs) {
   return { mounted: open || mounted, phase };
 }
 
-// src/client/panel/hooks/useRepoStatus.ts
+// src/client/panel/hooks/useRemoteActions.ts
 var import_react17 = require("react");
+function useRemoteActions(options) {
+  const { call, t, refs, repo, perform, notify, setActionFailure, onOpenDialog } = options;
+  const [menuOpen, setMenuOpen] = (0, import_react17.useState)(false);
+  const [remotes, setRemotes] = (0, import_react17.useState)(null);
+  const [remotesLoading, setRemotesLoading] = (0, import_react17.useState)(false);
+  const [remotesFailure, setRemotesFailure] = (0, import_react17.useState)(null);
+  const [dialog, setDialog] = (0, import_react17.useState)(null);
+  const pendingLoad = (0, import_react17.useRef)(null);
+  const lastFailure = (0, import_react17.useRef)(null);
+  const canUseBranch = repo !== null && repo.detached !== true && repo.unborn !== true;
+  const hasUpstream = repo?.upstream !== null && repo?.upstream !== void 0;
+  const loadRemotes = (0, import_react17.useCallback)(async () => {
+    const active = pendingLoad.current;
+    if (active !== null) return active;
+    const task = (async () => {
+      if (refs.mounted.current) {
+        setRemotesLoading(true);
+        setRemotesFailure(null);
+      }
+      lastFailure.current = null;
+      try {
+        const value = await call("remotes");
+        const list = Array.isArray(value.remotes) ? value.remotes : [];
+        lastFailure.current = null;
+        if (refs.mounted.current) {
+          setRemotes(list);
+          setRemotesFailure(null);
+        }
+        return list;
+      } catch (error) {
+        const raw = toFailure(error);
+        const failure = raw.message === void 0 ? { code: "remotes", message: t("remote.loadFailed") } : raw;
+        lastFailure.current = failure;
+        if (refs.mounted.current) setRemotesFailure(failure);
+        return null;
+      } finally {
+        if (refs.mounted.current) setRemotesLoading(false);
+        pendingLoad.current = null;
+      }
+    })();
+    pendingLoad.current = task;
+    return task;
+  }, [call, refs, t]);
+  (0, import_react17.useEffect)(() => {
+    if (!menuOpen) return void 0;
+    const onPointerDown = (event) => {
+      const wrap = refs.remoteWrap.current;
+      if (wrap !== null && typeof Node !== "undefined" && event.target instanceof Node && wrap.contains(event.target))
+        return;
+      setMenuOpen(false);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [menuOpen, refs]);
+  const toggleMenu = () => {
+    const next = !menuOpen;
+    setMenuOpen(next);
+    if (next && remotes === null && remotesFailure === null && !remotesLoading) {
+      void loadRemotes();
+    }
+  };
+  const closeMenu = () => {
+    setMenuOpen(false);
+  };
+  const closeDialog = () => {
+    setDialog(null);
+  };
+  const run = (name, operation, notice) => {
+    setMenuOpen(false);
+    setDialog(null);
+    onOpenDialog?.();
+    void perform(name, operation, { graph: true, refreshOnFailure: true, notice });
+  };
+  const runPublish = (remote) => {
+    void perform("publish", () => call("publish", { remote }), {
+      graph: true,
+      refreshOnFailure: true,
+      notice: t("remote.publishDone"),
+      after: () => {
+        setDialog(null);
+      }
+    });
+  };
+  const fetch2 = () => {
+    if (repo === null || refs.busy.current !== null) return;
+    run("fetch", () => call("fetch"), t("remote.fetchDone"));
+  };
+  const pull = () => {
+    if (!canUseBranch || !hasUpstream || refs.busy.current !== null) return;
+    run("pull", () => call("pull", { rebase: false }), t("remote.pullDone"));
+  };
+  const pullRebase = () => {
+    if (!canUseBranch || !hasUpstream || refs.busy.current !== null) return;
+    run("pull", () => call("pull", { rebase: true }), t("remote.pullRebaseDone"));
+  };
+  const push = () => {
+    if (!canUseBranch || !hasUpstream || refs.busy.current !== null) return;
+    run("push", () => call("push"), t("remote.pushDone"));
+  };
+  const sync = () => {
+    if (!canUseBranch || !hasUpstream || refs.busy.current !== null) return;
+    run("sync", () => call("sync"), t("remote.syncDone"));
+  };
+  const publish = () => {
+    if (!canUseBranch || refs.busy.current !== null) return;
+    setMenuOpen(false);
+    setDialog(null);
+    onOpenDialog?.();
+    void (async () => {
+      const list = remotes ?? await loadRemotes();
+      if (!refs.mounted.current) return;
+      if (list === null) {
+        setActionFailure(lastFailure.current ?? makeFailure("remotes", t("remote.loadFailed")));
+        return;
+      }
+      const [only] = list;
+      if (list.length === 0) {
+        const failure = makeFailure("no-remotes", t("remote.noRemotes"));
+        setActionFailure(failure);
+        notify(t("remote.noRemotes"), false);
+        return;
+      }
+      if (list.length === 1 && only !== void 0) {
+        runPublish(only.name);
+        return;
+      }
+      const first = list[0];
+      if (first === void 0) return;
+      const preferred = list.find((remote) => remote.name === "origin")?.name ?? first.name;
+      setDialog({ kind: "publish", name: preferred, url: "" });
+    })();
+  };
+  const openAddRemote = () => {
+    if (refs.busy.current !== null) return;
+    setMenuOpen(false);
+    onOpenDialog?.();
+    setDialog({ kind: "add", name: "", url: "" });
+  };
+  const openRemoveRemote = () => {
+    if (refs.busy.current !== null) return;
+    setMenuOpen(false);
+    onOpenDialog?.();
+    void (async () => {
+      const list = await loadRemotes();
+      if (!refs.mounted.current) return;
+      if (list === null) {
+        setActionFailure(lastFailure.current ?? makeFailure("remotes", t("remote.loadFailed")));
+        return;
+      }
+      const first = list[0];
+      if (first === void 0) {
+        setActionFailure(makeFailure("no-remotes", t("remote.noRemotes")));
+        notify(t("remote.noRemotes"), false);
+        return;
+      }
+      setDialog({ kind: "remove", name: first.name, url: "" });
+    })();
+  };
+  const setName = (name) => {
+    setDialog((current) => current === null ? current : { ...current, name });
+  };
+  const setUrl = (url) => {
+    setDialog((current) => current === null ? current : { ...current, url });
+  };
+  const runAddRemote = (name, url) => {
+    void perform("add-remote", () => call("add-remote", { name, url }), {
+      graph: true,
+      refreshOnFailure: true,
+      notice: t("remote.addDone", { name }),
+      after: async () => {
+        setDialog(null);
+        await loadRemotes();
+      }
+    });
+  };
+  const runRemoveRemote = (name) => {
+    void perform(
+      "remove-remote",
+      async () => {
+        try {
+          return await call("remove-remote", { name });
+        } catch (error) {
+          await loadRemotes();
+          throw error;
+        }
+      },
+      {
+        graph: true,
+        refreshOnFailure: true,
+        notice: t("remote.removeDone", { name }),
+        after: async () => {
+          setDialog(null);
+          await loadRemotes();
+        }
+      }
+    );
+  };
+  const submitDialog = () => {
+    const current = dialog;
+    if (current === null || refs.busy.current !== null) return;
+    if (current.kind === "publish") {
+      if (current.name === "") return;
+      runPublish(current.name);
+      return;
+    }
+    if (current.kind === "add") {
+      const name = current.name.trim();
+      const url = current.url.trim();
+      if (name === "" || url === "") return;
+      runAddRemote(name, url);
+      return;
+    }
+    if (current.name === "") return;
+    runRemoveRemote(current.name);
+  };
+  const statusAction = () => {
+    if (!canUseBranch || refs.busy.current !== null) return;
+    if (hasUpstream) sync();
+    else publish();
+  };
+  return {
+    menuOpen,
+    remotes,
+    remotesLoading,
+    remotesFailure,
+    dialog,
+    canUseBranch,
+    hasUpstream,
+    toggleMenu,
+    closeMenu,
+    closeDialog,
+    statusAction,
+    fetch: fetch2,
+    pull,
+    pullRebase,
+    push,
+    sync,
+    publish,
+    openAddRemote,
+    openRemoveRemote,
+    setName,
+    setUrl,
+    submitDialog,
+    loadRemotes
+  };
+}
+
+// src/client/panel/hooks/useRepoStatus.ts
+var import_react18 = require("react");
 function useRepoStatus(options) {
   const { sessionId, useContextMenu, visible, refs } = options;
   const { call, menuTrigger, panelId } = usePanelMenu({ sessionId, useContextMenu });
-  const [status, setStatus] = (0, import_react17.useState)(null);
-  const [loading, setLoading] = (0, import_react17.useState)(true);
-  const [loadFailure, setLoadFailure] = (0, import_react17.useState)(null);
-  const activeRead = (0, import_react17.useRef)(null);
-  const queuedRead = (0, import_react17.useRef)(null);
-  const drain = (0, import_react17.useCallback)(
+  const [status, setStatus] = (0, import_react18.useState)(null);
+  const [loading, setLoading] = (0, import_react18.useState)(true);
+  const [loadFailure, setLoadFailure] = (0, import_react18.useState)(null);
+  const activeRead = (0, import_react18.useRef)(null);
+  const queuedRead = (0, import_react18.useRef)(null);
+  const drain = (0, import_react18.useCallback)(
     async (firstSilent) => {
       refs.inFlight.current = true;
       let silent = firstSilent;
@@ -2181,7 +2576,7 @@ function useRepoStatus(options) {
     },
     [call, refs]
   );
-  const loadStatus = (0, import_react17.useCallback)(
+  const loadStatus = (0, import_react18.useCallback)(
     (loadOptions = {}) => {
       const silent = loadOptions.silent === true;
       const active = activeRead.current;
@@ -2196,10 +2591,10 @@ function useRepoStatus(options) {
     },
     [drain]
   );
-  (0, import_react17.useEffect)(() => {
+  (0, import_react18.useEffect)(() => {
     void loadStatus();
   }, [loadStatus]);
-  (0, import_react17.useEffect)(() => {
+  (0, import_react18.useEffect)(() => {
     if (!visible) return void 0;
     const timer = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
@@ -2245,15 +2640,17 @@ function adjustSplitRatio(ratio, key) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var import_react19 = require("react");
+var import_react20 = require("react");
 
 // src/client/panel/BranchMenu.ts
-var import_react18 = require("react");
-var h7 = import_react18.createElement;
+var import_react19 = require("react");
+var h7 = import_react19.createElement;
 function BranchMenu(props) {
   const t = props.t;
+  const local = props.branches ?? [];
+  const remote = props.remoteBranches ?? [];
   let content;
-  if (props.loading === true && props.branches === null) {
+  if (props.loading === true && props.branches === null && props.remoteBranches === null) {
     content = h7("div", { className: "dshgg-menuNote" }, t("branch.loading"));
   } else if (props.failure !== null) {
     content = h7(
@@ -2267,10 +2664,10 @@ function BranchMenu(props) {
         t("retry")
       )
     );
-  } else if (props.branches === null || props.branches.length === 0) {
+  } else if (local.length === 0 && remote.length === 0) {
     content = h7("div", { className: "dshgg-menuNote" }, t("branch.empty"));
   } else {
-    content = props.branches.map(
+    const items = local.map(
       (branch) => h7(
         "button",
         {
@@ -2290,6 +2687,32 @@ function BranchMenu(props) {
         h7("span", { className: "dshgg-menuLabel" }, branch.name)
       )
     );
+    if (local.length === 0) {
+      items.push(h7("div", { key: "local-empty", className: "dshgg-menuNote" }, t("branch.empty")));
+    }
+    if (remote.length > 0) {
+      items.push(
+        h7("div", { key: "remote-heading", className: "dshgg-menuNote" }, t("branch.remoteHeading"))
+      );
+      for (const branch of remote) {
+        items.push(
+          h7(
+            "button",
+            {
+              key: `remote:${branch.name}`,
+              type: "button",
+              className: "dshgg-menuItem",
+              role: "menuitem",
+              title: branch.name,
+              onClick: () => props.onPickRemote(branch.remote, branch.branch)
+            },
+            h7("span", { className: "dshgg-menuCheck" }, h7(CloudIcon, { size: 12 })),
+            h7("span", { className: "dshgg-menuLabel" }, branch.name)
+          )
+        );
+      }
+    }
+    content = items;
   }
   return h7(
     "div",
@@ -2299,10 +2722,13 @@ function BranchMenu(props) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var h8 = import_react19.createElement;
+var h8 = import_react20.createElement;
 function BranchHeader(props) {
   const t = props.t;
   const repo = props.repo;
+  const upstream = repo?.upstream;
+  const remoteLabel = upstream === void 0 || upstream === null ? t("remote.statusPublish") : t("remote.statusSync");
+  const remoteDisabled = repo === null || repo.detached === true || repo.unborn === true || props.busy !== null;
   return h8(
     "div",
     { className: "dshgg-toolbar" },
@@ -2345,9 +2771,11 @@ function BranchHeader(props) {
       props.branchMenu ? h8(BranchMenu, {
         t,
         branches: props.branches,
+        remoteBranches: props.remoteBranches,
         loading: props.branchLoading,
         failure: props.branchFailure,
         onPick: props.onPickBranch,
+        onPickRemote: props.onPickRemote,
         onRetry: props.onRetryBranches
       }) : null
     ),
@@ -2362,18 +2790,48 @@ function BranchHeader(props) {
         onClick: props.onRefresh
       },
       h8(RefreshIcon, { size: 14 })
+    ),
+    h8(
+      "div",
+      { className: "dshgg-remoteWrap", ref: props.remoteWrapRef },
+      h8(
+        IconButton,
+        {
+          label: remoteLabel,
+          title: remoteLabel,
+          disabled: remoteDisabled,
+          spinning: props.busy === "sync" || props.busy === "publish",
+          onClick: props.onRemoteStatus
+        },
+        h8(CloudIcon, { size: 14 })
+      ),
+      h8(
+        "button",
+        {
+          type: "button",
+          className: "dshgg-iconBtn",
+          "aria-label": t("remote.menu"),
+          title: t("remote.menu"),
+          "aria-haspopup": "menu",
+          "aria-expanded": props.remoteMenu,
+          disabled: repo === null,
+          onClick: props.onToggleRemoteMenu
+        },
+        h8(MoreIcon, { size: 14 })
+      ),
+      props.remoteMenuNode
     )
   );
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var import_react23 = require("react");
+var import_react24 = require("react");
 
 // src/client/panel/rows.ts
-var import_react21 = require("react");
+var import_react22 = require("react");
 
 // src/client/host-file-icon.ts
-var import_react20 = require("react");
+var import_react21 = require("react");
 function resolveHostIcon() {
   try {
     const hostModule = require("@deepseek-ai/dsh-client-ui-primitives");
@@ -2386,11 +2844,11 @@ function resolveHostIcon() {
 var hostIcon = resolveHostIcon();
 function HostFileIcon(props) {
   const size = props.size ?? 16;
-  return hostIcon === void 0 ? (0, import_react20.createElement)(FileIcon, { size }) : (0, import_react20.createElement)(hostIcon, { path: props.path, size });
+  return hostIcon === void 0 ? (0, import_react21.createElement)(FileIcon, { size }) : (0, import_react21.createElement)(hostIcon, { path: props.path, size });
 }
 
 // src/client/panel/rows.ts
-var h9 = import_react21.createElement;
+var h9 = import_react22.createElement;
 function FileRow(props) {
   const entry = props.entry;
   const letter = props.letter;
@@ -2548,8 +3006,8 @@ function renderFileTree(rows, context) {
 }
 
 // src/client/panel/Section.ts
-var import_react22 = require("react");
-var h10 = import_react22.createElement;
+var import_react23 = require("react");
+var h10 = import_react23.createElement;
 function Section(props) {
   const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
@@ -2587,7 +3045,7 @@ function Section(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var h11 = import_react23.createElement;
+var h11 = import_react24.createElement;
 function ChangeGroups(props) {
   const t = props.t;
   const sectionActions = {
@@ -2647,7 +3105,7 @@ function ChangeGroups(props) {
     menuTarget: (entry) => props.rowTarget("file", { section: mode, path: entry.path })
   });
   return h11(
-    import_react23.Fragment,
+    import_react24.Fragment,
     null,
     props.mergeRows.length === 0 ? null : h11(
       Section,
@@ -2704,7 +3162,7 @@ function ChangeGroups(props) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var import_react24 = require("react");
+var import_react25 = require("react");
 
 // src/client/panel/autosize.ts
 var COMMIT_MESSAGE_MAX_LINES = 10;
@@ -2751,11 +3209,11 @@ function autoGrowTextArea(area) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var h12 = import_react24.createElement;
+var h12 = import_react25.createElement;
 function CommitBox(props) {
   const t = props.t;
-  const messageArea = (0, import_react24.useRef)(null);
-  (0, import_react24.useLayoutEffect)(() => {
+  const messageArea = (0, import_react25.useRef)(null);
+  (0, import_react25.useLayoutEffect)(() => {
     const area = messageArea.current;
     if (area === null) return;
     return autoGrowTextArea(area);
@@ -2799,7 +3257,7 @@ function CommitBox(props) {
 }
 
 // src/client/panel/views/CommitDetails.ts
-var import_react25 = require("react");
+var import_react26 = require("react");
 
 // src/client/git/tree.ts
 var NAME_ORDER = { numeric: true, sensitivity: "base" };
@@ -2873,7 +3331,7 @@ function buildFileTree(entries, options = {}) {
 }
 
 // src/client/panel/views/CommitDetails.ts
-var h13 = import_react25.createElement;
+var h13 = import_react26.createElement;
 function CommitDetails(props) {
   const t = props.t;
   const summary = props.summary;
@@ -2963,11 +3421,11 @@ function CommitDetails(props) {
 }
 
 // src/client/panel/views/CommitMenuDialog.ts
-var import_react26 = require("react");
-var h14 = import_react26.createElement;
+var import_react27 = require("react");
+var h14 = import_react27.createElement;
 function CommitMenuDialog(props) {
   const { dialog, t } = props;
-  const composing = (0, import_react26.useRef)(false);
+  const composing = (0, import_react27.useRef)(false);
   const title = dialog.kind === "createBranch" ? t("menu.createBranch") : dialog.kind === "createTag" ? t("menu.createTag") : t("menu.deleteBranch");
   const description = dialog.kind === "createBranch" ? t("menu.createBranchAt", { hash: dialog.oid.slice(0, 7) }) : dialog.kind === "createTag" ? t("menu.createTagAt", { hash: dialog.oid.slice(0, 7) }) : t("menu.deleteBranchConfirm", { name: dialog.branch });
   const progress = dialog.kind === "createBranch" ? t("menu.creatingBranch") : dialog.kind === "createTag" ? t("menu.creatingTag") : t("menu.deletingBranch");
@@ -3052,7 +3510,7 @@ function CommitMenuDialog(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var import_react30 = require("react");
+var import_react31 = require("react");
 
 // src/client/git/graph.ts
 var SWIMLANE_HEIGHT = 22;
@@ -3431,8 +3889,8 @@ function refBadges(refs) {
 }
 
 // src/client/panel/views/graph/CommitChangeRows.ts
-var import_react27 = require("react");
-var h15 = import_react27.createElement;
+var import_react28 = require("react");
+var h15 = import_react28.createElement;
 function changeRowItems(expansion) {
   if (expansion.failure !== null) return [{ kind: "failure", failure: expansion.failure }];
   if (expansion.loading) return [{ kind: "loading" }];
@@ -3532,11 +3990,11 @@ function renderCommitChangeRows(props) {
 }
 
 // src/client/panel/views/graph/CommitGraphRow.ts
-var import_react29 = require("react");
+var import_react30 = require("react");
 
 // src/client/panel/views/graph/GraphArtwork.ts
-var import_react28 = require("react");
-var h16 = import_react28.createElement;
+var import_react29 = require("react");
+var h16 = import_react29.createElement;
 function graphColorValue(color) {
   return `var(--dshgg-scm-${color})`;
 }
@@ -3642,7 +4100,7 @@ function GraphCell(props) {
 }
 
 // src/client/panel/views/graph/CommitGraphRow.ts
-var h17 = import_react29.createElement;
+var h17 = import_react30.createElement;
 function badgeIconElement(icon) {
   if (icon === "target") return h17(TargetIcon, { size: 16 });
   if (icon === "cloud") return h17(CloudIcon, { size: 16 });
@@ -3723,12 +4181,12 @@ function GraphRow(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var h18 = import_react30.createElement;
+var h18 = import_react31.createElement;
 function GraphSection(props) {
   const t = props.t;
   const commits = Array.isArray(props.commits) ? props.commits : null;
   const references = props.references ?? null;
-  const rowsLayout = (0, import_react30.useMemo)(
+  const rowsLayout = (0, import_react31.useMemo)(
     () => computeGraph(
       bindReferenceTargets(
         (commits ?? []).map((commit) => ({
@@ -3744,21 +4202,21 @@ function GraphSection(props) {
   );
   const graphId = props.graphId ?? "git-graph";
   const expanded = props.expanded ?? null;
-  const inserted = (0, import_react30.useMemo)(
+  const inserted = (0, import_react31.useMemo)(
     () => (commits ?? []).map((commit) => {
       const expansion = expanded?.get(commit.oid);
       return expansion === void 0 ? [] : changeRowItems(expansion);
     }),
     [commits, expanded]
   );
-  const layer = (0, import_react30.useMemo)(
+  const layer = (0, import_react31.useMemo)(
     () => graphLayer(
       rowsLayout,
       inserted.map((items) => items.length)
     ),
     [rowsLayout, inserted]
   );
-  const [hovered, setHovered] = (0, import_react30.useState)(null);
+  const [hovered, setHovered] = (0, import_react31.useState)(null);
   const menu = props.menu;
   const trigger = menu === void 0 ? null : menu.trigger;
   const rows = [];
@@ -3879,12 +4337,227 @@ function GraphSection(props) {
   );
 }
 
+// src/client/panel/views/RemoteDialog.ts
+var import_react32 = require("react");
+var h19 = import_react32.createElement;
+function RemoteDialog(props) {
+  const { dialog, t } = props;
+  const busy = props.busyName !== null;
+  const composing = (0, import_react32.useRef)(false);
+  const compositionHandlers = {
+    onCompositionStart: () => {
+      composing.current = true;
+    },
+    onCompositionEnd: () => {
+      composing.current = false;
+    }
+  };
+  if (dialog.kind === "add") {
+    const canSubmit = dialog.name.trim() !== "" && dialog.url.trim() !== "";
+    const submit = () => {
+      if (!busy && canSubmit) props.onSubmit();
+    };
+    const enter = (event) => {
+      if (event.key !== "Enter" || composing.current || isCompositionKey(event)) return;
+      event.preventDefault();
+      submit();
+    };
+    return h19(
+      FloatingPanel,
+      {
+        title: t("remote.addTitle"),
+        description: t("remote.addDesc"),
+        cancelLabel: t("action.cancel"),
+        submitLabel: t("remote.addAction"),
+        busy,
+        canSubmit,
+        focusCancel: false,
+        ...props.busyName === "add-remote" ? { progress: t("remote.adding", { name: dialog.name }) } : {},
+        feedback: props.feedback,
+        onCancel: props.onCancel,
+        onSubmit: submit
+      },
+      h19(
+        "label",
+        { className: "dshgg-dialogField" },
+        h19("span", { className: "dshgg-dialogLabel" }, t("remote.nameField")),
+        h19("input", {
+          type: "text",
+          className: "dshgg-dialogInput",
+          "aria-label": t("remote.nameField"),
+          value: dialog.name,
+          maxLength: 200,
+          autoFocus: true,
+          readOnly: busy,
+          ...compositionHandlers,
+          onChange: (event) => {
+            if (!busy) props.onNameChange(event.target.value);
+          },
+          onKeyDown: enter
+        })
+      ),
+      h19(
+        "label",
+        { className: "dshgg-dialogField" },
+        h19("span", { className: "dshgg-dialogLabel" }, t("remote.urlField")),
+        h19("input", {
+          type: "text",
+          className: "dshgg-dialogInput",
+          "aria-label": t("remote.urlField"),
+          placeholder: t("remote.urlPlaceholder"),
+          value: dialog.url,
+          maxLength: 4096,
+          readOnly: busy,
+          ...compositionHandlers,
+          onChange: (event) => {
+            if (!busy) props.onUrlChange(event.target.value);
+          },
+          onKeyDown: enter
+        })
+      )
+    );
+  }
+  const selectLabel = dialog.kind === "remove" ? t("remote.removeLabel") : t("remote.selectRemote");
+  const title = dialog.kind === "remove" ? t("remote.removeTitle") : t("remote.publishTitle");
+  const description = dialog.kind === "remove" ? t("remote.removeDesc", { name: dialog.name }) : t("remote.publishDesc", { branch: props.branch });
+  const submitLabel = dialog.kind === "remove" ? t("remote.removeAction") : t("remote.publishAction");
+  const progress = dialog.kind === "remove" && props.busyName === "remove-remote" ? t("remote.removing", { name: dialog.name }) : dialog.kind === "publish" && props.busyName === "publish" ? t("remote.publishing", { branch: props.branch }) : void 0;
+  return h19(
+    FloatingPanel,
+    {
+      title,
+      description,
+      cancelLabel: t("action.cancel"),
+      submitLabel,
+      busy,
+      canSubmit: dialog.name !== "",
+      focusCancel: dialog.kind === "remove",
+      ...progress === void 0 ? {} : { progress },
+      feedback: props.feedback,
+      onCancel: props.onCancel,
+      onSubmit: props.onSubmit
+    },
+    h19(
+      "label",
+      { className: "dshgg-dialogField" },
+      h19("span", { className: "dshgg-dialogLabel" }, selectLabel),
+      h19(
+        "select",
+        {
+          className: "dshgg-dialogInput dshgg-dialogSelect",
+          "aria-label": selectLabel,
+          value: dialog.name,
+          disabled: busy,
+          onChange: (event) => {
+            if (!busy) props.onSelect(event.target.value);
+          }
+        },
+        props.remotes.map(
+          (remote) => h19("option", { key: remote.name, value: remote.name }, remote.name)
+        )
+      )
+    )
+  );
+}
+
+// src/client/panel/views/RemoteMenu.ts
+var import_react33 = require("react");
+var h20 = import_react33.createElement;
+function RemoteMenu(props) {
+  const t = props.t;
+  const [configOpen, setConfigOpen] = (0, import_react33.useState)(false);
+  const branchBlocked = props.busy || !props.usable;
+  const canRemove = props.failure === null && props.remotes !== null && props.remotes.length > 0;
+  const notes = [];
+  if (props.loading && props.remotes === null) {
+    notes.push(h20("div", { key: "loading", className: "dshgg-menuNote" }, t("remote.loading")));
+  }
+  if (props.failure !== null) {
+    notes.push(
+      h20(
+        "div",
+        { key: "failure", className: "dshgg-menuNote" },
+        errorText(t, props.failure),
+        " ",
+        h20(
+          "button",
+          { type: "button", className: "dshgg-linkBtn", onClick: props.onRetry },
+          t("retry")
+        )
+      )
+    );
+  }
+  const item = (key, label, onSelect, disabled) => h20(
+    "button",
+    {
+      key,
+      type: "button",
+      role: "menuitem",
+      className: "dshgg-menuItem",
+      disabled,
+      onClick: onSelect
+    },
+    h20("span", { className: "dshgg-menuLabel" }, label)
+  );
+  const items = [
+    item("fetch", t("remote.fetch"), props.onFetch, props.busy),
+    item("pull", t("remote.pull"), props.onPull, branchBlocked || !props.hasUpstream),
+    item(
+      "pull-rebase",
+      t("remote.pullRebase"),
+      props.onPullRebase,
+      branchBlocked || !props.hasUpstream
+    )
+  ];
+  items.push(
+    props.hasUpstream ? item("push", t("remote.push"), props.onPush, branchBlocked) : item("publish", t("remote.publishBranch"), props.onPublish, branchBlocked)
+  );
+  items.push(item("sync", t("remote.sync"), props.onSync, branchBlocked || !props.hasUpstream));
+  items.push(
+    h20("div", { key: "separator", className: "dshgg-menuSeparator", role: "separator" }),
+    h20(
+      "button",
+      {
+        key: "remote-group",
+        type: "button",
+        role: "menuitem",
+        className: "dshgg-menuItem dshgg-menuDisclosure",
+        "aria-expanded": configOpen,
+        onClick: () => setConfigOpen((open) => !open)
+      },
+      h20("span", { className: "dshgg-menuLabel" }, t("remote.group")),
+      h20(ChevronDownIcon, { size: 12, className: "dshgg-menuCaret" })
+    )
+  );
+  if (configOpen) {
+    items.push(
+      h20(
+        "div",
+        {
+          key: "remote-group-items",
+          className: "dshgg-menuGroup",
+          role: "group",
+          "aria-label": t("remote.group")
+        },
+        item("add", t("remote.add"), props.onAddRemote, props.busy),
+        item("remove", t("remote.remove"), props.onRemoveRemote, props.busy || !canRemove)
+      )
+    );
+  }
+  return h20(
+    "div",
+    { className: "dshgg-menu dshgg-menuEnd", role: "menu", "aria-label": t("remote.menu") },
+    notes,
+    items
+  );
+}
+
 // src/client/panel/views/SplitView.ts
-var import_react31 = require("react");
-var h19 = import_react31.createElement;
+var import_react34 = require("react");
+var h21 = import_react34.createElement;
 function SplitView(props) {
-  const [dragging, setDragging] = (0, import_react31.useState)(false);
-  const dragStart = (0, import_react31.useRef)(null);
+  const [dragging, setDragging] = (0, import_react34.useState)(false);
+  const dragStart = (0, import_react34.useRef)(null);
   const ratio = clampSplitRatio(props.ratio);
   const percent = `${Math.round(ratio * 1e3) / 10}%`;
   const beginDrag = (event) => {
@@ -3915,15 +4588,15 @@ function SplitView(props) {
     event.preventDefault();
     props.onRatioChange(next);
   };
-  return h19(
+  return h21(
     "div",
     { className: "dshgg-split" },
-    h19(
+    h21(
       "div",
       { className: "dshgg-scroll dshgg-paneTop", style: { flexBasis: percent } },
       props.changes
     ),
-    h19(
+    h21(
       "div",
       {
         className: "dshgg-splitter",
@@ -3942,9 +4615,9 @@ function SplitView(props) {
         onPointerCancel: endDrag,
         onKeyDown: handleKey
       },
-      h19("span", { className: "dshgg-splitterLine" })
+      h21("span", { className: "dshgg-splitterLine" })
     ),
-    h19(
+    h21(
       "div",
       {
         className: "dshgg-scroll dshgg-paneBottom",
@@ -3957,7 +4630,7 @@ function SplitView(props) {
 }
 
 // src/client/panel/GitPanel.ts
-var h20 = import_react32.createElement;
+var h22 = import_react35.createElement;
 function GitPanel(props) {
   const t = props.t;
   const tab = props.useTabInfo().tab;
@@ -3973,32 +4646,32 @@ function GitPanel(props) {
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const history = useHistory({ call, refs });
   const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history;
-  const rootPane = (0, import_react32.useRef)(null);
-  const graphPane = (0, import_react32.useRef)(null);
-  const reloadHistory = (0, import_react32.useCallback)(async () => {
+  const rootPane = (0, import_react35.useRef)(null);
+  const graphPane = (0, import_react35.useRef)(null);
+  const reloadHistory = (0, import_react35.useCallback)(async () => {
     await loadGraph();
     if (graphPane.current !== null) graphPane.current.scrollTop = 0;
   }, [loadGraph]);
-  const [openSections, setOpenSections] = (0, import_react32.useState)({
+  const [openSections, setOpenSections] = (0, import_react35.useState)({
     merge: true,
     staged: true,
     changes: true,
     graph: true
   });
-  const [splitRatio, setSplitRatio] = (0, import_react32.useState)(DEFAULT_SPLIT_RATIO);
-  const lastDetails = (0, import_react32.useRef)(null);
-  const lastPrompt = (0, import_react32.useRef)(null);
+  const [splitRatio, setSplitRatio] = (0, import_react35.useState)(DEFAULT_SPLIT_RATIO);
+  const lastDetails = (0, import_react35.useRef)(null);
+  const lastPrompt = (0, import_react35.useRef)(null);
   const repo = status?.repo ?? null;
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
   const files = status?.files ?? [];
-  const groups = (0, import_react32.useMemo)(() => groupChangeEntries(files), [files]);
+  const groups = (0, import_react35.useMemo)(() => groupChangeEntries(files), [files]);
   const { mergeRows, stagedRows, changedRows } = groups;
   const clean = repo !== null && mergeRows.length === 0 && stagedRows.length === 0 && changedRows.length === 0;
-  const handleWorktreeChange = (0, import_react32.useCallback)(() => {
+  const handleWorktreeChange = (0, import_react35.useCallback)(() => {
     void loadStatus({ silent: true });
   }, [loadStatus]);
-  const handleReferencesChange = (0, import_react32.useCallback)(async () => {
+  const handleReferencesChange = (0, import_react35.useCallback)(async () => {
     const next = await refreshReferences();
     await loadStatus({ silent: true });
     const revision = next?.current?.revision;
@@ -4043,13 +4716,16 @@ function GitPanel(props) {
   const {
     branchMenu,
     branches,
+    remoteBranches,
     branchLoading,
     branchFailure,
     loadBranches,
     toggleBranchMenu,
+    closeBranchMenu,
     checkout,
+    checkoutRemote,
     resetBranches
-  } = useBranches({ call, refs, perform });
+  } = useBranches({ call, t, refs, perform });
   const commitMenuActions = useCommitMenuActions({
     call,
     t,
@@ -4057,10 +4733,35 @@ function GitPanel(props) {
     perform,
     onReferencesChanged: resetBranches
   });
+  const closePromptsForRemote = () => {
+    rawSetConfirm(null);
+    if (commitMenuActions.dialog !== null) commitMenuActions.closeDialog(false);
+    closeBranchMenu();
+    setActionFailure(null);
+  };
+  const remoteActions = useRemoteActions({
+    call,
+    t,
+    refs,
+    repo,
+    perform,
+    notify: props.notify,
+    setActionFailure,
+    onOpenDialog: closePromptsForRemote
+  });
+  const toggleBranchPicker = () => {
+    remoteActions.closeMenu();
+    toggleBranchMenu();
+  };
+  const toggleRemoteMenu = () => {
+    closeBranchMenu();
+    remoteActions.toggleMenu();
+  };
   const requestConfirmation = (next) => {
     if (refs.busy.current !== null) return;
     if (next !== null) {
       if (commitMenuActions.dialog !== null) commitMenuActions.closeDialog(false);
+      remoteActions.closeDialog();
       setActionFailure(null);
     }
     rawSetConfirm(next);
@@ -4068,6 +4769,7 @@ function GitPanel(props) {
   const requestReference = (open) => {
     if (refs.busy.current !== null) return;
     rawSetConfirm(null);
+    remoteActions.closeDialog();
     setActionFailure(null);
     open();
   };
@@ -4075,17 +4777,19 @@ function GitPanel(props) {
     if (refs.busy.current !== null || message.trim() === "") return;
     if (commitMenuActions.dialog !== null) commitMenuActions.closeDialog(false);
     rawSetConfirm(null);
+    remoteActions.closeDialog();
     setActionFailure(null);
     rawRequestCommit();
   };
   const commitState = useCommitDetails({ call, refs });
   const expansion = useCommitExpansion({ call, refs });
   const selectedCommit = commitState.selected;
-  (0, import_react32.useEffect)(() => {
+  (0, import_react35.useEffect)(() => {
     if (!visible || selectedCommit === null) return void 0;
     const closeOnEscape = (event) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (branchMenu || confirm !== null || commitMenuActions.dialog !== null) return;
+      if (branchMenu || confirm !== null || commitMenuActions.dialog !== null || remoteActions.menuOpen || remoteActions.dialog !== null)
+        return;
       const root = rootPane.current;
       const focus = document.activeElement ?? event.target;
       const focusIsInside = focus === document.body || root !== null && focus instanceof Element && root.contains(focus);
@@ -4102,16 +4806,18 @@ function GitPanel(props) {
     branchMenu,
     confirm,
     commitMenuActions.dialog,
+    remoteActions.menuOpen,
+    remoteActions.dialog,
     commitState.closeCommit
   ]);
-  const commitRows = (0, import_react32.useMemo)(
+  const commitRows = (0, import_react35.useMemo)(
     () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
       ...file,
       kind: "commit"
     })),
     [commitState.details]
   );
-  const openDiff = (0, import_react32.useCallback)(
+  const openDiff = (0, import_react35.useCallback)(
     (entry, mode) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -4126,7 +4832,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openFileAtCommit = (0, import_react32.useCallback)(
+  const openFileAtCommit = (0, import_react35.useCallback)(
     (commit, entry) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -4141,7 +4847,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openCommitDiff = (0, import_react32.useCallback)(
+  const openCommitDiff = (0, import_react35.useCallback)(
     (entry) => {
       if (selectedCommit !== null) openFileAtCommit(selectedCommit, entry);
     },
@@ -4207,18 +4913,18 @@ function GitPanel(props) {
   };
   const renderState = () => {
     if (loading && status === null) {
-      return h20(EmptyState, {
-        icon: h20(GitBranchIcon, { size: 26 }),
+      return h22(EmptyState, {
+        icon: h22(GitBranchIcon, { size: 26 }),
         title: t("loading")
       });
     }
     if (loadFailure !== null && status === null) {
       if (loadFailure.code === "git-unavailable") {
-        return h20(EmptyState, {
-          icon: h20(AlertIcon, { size: 26 }),
+        return h22(EmptyState, {
+          icon: h22(AlertIcon, { size: 26 }),
           title: t("gitUnavailable.title"),
           desc: t("gitUnavailable.desc"),
-          action: h20(
+          action: h22(
             "button",
             {
               type: "button",
@@ -4231,11 +4937,11 @@ function GitPanel(props) {
           )
         });
       }
-      return h20(EmptyState, {
-        icon: h20(AlertIcon, { size: 26 }),
+      return h22(EmptyState, {
+        icon: h22(AlertIcon, { size: 26 }),
         title: t("error.title"),
         desc: errorText(t, loadFailure),
-        action: h20(
+        action: h22(
           "button",
           {
             type: "button",
@@ -4249,11 +4955,11 @@ function GitPanel(props) {
       });
     }
     if (status !== null && repo === null) {
-      return h20(EmptyState, {
-        icon: h20(GitBranchIcon, { size: 26 }),
+      return h22(EmptyState, {
+        icon: h22(GitBranchIcon, { size: 26 }),
         title: t("noRepo.title"),
         desc: t("noRepo.desc", { path: sessionDirectory ?? "" }),
-        action: h20(
+        action: h22(
           "button",
           { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: refreshAll },
           t("refresh")
@@ -4262,7 +4968,7 @@ function GitPanel(props) {
     }
     return null;
   };
-  const detailsNode = selectedCommit === null ? null : h20(CommitDetails, {
+  const detailsNode = selectedCommit === null ? null : h22(CommitDetails, {
     t,
     summary: selectedCommit,
     details: commitState.details,
@@ -4280,20 +4986,20 @@ function GitPanel(props) {
   const detailsPresence = usePresence(detailsNode !== null, DETAILS_MOTION_MS);
   if (detailsNode !== null) lastDetails.current = detailsNode;
   const shownDetails = detailsNode ?? (detailsPresence.mounted ? lastDetails.current : null);
-  const detailsMotion = shownDetails === null ? null : h20(
+  const detailsMotion = shownDetails === null ? null : h22(
     "div",
     { className: "dshgg-commitMotion", "data-phase": detailsPresence.phase },
-    h20("div", { className: "dshgg-scroll dshgg-commitCard" }, shownDetails)
+    h22("div", { className: "dshgg-scroll dshgg-commitCard" }, shownDetails)
   );
   const singlePane = renderState();
-  const body = singlePane !== null ? h20("div", { className: "dshgg-scroll" }, singlePane) : h20(SplitView, {
+  const body = singlePane !== null ? h22("div", { className: "dshgg-scroll" }, singlePane) : h22(SplitView, {
     ratio: splitRatio,
     onRatioChange: setSplitRatio,
     label: t("split.label"),
     hint: t("split.hint"),
     onGraphScroll: handleGraphScroll,
     graphRef: graphPane,
-    changes: h20(ChangeGroups, {
+    changes: h22(ChangeGroups, {
       t,
       clean,
       mergeRows,
@@ -4312,7 +5018,7 @@ function GitPanel(props) {
       sectionTarget: targets.sectionTarget,
       rowTarget: targets.rowTarget
     }),
-    graph: h20(GraphSection, {
+    graph: h22(GraphSection, {
       t,
       commits: graph,
       references,
@@ -4339,13 +5045,26 @@ function GitPanel(props) {
   });
   const commitHint = stagedRows.length > 0 ? t("commit.hint") : t("commit.hintNone");
   const placeholder = repo === null ? t("commit.placeholder", { branch: "" }) : t("commit.placeholder", { branch: branchLabel ?? "" });
-  const actionFeedback = actionFailure === null ? null : h20(Banner, {
+  const actionFeedback = actionFailure === null ? null : h22(Banner, {
     title: t("error.title"),
     detail: errorText(t, actionFailure),
     dismissLabel: t("action.dismiss"),
     onDismiss: () => setActionFailure(null)
   });
-  const promptNode = commitMenuActions.dialog !== null ? h20(CommitMenuDialog, {
+  const promptNode = remoteActions.dialog !== null ? h22(RemoteDialog, {
+    key: `remote:${remoteActions.dialog.kind}`,
+    t,
+    branch: branchLabel ?? repo?.branch ?? "",
+    remotes: remoteActions.remotes ?? [],
+    dialog: remoteActions.dialog,
+    busyName: busy,
+    feedback: actionFeedback,
+    onSelect: remoteActions.setName,
+    onNameChange: remoteActions.setName,
+    onUrlChange: remoteActions.setUrl,
+    onCancel: remoteActions.closeDialog,
+    onSubmit: remoteActions.submitDialog
+  }) : commitMenuActions.dialog !== null ? h22(CommitMenuDialog, {
     key: commitMenuActions.dialog.kind === "deleteBranch" ? `delete:${commitMenuActions.dialog.branch}` : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
     dialog: commitMenuActions.dialog,
     t,
@@ -4355,7 +5074,7 @@ function GitPanel(props) {
     onMessageChange: commitMenuActions.setMessage,
     onCancel: () => commitMenuActions.closeDialog(),
     onSubmit: commitMenuActions.submitDialog
-  }) : confirm !== null ? h20(FloatingPanel, {
+  }) : confirm !== null ? h22(FloatingPanel, {
     key: confirm.kind === "discard" ? `discard:${confirm.entry.path}` : confirm.kind,
     title: confirmTitle(t, confirm),
     description: confirmDescription(t, confirm),
@@ -4371,18 +5090,43 @@ function GitPanel(props) {
   const promptPresence = usePresence(promptNode !== null, PROMPT_MOTION_MS);
   if (promptNode !== null) lastPrompt.current = promptNode;
   const shownPrompt = promptNode ?? (promptPresence.mounted ? lastPrompt.current : null);
-  const promptMotion = shownPrompt === null ? null : h20(
+  const promptMotion = shownPrompt === null ? null : h22(
     "div",
     { className: "dshgg-promptMotion", "data-phase": promptPresence.phase },
     shownPrompt
   );
   const underlayProps = detailsPresence.mounted ? { "aria-hidden": "true", inert: "" } : {};
-  return h20(
+  const remoteMenuNode = remoteActions.menuOpen ? h22(RemoteMenu, {
+    t,
+    remotes: remoteActions.remotes,
+    loading: remoteActions.remotesLoading,
+    failure: remoteActions.remotesFailure,
+    busy: busy !== null,
+    usable: remoteActions.canUseBranch,
+    hasUpstream: remoteActions.hasUpstream,
+    onFetch: remoteActions.fetch,
+    onPull: remoteActions.pull,
+    onPullRebase: remoteActions.pullRebase,
+    onPush: remoteActions.push,
+    onPublish: remoteActions.publish,
+    onSync: remoteActions.sync,
+    onAddRemote: remoteActions.openAddRemote,
+    onRemoveRemote: remoteActions.openRemoveRemote,
+    onRetry: () => {
+      void remoteActions.loadRemotes();
+    }
+  }) : null;
+  return h22(
     "div",
     { className: "dshgg-root", "data-dsh-git-graph": "", ref: rootPane },
-    h20(BranchHeader, {
+    h22(BranchHeader, {
       t,
       wrapRef: refs.wrap,
+      remoteWrapRef: refs.remoteWrap,
+      remoteMenu: remoteActions.menuOpen,
+      remoteMenuNode,
+      onToggleRemoteMenu: toggleRemoteMenu,
+      onRemoteStatus: remoteActions.statusAction,
       repo,
       branchLabel,
       ahead,
@@ -4390,22 +5134,24 @@ function GitPanel(props) {
       busy,
       branchMenu,
       branches,
+      remoteBranches,
       branchLoading,
       branchFailure,
-      onToggleMenu: toggleBranchMenu,
+      onToggleMenu: toggleBranchPicker,
       onPickBranch: checkout,
+      onPickRemote: checkoutRemote,
       onRetryBranches: () => {
         void loadBranches();
       },
       onRefresh: refreshAll
     }),
-    h20(
+    h22(
       "div",
       { className: "dshgg-stage" },
-      h20(
+      h22(
         "div",
         { className: "dshgg-content", ...underlayProps },
-        repo === null ? null : h20(CommitBox, {
+        repo === null ? null : h22(CommitBox, {
           t,
           message,
           hint: commitHint,
@@ -4414,7 +5160,7 @@ function GitPanel(props) {
           onChange: setMessage,
           onCommit: requestCommit
         }),
-        loadFailure !== null && status !== null ? h20(Banner, {
+        loadFailure !== null && status !== null ? h22(Banner, {
           title: t("error.title"),
           detail: errorText(t, loadFailure),
           retryLabel: t("retry"),
@@ -4437,7 +5183,7 @@ function GitPanel(props) {
 var base_default = "/*\n * Git source-control panel styles.\n *\n * Every color, border, surface and focus ring comes from the host's `--dsw-*`\n * theme tokens, and text uses the host's `--dsw-font-*` scale, so the panel\n * follows light and dark themes and any user font setting exactly like DSH's\n * own sidebar surfaces. Sizes follow the host's sidebar conventions: 28px list\n * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.\n * The commit graph is the one exception: it reproduces VS Code's Source\n * Control Graph, including its `scmGraph.*` palette and 22px rows.\n */\n\n/* ------------------------------------------------------------------ base --- */\n\n.dshgg-root {\n  position: relative;\n  isolation: isolate;\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: transparent;\n}\n\n.dshgg-root button,\n.dshgg-root textarea {\n  font-family: inherit;\n}\n\n.dshgg-root button {\n  box-sizing: border-box;\n}\n\n.dshgg-root :focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n.dshgg-spacer {\n  flex: 1;\n}\n\n.dshgg-dot {\n  flex: none;\n  color: var(--dsw-alias-label-caption);\n}\n\n/* The stage is the positioning box shared by the panel content and the details\n * card that overlays it, so both keep the same height and the card never\n * resizes the content beneath it. */\n.dshgg-stage {\n  position: relative;\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  overflow: clip;\n}\n\n.dshgg-content {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n}\n";
 
 // src/client/styles/branch-menu.css
-var branch_menu_default = "/* ---------------------------------------------------------- branch menu --- */\n\n.dshgg-menu {\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 0;\n  z-index: 20;\n  min-width: 220px;\n  max-width: min(320px, 70vw);\n  max-height: 320px;\n  padding: 4px;\n  overflow-y: auto;\n  background: var(--dsw-specific-menu);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  backdrop-filter: var(--dsw-menu-backdrop-filter);\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-menuItem {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  min-height: 32px;\n  padding: 5px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n.dshgg-menuItem:disabled {\n  color: var(--dsw-alias-label-primary);\n  cursor: default;\n}\n\n@media (hover: hover) {\n  .dshgg-menuItem:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-menuItem:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.dshgg-menuCheck {\n  display: inline-flex;\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-menuCheck svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-menuLabel {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n";
+var branch_menu_default = '/* ---------------------------------------------------------- branch menu --- */\n\n.dshgg-menu {\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 0;\n  z-index: 20;\n  min-width: 220px;\n  max-width: min(320px, 70vw);\n  max-height: 320px;\n  padding: 4px;\n  overflow-y: auto;\n  background: var(--dsw-specific-menu);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  backdrop-filter: var(--dsw-menu-backdrop-filter);\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n.dshgg-menuItem {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  min-height: 32px;\n  padding: 5px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  text-align: left;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n.dshgg-menuItem:disabled {\n  color: var(--dsw-alias-label-primary);\n  cursor: default;\n}\n\n@media (hover: hover) {\n  .dshgg-menuItem:hover:not(:disabled) {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-menuItem:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.dshgg-menuCheck {\n  display: inline-flex;\n  flex: none;\n  width: 14px;\n  color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-menuCheck svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-menuLabel {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* ------------------------------------------------- remote controls --- */\n\n.dshgg-remoteWrap {\n  position: relative;\n  display: flex;\n  flex: none;\n  align-items: center;\n}\n\n.dshgg-menuEnd {\n  right: 0;\n  left: auto;\n}\n\n.dshgg-menuSeparator {\n  height: 1px;\n  margin: 4px 6px;\n  background: var(--dsw-alias-border-l3);\n}\n\n.dshgg-menuDisclosure {\n  justify-content: space-between;\n}\n\n.dshgg-menuCaret {\n  flex: none;\n  color: var(--dsw-alias-label-secondary);\n  transition: transform 120ms ease;\n}\n\n.dshgg-menuDisclosure[aria-expanded="true"] .dshgg-menuCaret {\n  transform: rotate(180deg);\n}\n\n.dshgg-menuGroup {\n  display: flex;\n  flex-direction: column;\n  padding-left: 8px;\n}\n';
 
 // src/client/styles/buttons.css
 var buttons_default = '/* --------------------------------------------------------------- buttons --- */\n\n.dshgg-iconBtn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n  padding: 6px;\n  color: var(--dsw-alias-label-secondary);\n  line-height: 1;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-iconBtn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-iconBtn[data-spinning="true"] svg {\n  animation: dshgg-spin 1s linear infinite;\n}\n\n@keyframes dshgg-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.dshgg-btn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  height: 28px;\n  padding: 0 12px;\n  border: 0.5px solid transparent;\n  border-radius: var(--dsw-radius-sm);\n  font: var(--dsw-font-xxs-strong-12);\n  white-space: nowrap;\n  cursor: pointer;\n}\n\n.dshgg-btn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-btnPrimary {\n  color: var(--dsw-alias-label-primary-foreground);\n  background: var(--dsw-alias-button-primary-fill);\n}\n\n.dshgg-btnPrimary:hover:not(:disabled) {\n  background: var(--dsw-alias-button-primary-hover);\n}\n\n.dshgg-btnGhost {\n  color: var(--dsw-alias-label-primary);\n  background: transparent;\n  border-color: var(--dsw-alias-border-l3);\n  font-weight: 400;\n}\n\n.dshgg-btnGhost:hover:not(:disabled) {\n  background: var(--dsw-alias-interactive-bg-hover-solid);\n}\n\n.dshgg-linkBtn {\n  flex: none;\n  padding: 0;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-strong-12);\n  background: none;\n  border: none;\n  cursor: pointer;\n}\n\n.dshgg-linkBtn:hover {\n  text-decoration: underline;\n}\n';
@@ -4461,7 +5207,7 @@ var feedback_default = "/* -----------------------------------------------------
 var graph_default = "/* ---------------------------------------------------------------- graph --- */\n\n/* The commit graph reproduces VS Code's Source Control Graph, so its palette\n * is VS Code's `scmGraph.*` color set rather than host tokens: five rotation\n * colors shared by light and dark themes, plus the checked-out (`charts.blue`),\n * upstream (`charts.purple`) and base reference colors. Badge text uses the\n * host's base background, standing in for VS Code's `panel.background`. */\n.dshgg-root {\n  --dshgg-scm-lane1: #ffb000;\n  --dshgg-scm-lane2: #dc267f;\n  --dshgg-scm-lane3: #994f00;\n  --dshgg-scm-lane4: #40b0a6;\n  --dshgg-scm-lane5: #b66dff;\n  --dshgg-scm-ref: #1a85ff;\n  --dshgg-scm-remote: #652d90;\n  --dshgg-scm-base: #ea5c00;\n  --dshgg-scm-label-foreground: var(--dsw-alias-bg-base);\n}\n\nbody[data-ds-dark-theme] .dshgg-root {\n  --dshgg-scm-ref: #3794ff;\n  --dshgg-scm-remote: #b180d7;\n}\n\n/* The rows and the one layer that draws their lines. The layer is positioned so\n * it paints over a row's hover surface, and the row's cell keeps the node. */\n.dshgg-graphBody {\n  --dshgg-graph-inset: 4px;\n  position: relative;\n}\n\n.dshgg-graphLayer {\n  position: absolute;\n  top: 0;\n  left: var(--dshgg-graph-inset);\n  pointer-events: none;\n}\n\n/* VS Code `.history-item`: 22px rows, the graph cell, the label, the badges. */\n.dshgg-graphRow {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 22px;\n  min-width: 0;\n  padding: 0 6px 0 var(--dshgg-graph-inset);\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n@media (hover: hover) {\n  .dshgg-graphRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-graphRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n/* The row's cell is as wide as its graph width and as tall as the row; both come\n * from the element's own attributes. */\n.dshgg-graphSvg {\n  display: block;\n  flex: none;\n}\n\n/* VS Code's one-pixel strokes. Every segment of one color in the whole graph\n * shares an element, so a lane crossing a row boundary is one continuous\n * stroke and no seam can appear between two rows. */\n.dshgg-graphEdge {\n  fill: none;\n  stroke-width: 1px;\n  stroke-linecap: round;\n}\n\n/* VS Code clears its node strokes on hover: the node's outer edge grows by half\n * a stroke. The geometry carries the hover radii; the node gap that also closes\n * is driven by the section's hovered row, because the gap belongs to the line\n * layer rather than to the row. */\n@media (hover: hover) {\n  .dshgg-graphRow:hover .dshgg-graphNode {\n    r: var(--dshgg-node-hover-r);\n  }\n\n  .dshgg-graphRow:hover .dshgg-graphNode[data-paint=\"ring\"] {\n    stroke-width: var(--dshgg-node-hover-stroke);\n  }\n}\n\n/* VS Code `.monaco-icon-label`: subject and description ellipsize together. */\n.dshgg-graphLabel {\n  flex: 1 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  line-height: 22px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphSubject {\n  white-space: pre;\n}\n\n.dshgg-graphAuthor {\n  margin-left: 0.5em;\n  font-size: 0.9em;\n  white-space: pre;\n  opacity: 0.7;\n}\n\n.dshgg-graphRow[data-current=\"true\"] .dshgg-graphSubject,\n.dshgg-graphRow[data-current=\"true\"] .dshgg-graphAuthor {\n  font-weight: 600;\n}\n\n/* VS Code `.label-container` and `.label`. */\n.dshgg-graphBadges {\n  display: flex;\n  flex-shrink: 0;\n  gap: 4px;\n  margin-left: 4px;\n}\n\n.dshgg-graphBadge {\n  display: flex;\n  align-items: center;\n  color: var(--dshgg-scm-label-foreground);\n  line-height: 18px;\n  border-radius: 10px;\n}\n\n.dshgg-graphBadgeCount {\n  padding-left: 4px;\n  font-size: 12px;\n}\n\n.dshgg-graphBadgeIcon {\n  display: flex;\n  padding: 1px;\n}\n\n/* The icon element is sized by its own attributes: 16px, or 12px for branches,\n * matching VS Code's codicon font sizes inside an 18px badge. */\n\n.dshgg-graphBadge[data-icon=\"branch\"] .dshgg-graphBadgeIcon {\n  padding: 3px;\n}\n\n.dshgg-graphBadgeName {\n  max-width: 100px;\n  padding-right: 4px;\n  overflow: hidden;\n  font-size: 12px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* End-of-graph paging: the load control keeps the section's inset instead of a\n * 22-pixel commit row, and a failed page puts its note beside the retry. */\n.dshgg-graphMore {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  margin: 2px 6px 8px;\n}\n\n.dshgg-graphMoreText {\n  min-width: 0;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-graphMoreBtn {\n  margin: 2px 6px 8px;\n}\n\n/* The paging control stays focusable while it loads, so it dims instead of\n * becoming disabled and dropping keyboard focus. */\n.dshgg-graphMoreBtn[data-loading=\"true\"] {\n  opacity: 0.6;\n  cursor: default;\n}\n\n/* VS Code `.history-item-change`: the rows an expanded commit lists below\n * itself. Each is a 22px row whose graph area is as wide as the commit's\n * outgoing lanes; the lanes themselves come from the section's line layer. */\n.dshgg-graphChange {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 22px;\n  min-width: 0;\n  padding: 0 6px 0 var(--dshgg-graph-inset);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-graphChangeLanes {\n  display: block;\n  flex: none;\n  height: 22px;\n}\n\n/* VS Code's file icon: a 16px icon with 6px before the label. */\n.dshgg-graphChangeIcon {\n  display: flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 22px;\n  margin: 0 6px 0 4px;\n  color: var(--dsw-alias-label-secondary);\n}\n\n.dshgg-graphChangeLabel {\n  flex: 1 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  line-height: 22px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphChangeName {\n  white-space: pre;\n}\n\n/* VS Code `.label-description`: the dimmed directory after the name. */\n.dshgg-graphChangeDir {\n  margin-left: 0.5em;\n  font-size: 0.9em;\n  white-space: pre;\n  opacity: 0.7;\n}\n\n/* VS Code's decoration badge: the status letter at the row's end. */\n.dshgg-graphChangeStatus {\n  margin: 0 3px 0 6px;\n}\n\n.dshgg-graphChangeNote {\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-graphChangeText {\n  flex: 0 1 auto;\n  min-width: 0;\n  margin-left: 4px;\n  overflow: hidden;\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphChangeNote[data-note=\"failure\"] .dshgg-graphChangeText {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-graphChangeRetry {\n  flex: none;\n  margin-left: 8px;\n  padding: 0 4px;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-12);\n  background: none;\n  border: 0;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-graphChangeRetry:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n}\n";
 
 // src/client/styles/graph-dialogs.css
-var graph_dialogs_default = "/* -------------------------------------------------------- graph dialogs --- */\n\n.dshgg-dialogField {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  margin-top: 8px;\n}\n\n.dshgg-dialogLabel,\n.dshgg-dialogHint {\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-dialogHint {\n  margin-top: 4px;\n}\n\n.dshgg-dialogInput {\n  box-sizing: border-box;\n  width: 100%;\n  min-width: 0;\n  max-width: 100%;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  outline: none;\n}\n\n.dshgg-dialogInput:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-dialogInput:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-dialogMessage {\n  min-height: 48px;\n  max-height: 120px;\n  resize: vertical;\n}\n";
+var graph_dialogs_default = "/* -------------------------------------------------------- graph dialogs --- */\n\n.dshgg-dialogField {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  margin-top: 8px;\n}\n\n.dshgg-dialogLabel,\n.dshgg-dialogHint {\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-dialogHint {\n  margin-top: 4px;\n}\n\n.dshgg-dialogInput {\n  box-sizing: border-box;\n  width: 100%;\n  min-width: 0;\n  max-width: 100%;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  outline: none;\n}\n\n.dshgg-dialogInput:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-dialogInput:disabled {\n  opacity: 0.5;\n}\n\n.dshgg-dialogSelect {\n  cursor: pointer;\n}\n\n.dshgg-dialogSelect:disabled {\n  cursor: default;\n}\n\n.dshgg-dialogMessage {\n  min-height: 48px;\n  max-height: 120px;\n  resize: vertical;\n}\n";
 
 // src/client/styles/motion.css
 var motion_default = `/* --------------------------------------------------------------- motion --- */
@@ -5066,16 +5812,16 @@ function installStyles(target) {
 }
 
 // src/client/titles.ts
-var import_react33 = require("react");
-var h21 = import_react33.createElement;
+var import_react36 = require("react");
+var h23 = import_react36.createElement;
 function GitTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;
-  return h21(
+  return h23(
     "span",
     { className: "dshgg-title" },
-    h21(GitBranchIcon, { size: 14 }),
-    h21("span", { className: "dshgg-titleText" }, title)
+    h23(GitBranchIcon, { size: 14 }),
+    h23("span", { className: "dshgg-titleText" }, title)
   );
 }
 function DiffTabTitle(props) {
@@ -5084,11 +5830,11 @@ function DiffTabTitle(props) {
   const name = typeof params.path === "string" && params.path !== "" ? baseName(params.path) : tabInfo.tab.title;
   const shortOid = typeof params.shortOid === "string" && params.shortOid !== "" ? params.shortOid : typeof params.commit === "string" && params.commit !== "" ? params.commit.slice(0, 7) : "";
   const label = shortOid === "" ? name : `${name} · ${shortOid}`;
-  return h21(
+  return h23(
     "span",
     { className: "dshgg-title" },
-    h21(FileIcon, { size: 14 }),
-    h21("span", { className: "dshgg-titleText" }, label)
+    h23(FileIcon, { size: 14 }),
+    h23("span", { className: "dshgg-titleText" }, label)
   );
 }
 

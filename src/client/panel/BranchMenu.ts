@@ -1,12 +1,13 @@
 /**
- * Branch picker dropdown rendered under the toolbar chip.
+ * Branch picker dropdown rendered under the toolbar chip: local branches first,
+ * then remote-tracking branches under their own heading.
  */
 
 import type React from 'react'
 import { createElement } from 'react'
 import { errorText } from '../git/format.ts'
-import { CheckIcon } from '../icons.ts'
-import type { BranchInfo, Failure } from '../types/domain.ts'
+import { CheckIcon, CloudIcon } from '../icons.ts'
+import type { BranchInfo, Failure, RemoteBranchInfo } from '../types/domain.ts'
 import type { LocaleBinder } from '../types/dsh.ts'
 
 const h = createElement
@@ -15,14 +16,18 @@ const h = createElement
 export interface BranchMenuProps {
   /** Locale binder. */
   readonly t: LocaleBinder
-  /** Branch list, or null before it has loaded. */
+  /** Local branch list, or null before it has loaded. */
   readonly branches: readonly BranchInfo[] | null
+  /** Remote-tracking branch list, or null before it has loaded. */
+  readonly remoteBranches: readonly RemoteBranchInfo[] | null
   /** Whether the list is loading. */
   readonly loading: boolean
   /** Failed branch-list read. */
   readonly failure: Failure | null
-  /** Check out one branch. */
+  /** Check out one local branch. */
   readonly onPick: (name: string) => void
+  /** Check out a local branch tracking one remote branch. */
+  readonly onPickRemote: (remote: string, branch: string) => void
   /** Retry the branch-list read. */
   readonly onRetry: () => void
 }
@@ -34,8 +39,10 @@ export interface BranchMenuProps {
  */
 export function BranchMenu(props: BranchMenuProps): React.ReactElement {
   const t = props.t
+  const local = props.branches ?? []
+  const remote = props.remoteBranches ?? []
   let content: React.ReactNode
-  if (props.loading === true && props.branches === null) {
+  if (props.loading === true && props.branches === null && props.remoteBranches === null) {
     content = h('div', { className: 'dshgg-menuNote' }, t('branch.loading'))
   } else if (props.failure !== null) {
     content = h(
@@ -49,10 +56,10 @@ export function BranchMenu(props: BranchMenuProps): React.ReactElement {
         t('retry'),
       ),
     )
-  } else if (props.branches === null || props.branches.length === 0) {
+  } else if (local.length === 0 && remote.length === 0) {
     content = h('div', { className: 'dshgg-menuNote' }, t('branch.empty'))
   } else {
-    content = props.branches.map((branch) =>
+    const items: React.ReactNode[] = local.map((branch) =>
       h(
         'button',
         {
@@ -72,6 +79,32 @@ export function BranchMenu(props: BranchMenuProps): React.ReactElement {
         h('span', { className: 'dshgg-menuLabel' }, branch.name),
       ),
     )
+    if (local.length === 0) {
+      items.push(h('div', { key: 'local-empty', className: 'dshgg-menuNote' }, t('branch.empty')))
+    }
+    if (remote.length > 0) {
+      items.push(
+        h('div', { key: 'remote-heading', className: 'dshgg-menuNote' }, t('branch.remoteHeading')),
+      )
+      for (const branch of remote) {
+        items.push(
+          h(
+            'button',
+            {
+              key: `remote:${branch.name}`,
+              type: 'button',
+              className: 'dshgg-menuItem',
+              role: 'menuitem',
+              title: branch.name,
+              onClick: () => props.onPickRemote(branch.remote, branch.branch),
+            },
+            h('span', { className: 'dshgg-menuCheck' }, h(CloudIcon, { size: 12 })),
+            h('span', { className: 'dshgg-menuLabel' }, branch.name),
+          ),
+        )
+      }
+    }
+    content = items
   }
   return h(
     'div',

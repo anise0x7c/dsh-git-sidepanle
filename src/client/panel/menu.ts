@@ -87,6 +87,8 @@ export interface PanelRefs {
   readonly watching: MutableRefObject<boolean>
   /** Branch chip wrapper used for menu dismissal. */
   readonly wrap: MutableRefObject<HTMLDivElement | null>
+  /** Remote controls wrapper used for overflow-menu dismissal. */
+  readonly remoteWrap: MutableRefObject<HTMLDivElement | null>
 }
 
 /**
@@ -101,6 +103,7 @@ export function usePanelRefs(): PanelRefs {
   const mounted = useRef(true)
   const watching = useRef(false)
   const wrap = useRef<HTMLDivElement | null>(null)
+  const remoteWrap = useRef<HTMLDivElement | null>(null)
   useEffect(
     () => () => {
       mounted.current = false
@@ -108,8 +111,8 @@ export function usePanelRefs(): PanelRefs {
     [],
   )
   return useMemo(
-    () => ({ inFlight, busy, confirm, mounted, watching, wrap }),
-    [inFlight, busy, confirm, mounted, watching, wrap],
+    () => ({ inFlight, busy, confirm, mounted, watching, wrap, remoteWrap }),
+    [inFlight, busy, confirm, mounted, watching, wrap, remoteWrap],
   )
 }
 

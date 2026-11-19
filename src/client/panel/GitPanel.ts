@@ -32,6 +32,7 @@ import { useHistory } from './hooks/useHistory.ts'
 import { useLiveUpdates } from './hooks/useLiveUpdates.ts'
 import { useMenuCommands } from './hooks/useMenuCommands.ts'
 import { usePresence } from './hooks/usePresence.ts'
+import { useRemoteActions } from './hooks/useRemoteActions.ts'
 import { useRepoStatus } from './hooks/useRepoStatus.ts'
 import { createMenuTargets, usePanelRefs } from './menu.ts'
 import { isNearEnd } from './scroll.ts'
@@ -42,6 +43,8 @@ import { CommitBox } from './views/CommitBox.ts'
 import { CommitDetails } from './views/CommitDetails.ts'
 import { CommitMenuDialog } from './views/CommitMenuDialog.ts'
 import { GraphSection } from './views/GraphSection.ts'
+import { RemoteDialog } from './views/RemoteDialog.ts'
+import { RemoteMenu } from './views/RemoteMenu.ts'
 import { SplitView } from './views/SplitView.ts'
 
 const h = createElement
@@ -169,13 +172,16 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   const {
     branchMenu,
     branches,
+    remoteBranches,
     branchLoading,
     branchFailure,
     loadBranches,
     toggleBranchMenu,
+    closeBranchMenu,
     checkout,
+    checkoutRemote,
     resetBranches,
-  } = useBranches({ call, refs, perform })
+  } = useBranches({ call, t, refs, perform })
   const commitMenuActions = useCommitMenuActions({
     call,
     t,
@@ -183,12 +189,39 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     perform,
     onReferencesChanged: resetBranches,
   })
+  // The remote form is mutually exclusive with the idle prompts: opening it
+  // replaces whichever form was showing instead of stacking another surface.
+  const closePromptsForRemote = (): void => {
+    rawSetConfirm(null)
+    if (commitMenuActions.dialog !== null) commitMenuActions.closeDialog(false)
+    closeBranchMenu()
+    setActionFailure(null)
+  }
+  const remoteActions = useRemoteActions({
+    call,
+    t,
+    refs,
+    repo,
+    perform,
+    notify: props.notify,
+    setActionFailure,
+    onOpenDialog: closePromptsForRemote,
+  })
+  const toggleBranchPicker = (): void => {
+    remoteActions.closeMenu()
+    toggleBranchMenu()
+  }
+  const toggleRemoteMenu = (): void => {
+    closeBranchMenu()
+    remoteActions.toggleMenu()
+  }
   // Replace the other idle prompt at its entry point, rather than hiding it
   // behind a render priority that could reveal stale forms after cancellation.
   const requestConfirmation = (next: ConfirmState | null): void => {
     if (refs.busy.current !== null) return
     if (next !== null) {
       if (commitMenuActions.dialog !== null) commitMenuActions.closeDialog(false)
+      remoteActions.closeDialog()
       setActionFailure(null)
     }
     rawSetConfirm(next)
@@ -196,6 +229,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   const requestReference = (open: () => void): void => {
     if (refs.busy.current !== null) return
     rawSetConfirm(null)
+    remoteActions.closeDialog()
     setActionFailure(null)
     open()
   }
@@ -203,6 +237,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     if (refs.busy.current !== null || message.trim() === '') return
     if (commitMenuActions.dialog !== null) commitMenuActions.closeDialog(false)
     rawSetConfirm(null)
+    remoteActions.closeDialog()
     setActionFailure(null)
     rawRequestCommit()
   }
@@ -216,7 +251,14 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     if (!visible || selectedCommit === null) return undefined
     const closeOnEscape = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' || event.defaultPrevented) return
-      if (branchMenu || confirm !== null || commitMenuActions.dialog !== null) return
+      if (
+        branchMenu ||
+        confirm !== null ||
+        commitMenuActions.dialog !== null ||
+        remoteActions.menuOpen ||
+        remoteActions.dialog !== null
+      )
+        return
       // A panel that is merely visible must not react to Escape pressed in
       // another pane. The focused body counts as in-panel because inerting the
       // underlay can move focus there.
@@ -238,6 +280,8 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     branchMenu,
     confirm,
     commitMenuActions.dialog,
+    remoteActions.menuOpen,
+    remoteActions.dialog,
     commitState.closeCommit,
   ])
   const commitRows = useMemo<CommitFileRow[]>(
@@ -533,36 +577,51 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   // it leaves. A reference form replaces an idle confirmation outright, so the
   // new prompt enters on its own instead of crossfading with the old one.
   const promptNode =
-    commitMenuActions.dialog !== null
-      ? h(CommitMenuDialog, {
-          key:
-            commitMenuActions.dialog.kind === 'deleteBranch'
-              ? `delete:${commitMenuActions.dialog.branch}`
-              : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
-          dialog: commitMenuActions.dialog,
+    remoteActions.dialog !== null
+      ? h(RemoteDialog, {
+          key: `remote:${remoteActions.dialog.kind}`,
           t,
-          busy: busy !== null,
+          branch: branchLabel ?? repo?.branch ?? '',
+          remotes: remoteActions.remotes ?? [],
+          dialog: remoteActions.dialog,
+          busyName: busy,
           feedback: actionFeedback,
-          onNameChange: commitMenuActions.setName,
-          onMessageChange: commitMenuActions.setMessage,
-          onCancel: () => commitMenuActions.closeDialog(),
-          onSubmit: commitMenuActions.submitDialog,
+          onSelect: remoteActions.setName,
+          onNameChange: remoteActions.setName,
+          onUrlChange: remoteActions.setUrl,
+          onCancel: remoteActions.closeDialog,
+          onSubmit: remoteActions.submitDialog,
         })
-      : confirm !== null
-        ? h(FloatingPanel, {
-            key: confirm.kind === 'discard' ? `discard:${confirm.entry.path}` : confirm.kind,
-            title: confirmTitle(t, confirm),
-            description: confirmDescription(t, confirm),
-            cancelLabel: t('action.cancel'),
-            submitLabel: confirmActionLabel(t, confirm),
+      : commitMenuActions.dialog !== null
+        ? h(CommitMenuDialog, {
+            key:
+              commitMenuActions.dialog.kind === 'deleteBranch'
+                ? `delete:${commitMenuActions.dialog.branch}`
+                : `${commitMenuActions.dialog.kind}:${commitMenuActions.dialog.oid}`,
+            dialog: commitMenuActions.dialog,
+            t,
             busy: busy !== null,
             feedback: actionFeedback,
-            onCancel: () => requestConfirmation(null),
-            onSubmit: () => {
-              if (refs.busy.current === null) confirmAction()
-            },
+            onNameChange: commitMenuActions.setName,
+            onMessageChange: commitMenuActions.setMessage,
+            onCancel: () => commitMenuActions.closeDialog(),
+            onSubmit: commitMenuActions.submitDialog,
           })
-        : null
+        : confirm !== null
+          ? h(FloatingPanel, {
+              key: confirm.kind === 'discard' ? `discard:${confirm.entry.path}` : confirm.kind,
+              title: confirmTitle(t, confirm),
+              description: confirmDescription(t, confirm),
+              cancelLabel: t('action.cancel'),
+              submitLabel: confirmActionLabel(t, confirm),
+              busy: busy !== null,
+              feedback: actionFeedback,
+              onCancel: () => requestConfirmation(null),
+              onSubmit: () => {
+                if (refs.busy.current === null) confirmAction()
+              },
+            })
+          : null
   const promptPresence = usePresence(promptNode !== null, PROMPT_MOTION_MS)
   if (promptNode !== null) lastPrompt.current = promptNode
   const shownPrompt = promptNode ?? (promptPresence.mounted ? lastPrompt.current : null)
@@ -582,12 +641,40 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     ? ({ 'aria-hidden': 'true', inert: '' } as React.HTMLAttributes<HTMLDivElement>)
     : {}
 
+  const remoteMenuNode = remoteActions.menuOpen
+    ? h(RemoteMenu, {
+        t,
+        remotes: remoteActions.remotes,
+        loading: remoteActions.remotesLoading,
+        failure: remoteActions.remotesFailure,
+        busy: busy !== null,
+        usable: remoteActions.canUseBranch,
+        hasUpstream: remoteActions.hasUpstream,
+        onFetch: remoteActions.fetch,
+        onPull: remoteActions.pull,
+        onPullRebase: remoteActions.pullRebase,
+        onPush: remoteActions.push,
+        onPublish: remoteActions.publish,
+        onSync: remoteActions.sync,
+        onAddRemote: remoteActions.openAddRemote,
+        onRemoveRemote: remoteActions.openRemoveRemote,
+        onRetry: () => {
+          void remoteActions.loadRemotes()
+        },
+      })
+    : null
+
   return h(
     'div',
     { className: 'dshgg-root', 'data-dsh-git-graph': '', ref: rootPane },
     h(BranchHeader, {
       t,
       wrapRef: refs.wrap,
+      remoteWrapRef: refs.remoteWrap,
+      remoteMenu: remoteActions.menuOpen,
+      remoteMenuNode,
+      onToggleRemoteMenu: toggleRemoteMenu,
+      onRemoteStatus: remoteActions.statusAction,
       repo,
       branchLabel,
       ahead,
@@ -595,10 +682,12 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
       busy,
       branchMenu,
       branches,
+      remoteBranches,
       branchLoading,
       branchFailure,
-      onToggleMenu: toggleBranchMenu,
+      onToggleMenu: toggleBranchPicker,
       onPickBranch: checkout,
+      onPickRemote: checkoutRemote,
       onRetryBranches: () => {
         void loadBranches()
       },

@@ -43,6 +43,43 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
   return stdout
 }
 
+/** Create an isolated repository with one commit and a fixed identity. */
+async function createRemoteRepository(prefix: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpRoot, prefix))
+  await git(directory, 'init', '-q', '-b', 'main')
+  await git(directory, 'config', 'user.name', 'Remote Test')
+  await git(directory, 'config', 'user.email', 'remote@example.test')
+  await writeFile(join(directory, 'base.txt'), 'base\n')
+  await git(directory, 'add', '-A')
+  await git(directory, 'commit', '-q', '-m', 'base commit')
+  return directory
+}
+
+/** Create an isolated bare repository to act as a local-path remote. */
+async function createBareRemote(prefix: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpRoot, prefix))
+  await git(directory, 'init', '-q', '--bare', '-b', 'main')
+  return directory
+}
+
+/** Clone a bare remote so a peer can advance it. */
+async function createPeer(bare: string, prefix: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpRoot, prefix))
+  await git(directory, 'clone', '-q', bare, '.')
+  await git(directory, 'config', 'user.name', 'Peer')
+  await git(directory, 'config', 'user.email', 'peer@example.test')
+  return directory
+}
+
+/** Read a ref's object id, or null when the ref does not exist. */
+async function refValue(directory: string, ref: string): Promise<string | null> {
+  try {
+    return (await git(directory, 'rev-parse', '--verify', ref)).trim()
+  } catch {
+    return null
+  }
+}
+
 /** Read one changed file from a status result, failing when Git did not report it. */
 function fileByPath(files: readonly ChangeEntry[], path: string): ChangeEntry {
   const file = files.find((entry) => entry.path === path)
@@ -1020,4 +1057,551 @@ test('a burst of working-tree changes becomes one watch update', async () => {
   } finally {
     registry.dispose()
   }
+})
+
+test('remotes lists configured remotes in order with their push URLs', async () => {
+  const local = await createRemoteRepository('remotes-local-')
+  const fetchRemote = await createBareRemote('remotes-fetch-')
+  const pushRemote = await createBareRemote('remotes-push-')
+  await git(local, 'remote', 'add', 'origin', fetchRemote)
+  await git(local, 'remote', 'set-url', '--push', 'origin', pushRemote)
+  await git(local, 'remote', 'add', 'upstream', fetchRemote)
+
+  await withSessionServer(local, async (baseUrl) => {
+    const listed = await callAt(baseUrl, 'remotes')
+    assert.equal(listed.status, 200)
+    assert.equal(listed.body.ok, true)
+    assert.deepEqual(listed.body.value.remotes, [
+      { name: 'origin', fetchUrl: fetchRemote, pushUrl: pushRemote },
+      { name: 'upstream', fetchUrl: fetchRemote, pushUrl: fetchRemote },
+    ])
+  })
+})
+
+test('fetch updates every remote and prunes a deleted remote branch', async () => {
+  const local = await createRemoteRepository('fetch-local-')
+  const bare = await createBareRemote('fetch-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+  await git(local, 'push', '-q', '-u', 'origin', 'main')
+  const peer = await createPeer(bare, 'fetch-peer-')
+  await writeFile(join(peer, 'remote.txt'), 'remote\n')
+  await git(peer, 'add', '-A')
+  await git(peer, 'commit', '-q', '-m', 'remote commit')
+  await git(peer, 'push', '-q', 'origin', 'main')
+  await git(peer, 'push', '-q', 'origin', 'main:refs/heads/topic')
+  const remoteMain = (await git(bare, 'rev-parse', 'refs/heads/main')).trim()
+
+  await withSessionServer(local, async (baseUrl) => {
+    const fetched = await callAt(baseUrl, 'fetch')
+    assert.equal(fetched.status, 200)
+    assert.equal(fetched.body.ok, true)
+    assert.equal((await git(local, 'rev-parse', 'refs/remotes/origin/main')).trim(), remoteMain)
+    assert.equal(await refValue(local, 'refs/remotes/origin/topic'), remoteMain)
+
+    await git(bare, 'branch', '-D', 'topic')
+    const pruned = await callAt(baseUrl, 'fetch')
+    assert.equal(pruned.body.ok, true)
+    assert.equal(
+      await refValue(local, 'refs/remotes/origin/topic'),
+      null,
+      'the fetched prune removed the deleted remote branch',
+    )
+    assert.equal((await git(local, 'rev-parse', 'refs/remotes/origin/main')).trim(), remoteMain)
+  })
+})
+
+test('pull merges the upstream into the current branch', async () => {
+  const local = await createRemoteRepository('pull-local-')
+  const bare = await createBareRemote('pull-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+  await git(local, 'push', '-q', '-u', 'origin', 'main')
+  const peer = await createPeer(bare, 'pull-peer-')
+  await writeFile(join(peer, 'remote.txt'), 'remote\n')
+  await git(peer, 'add', '-A')
+  await git(peer, 'commit', '-q', '-m', 'remote commit')
+  await git(peer, 'push', '-q', 'origin', 'main')
+  await writeFile(join(local, 'local.txt'), 'local\n')
+  await git(local, 'add', '-A')
+  await git(local, 'commit', '-q', '-m', 'local commit')
+
+  await withSessionServer(local, async (baseUrl) => {
+    const pulled = await callAt(baseUrl, 'pull')
+    assert.equal(pulled.status, 200)
+    assert.equal(pulled.body.ok, true)
+    const merged = (await git(local, 'rev-list', '--parents', '-n', '1', 'HEAD')).trim().split(' ')
+    assert.equal(merged.length, 3, 'the pull created a merge commit')
+    assert.equal(await readFile(join(local, 'remote.txt'), 'utf8'), 'remote\n')
+  })
+})
+
+test('pull with rebase replays local commits onto the upstream', async () => {
+  const local = await createRemoteRepository('rebase-local-')
+  const bare = await createBareRemote('rebase-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+  await git(local, 'push', '-q', '-u', 'origin', 'main')
+  const peer = await createPeer(bare, 'rebase-peer-')
+  await writeFile(join(peer, 'remote.txt'), 'remote\n')
+  await git(peer, 'add', '-A')
+  await git(peer, 'commit', '-q', '-m', 'remote commit')
+  await git(peer, 'push', '-q', 'origin', 'main')
+  await writeFile(join(local, 'local.txt'), 'local\n')
+  await git(local, 'add', '-A')
+  await git(local, 'commit', '-q', '-m', 'local commit')
+
+  await withSessionServer(local, async (baseUrl) => {
+    const pulled = await callAt(baseUrl, 'pull', { rebase: true })
+    assert.equal(pulled.status, 200)
+    assert.equal(pulled.body.ok, true)
+    assert.equal((await git(local, 'rev-list', '--count', 'HEAD')).trim(), '3')
+    assert.equal(
+      (await git(local, 'rev-list', '--merges', '--count', 'HEAD')).trim(),
+      '0',
+      'the rebase produced no merge commit',
+    )
+    const subjects = (await git(local, 'log', '--format=%s')).trim().split('\n')
+    assert.ok(subjects.includes('local commit'))
+    assert.ok(subjects.includes('remote commit'))
+  })
+})
+
+test('push sends the current branch commits to its upstream', async () => {
+  const local = await createRemoteRepository('push-local-')
+  const bare = await createBareRemote('push-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+  await git(local, 'push', '-q', '-u', 'origin', 'main')
+  await writeFile(join(local, 'local.txt'), 'local\n')
+  await git(local, 'add', '-A')
+  await git(local, 'commit', '-q', '-m', 'local commit')
+  const head = (await git(local, 'rev-parse', 'HEAD')).trim()
+
+  await withSessionServer(local, async (baseUrl) => {
+    const pushed = await callAt(baseUrl, 'push')
+    assert.equal(pushed.status, 200)
+    assert.equal(pushed.body.ok, true)
+    assert.equal(await refValue(bare, 'refs/heads/main'), head)
+    const status = requireRepo((await callAt(baseUrl, 'status')).body.value)
+    assert.equal(status.ahead, 0)
+    assert.equal(status.upstream, 'origin/main')
+  })
+})
+
+test('publish pushes a branch without an upstream and sets it', async () => {
+  const local = await createRemoteRepository('publish-local-')
+  const bare = await createBareRemote('publish-bare-')
+  await git(local, 'remote', 'add', 'upstream', bare)
+  const head = (await git(local, 'rev-parse', 'HEAD')).trim()
+
+  await withSessionServer(local, async (baseUrl) => {
+    const published = await callAt(baseUrl, 'publish')
+    assert.equal(published.status, 200)
+    assert.equal(published.body.ok, true)
+    assert.equal(await refValue(bare, 'refs/heads/main'), head)
+    const status = requireRepo((await callAt(baseUrl, 'status')).body.value)
+    assert.equal(status.upstream, 'upstream/main')
+    assert.equal(status.ahead, 0)
+  })
+})
+
+test('publish prefers origin and accepts a chosen remote', async () => {
+  const local = await createRemoteRepository('publish-many-')
+  const originBare = await createBareRemote('publish-origin-')
+  const backupBare = await createBareRemote('publish-backup-')
+  await git(local, 'remote', 'add', 'origin', originBare)
+  await git(local, 'remote', 'add', 'backup', backupBare)
+  const mainHead = (await git(local, 'rev-parse', 'HEAD')).trim()
+
+  await withSessionServer(local, async (baseUrl) => {
+    const published = await callAt(baseUrl, 'publish')
+    assert.equal(published.body.ok, true)
+    assert.equal(await refValue(originBare, 'refs/heads/main'), mainHead)
+    assert.equal(await refValue(backupBare, 'refs/heads/main'), null)
+
+    await git(local, 'switch', '-q', '-c', 'topic')
+    const topicHead = (await git(local, 'rev-parse', 'HEAD')).trim()
+    const chosen = await callAt(baseUrl, 'publish', { remote: 'backup' })
+    assert.equal(chosen.body.ok, true)
+    assert.equal(await refValue(backupBare, 'refs/heads/topic'), topicHead)
+    assert.equal(await refValue(originBare, 'refs/heads/topic'), null)
+    assert.equal((await git(local, 'config', '--get', 'branch.topic.remote')).trim(), 'backup')
+  })
+})
+
+test('publish falls back to the first configured remote without origin', async () => {
+  const local = await createRemoteRepository('publish-first-')
+  const firstBare = await createBareRemote('publish-first-remote-')
+  const secondBare = await createBareRemote('publish-second-remote-')
+  await git(local, 'remote', 'add', 'alpha', firstBare)
+  await git(local, 'remote', 'add', 'beta', secondBare)
+  const head = (await git(local, 'rev-parse', 'HEAD')).trim()
+
+  await withSessionServer(local, async (baseUrl) => {
+    const published = await callAt(baseUrl, 'publish')
+    assert.equal(published.body.ok, true)
+    assert.equal(await refValue(firstBare, 'refs/heads/main'), head)
+    assert.equal(await refValue(secondBare, 'refs/heads/main'), null)
+  })
+})
+
+test('sync pulls the upstream before it pushes', async () => {
+  const local = await createRemoteRepository('sync-local-')
+  const bare = await createBareRemote('sync-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+  await git(local, 'push', '-q', '-u', 'origin', 'main')
+  const peer = await createPeer(bare, 'sync-peer-')
+  await writeFile(join(peer, 'remote.txt'), 'remote\n')
+  await git(peer, 'add', '-A')
+  await git(peer, 'commit', '-q', '-m', 'remote commit')
+  await git(peer, 'push', '-q', 'origin', 'main')
+  await writeFile(join(local, 'local.txt'), 'local\n')
+  await git(local, 'add', '-A')
+  await git(local, 'commit', '-q', '-m', 'local commit')
+
+  await withSessionServer(local, async (baseUrl) => {
+    const synced = await callAt(baseUrl, 'sync')
+    assert.equal(synced.status, 200)
+    assert.equal(synced.body.ok, true)
+    const head = (await git(local, 'rev-parse', 'HEAD')).trim()
+    assert.equal(await refValue(bare, 'refs/heads/main'), head)
+    assert.equal(await readFile(join(local, 'remote.txt'), 'utf8'), 'remote\n')
+    const merged = (await git(local, 'rev-list', '--parents', '-n', '1', 'HEAD')).trim().split(' ')
+    assert.equal(merged.length, 3, 'the sync merged the upstream before pushing')
+  })
+})
+
+test('a failed pull stops sync before it pushes', async () => {
+  const local = await createRemoteRepository('sync-fail-local-')
+  const bare = await createBareRemote('sync-fail-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+  await git(local, 'push', '-q', '-u', 'origin', 'main')
+  const remoteBefore = await refValue(bare, 'refs/heads/main')
+  await writeFile(join(local, 'local.txt'), 'local\n')
+  await git(local, 'add', '-A')
+  await git(local, 'commit', '-q', '-m', 'local commit')
+  // Fetch fails while pushing would still reach the bare remote, so an
+  // unchanged remote proves sync never attempted the push.
+  await git(local, 'remote', 'set-url', 'origin', join(tmpRoot, 'missing-remote'))
+  await git(local, 'remote', 'set-url', '--push', 'origin', bare)
+
+  await withSessionServer(local, async (baseUrl) => {
+    const synced = await callAt(baseUrl, 'sync')
+    assert.equal(synced.body.ok, false)
+    assert.equal(synced.body.error.code, 'git-command-failed')
+    assert.equal(
+      await refValue(bare, 'refs/heads/main'),
+      remoteBefore,
+      'the failed pull did not push',
+    )
+  })
+})
+
+test('an upstream whose tracking ref was not fetched still allows push', async () => {
+  const local = await createRemoteRepository('upstream-config-local-')
+  const bare = await createBareRemote('upstream-config-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+  await git(local, 'push', '-q', '-u', 'origin', 'main')
+  await git(local, 'update-ref', '-d', 'refs/remotes/origin/main')
+
+  await withSessionServer(local, async (baseUrl) => {
+    const pushed = await callAt(baseUrl, 'push')
+    assert.equal(pushed.status, 200)
+    assert.equal(pushed.body.ok, true)
+    const status = requireRepo((await callAt(baseUrl, 'status')).body.value)
+    assert.equal(status.upstream, 'origin/main')
+  })
+})
+
+test('pull, push, and sync refuse a branch without an upstream', async () => {
+  const local = await createRemoteRepository('no-upstream-')
+  const bare = await createBareRemote('no-upstream-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+
+  await withSessionServer(local, async (baseUrl) => {
+    for (const op of ['pull', 'push', 'sync'] as const) {
+      const refused = await callAt(baseUrl, op)
+      assert.equal(refused.status, 409, `operation ${op}`)
+      assert.equal(refused.body.ok, false)
+      assert.equal(refused.body.error.code, 'no-upstream')
+    }
+    const fetched = await callAt(baseUrl, 'fetch')
+    assert.equal(fetched.body.ok, true, 'fetch does not need an upstream')
+  })
+})
+
+test('publish refuses a detached HEAD and an unborn branch', async () => {
+  const detached = await createRemoteRepository('publish-detached-')
+  const detachedBare = await createBareRemote('publish-detached-bare-')
+  await git(detached, 'remote', 'add', 'origin', detachedBare)
+  await git(detached, 'checkout', '-q', '--detach', 'HEAD')
+
+  const unborn = await mkdtemp(join(tmpRoot, 'publish-unborn-'))
+  await git(unborn, 'init', '-q', '-b', 'main')
+  const unbornBare = await createBareRemote('publish-unborn-bare-')
+  await git(unborn, 'remote', 'add', 'origin', unbornBare)
+
+  await withSessionServer(detached, async (baseUrl) => {
+    const refused = await callAt(baseUrl, 'publish')
+    assert.equal(refused.status, 409)
+    assert.equal(refused.body.error.code, 'no-current-branch')
+    assert.equal(await refValue(detachedBare, 'refs/heads/main'), null)
+  })
+  await withSessionServer(unborn, async (baseUrl) => {
+    const refused = await callAt(baseUrl, 'publish')
+    assert.equal(refused.status, 409)
+    assert.equal(refused.body.error.code, 'unborn-branch')
+    assert.equal(await refValue(unbornBare, 'refs/heads/main'), null)
+  })
+})
+
+test('publish reports an unknown remote and a repository without remotes', async () => {
+  const local = await createRemoteRepository('publish-unknown-')
+  const bare = await createBareRemote('publish-unknown-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+
+  const noRemotes = await createRemoteRepository('publish-no-remotes-')
+
+  await withSessionServer(local, async (baseUrl) => {
+    const unknown = await callAt(baseUrl, 'publish', { remote: 'missing' })
+    assert.equal(unknown.status, 404)
+    assert.equal(unknown.body.error.code, 'unknown-remote')
+    assert.equal(await refValue(bare, 'refs/heads/main'), null)
+  })
+  await withSessionServer(noRemotes, async (baseUrl) => {
+    const refused = await callAt(baseUrl, 'publish')
+    assert.equal(refused.status, 409)
+    assert.equal(refused.body.error.code, 'no-remotes')
+  })
+})
+
+test('publish rejects option-like and malformed remote names before Git runs', async () => {
+  const local = await createRemoteRepository('publish-invalid-')
+  const bare = await createBareRemote('publish-invalid-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+
+  const invalidNames: unknown[] = [
+    '--force',
+    '-o',
+    'bad name',
+    'bad\tname',
+    'bad..name',
+    'trailing/',
+    'trailing.',
+    'name.lock',
+    'x'.repeat(201),
+    42,
+    null,
+  ]
+  await withSessionServer(local, async (baseUrl) => {
+    for (const remote of invalidNames) {
+      const refused = await callAt(baseUrl, 'publish', { remote })
+      assert.equal(refused.status, 400, `remote ${JSON.stringify(remote)}`)
+      assert.equal(refused.body.ok, false)
+      assert.equal(refused.body.error.code, 'bad-request')
+    }
+    assert.equal(await refValue(bare, 'refs/heads/main'), null, 'nothing was pushed')
+    const unchanged = await callAt(baseUrl, 'remotes')
+    assert.equal(unchanged.body.ok, true)
+  })
+})
+
+test('add-remote configures a remote and refuses duplicates and invalid input', async () => {
+  const local = await createRemoteRepository('add-remote-local-')
+  const bare = await createBareRemote('add-remote-bare-')
+  const backup = await createBareRemote('add-remote-backup-')
+
+  await withSessionServer(local, async (baseUrl) => {
+    const added = await callAt(baseUrl, 'add-remote', { name: 'origin', url: bare })
+    assert.equal(added.status, 200)
+    assert.deepEqual(added.body.value, { ok: true })
+    assert.equal((await git(local, 'remote', 'get-url', 'origin')).trim(), bare)
+
+    const duplicate = await callAt(baseUrl, 'add-remote', { name: 'origin', url: backup })
+    assert.equal(duplicate.status, 409)
+    assert.equal(duplicate.body.error.code, 'remote-exists')
+    assert.equal((await git(local, 'remote', 'get-url', 'origin')).trim(), bare)
+
+    for (const name of ['--force', '-o', 'bad name', 'bad..name', 42, null]) {
+      const refused = await callAt(baseUrl, 'add-remote', { name, url: bare })
+      assert.equal(refused.status, 400, `name ${JSON.stringify(name)}`)
+      assert.equal(refused.body.error.code, 'bad-request')
+    }
+    for (const url of ['', '-u', '--upload-pack=evil', 'has\nnewline', 'has\tcontrol', 42, null]) {
+      const refused = await callAt(baseUrl, 'add-remote', { name: 'backup', url })
+      assert.equal(refused.status, 400, `url ${JSON.stringify(url)}`)
+      assert.equal(refused.body.error.code, 'bad-request')
+    }
+    assert.equal((await git(local, 'remote')).trim(), 'origin', 'the repository changed only once')
+  })
+})
+
+test('remove-remote deletes the remote and refreshes the upstream summary', async () => {
+  const local = await createRemoteRepository('remove-remote-local-')
+  const bare = await createBareRemote('remove-remote-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+  await git(local, 'push', '-q', '-u', 'origin', 'main')
+  const remoteMain = await refValue(local, 'refs/remotes/origin/main')
+  assert.ok(remoteMain !== null, 'the push created the remote-tracking branch')
+
+  await withSessionServer(local, async (baseUrl) => {
+    const before = requireRepo((await callAt(baseUrl, 'status')).body.value)
+    assert.equal(before.upstream, 'origin/main')
+
+    const unknown = await callAt(baseUrl, 'remove-remote', { name: 'missing' })
+    assert.equal(unknown.status, 404)
+    assert.equal(unknown.body.error.code, 'unknown-remote')
+    assert.equal(await refValue(local, 'refs/remotes/origin/main'), remoteMain)
+
+    const removed = await callAt(baseUrl, 'remove-remote', { name: 'origin' })
+    assert.equal(removed.status, 200)
+    assert.deepEqual(removed.body.value, { ok: true })
+    assert.equal((await git(local, 'remote')).trim(), '')
+    assert.equal(await refValue(local, 'refs/remotes/origin/main'), null)
+    assert.deepEqual((await callAt(baseUrl, 'remotes')).body.value.remotes, [])
+    const after = requireRepo((await callAt(baseUrl, 'status')).body.value)
+    assert.equal(after.branch, 'main')
+    assert.equal(after.upstream, null, 'the removed remote no longer supplies the upstream')
+
+    const again = await callAt(baseUrl, 'remove-remote', { name: 'origin' })
+    assert.equal(again.status, 404)
+    assert.equal(again.body.error.code, 'unknown-remote')
+  })
+})
+
+test('branches lists remote-tracking branches without symbolic HEAD and with slashed remotes', async () => {
+  const local = await createRemoteRepository('branches-remote-local-')
+  const originBare = await createBareRemote('branches-remote-origin-')
+  const forkBare = await createBareRemote('branches-remote-fork-')
+  const head = (await git(local, 'rev-parse', 'HEAD')).trim()
+  await git(local, 'remote', 'add', 'origin', originBare)
+  await git(local, 'remote', 'add', 'team/fork', forkBare)
+  await git(local, 'update-ref', 'refs/remotes/origin/alpha', head)
+  await git(local, 'update-ref', 'refs/remotes/origin/main', head)
+  await git(local, 'update-ref', 'refs/remotes/origin/zeta', head)
+  await git(local, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
+  await git(local, 'update-ref', 'refs/remotes/team/fork/dev', head)
+
+  await withSessionServer(local, async (baseUrl) => {
+    const listed = await callAt(baseUrl, 'branches')
+    assert.equal(listed.status, 200)
+    assert.deepEqual(listed.body.value.branches, [{ name: 'main', current: true }])
+    assert.deepEqual(listed.body.value.remoteBranches, [
+      { name: 'origin/alpha', remote: 'origin', branch: 'alpha' },
+      { name: 'origin/main', remote: 'origin', branch: 'main' },
+      { name: 'origin/zeta', remote: 'origin', branch: 'zeta' },
+      { name: 'team/fork/dev', remote: 'team/fork', branch: 'dev' },
+    ])
+  })
+})
+
+test('checkout-remote creates a tracking branch and reuses an existing local branch', async () => {
+  const local = await createRemoteRepository('checkout-remote-local-')
+  const bare = await createBareRemote('checkout-remote-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+  await git(local, 'push', '-q', '-u', 'origin', 'main')
+  const peer = await createPeer(bare, 'checkout-remote-peer-')
+  await writeFile(join(peer, 'feature.txt'), 'feature\n')
+  await git(peer, 'switch', '-q', '-c', 'feature/a')
+  await git(peer, 'add', '-A')
+  await git(peer, 'commit', '-q', '-m', 'feature work')
+  await git(peer, 'push', '-q', 'origin', 'feature/a')
+  await git(peer, 'switch', '-q', 'main')
+  await writeFile(join(peer, 'existing.txt'), 'existing\n')
+  await git(peer, 'switch', '-q', '-c', 'existing')
+  await git(peer, 'add', '-A')
+  await git(peer, 'commit', '-q', '-m', 'existing work')
+  await git(peer, 'push', '-q', 'origin', 'existing')
+  await git(local, 'fetch', '-q', 'origin')
+  await git(local, 'branch', 'existing')
+  await git(local, 'branch', '--set-upstream-to=origin/main', 'existing')
+
+  await withSessionServer(local, async (baseUrl) => {
+    const created = await callAt(baseUrl, 'checkout-remote', {
+      remote: 'origin',
+      branch: 'feature/a',
+    })
+    assert.equal(created.status, 200)
+    assert.deepEqual(created.body.value, { ok: true, branch: 'feature/a' })
+    let status = requireRepo((await callAt(baseUrl, 'status')).body.value)
+    assert.equal(status.branch, 'feature/a')
+    assert.equal(status.upstream, 'origin/feature/a')
+    assert.equal(
+      (await git(local, 'rev-parse', 'feature/a')).trim(),
+      (await git(local, 'rev-parse', 'origin/feature/a')).trim(),
+    )
+
+    await callAt(baseUrl, 'checkout', { branch: 'main' })
+    const reused = await callAt(baseUrl, 'checkout-remote', {
+      remote: 'origin',
+      branch: 'existing',
+    })
+    assert.equal(reused.status, 200)
+    assert.equal(reused.body.value.branch, 'existing')
+    status = requireRepo((await callAt(baseUrl, 'status')).body.value)
+    assert.equal(status.branch, 'existing')
+    assert.equal(status.upstream, 'origin/main', 'the existing upstream stayed unchanged')
+    assert.equal((await git(local, 'config', '--get', 'branch.existing.remote')).trim(), 'origin')
+    assert.equal(
+      (await git(local, 'config', '--get', 'branch.existing.merge')).trim(),
+      'refs/heads/main',
+    )
+
+    const unknownRemote = await callAt(baseUrl, 'checkout-remote', {
+      remote: 'missing',
+      branch: 'feature/a',
+    })
+    assert.equal(unknownRemote.status, 404)
+    assert.equal(unknownRemote.body.error.code, 'unknown-remote')
+    const unknownBranch = await callAt(baseUrl, 'checkout-remote', {
+      remote: 'origin',
+      branch: 'no-such-branch',
+    })
+    assert.equal(unknownBranch.status, 404)
+    assert.equal(unknownBranch.body.error.code, 'unknown-remote-branch')
+    const headPointer = await callAt(baseUrl, 'checkout-remote', {
+      remote: 'origin',
+      branch: 'HEAD',
+    })
+    assert.equal(headPointer.status, 400)
+    assert.equal(headPointer.body.error.code, 'bad-request')
+    const optionShaped = await callAt(baseUrl, 'checkout-remote', {
+      remote: 'origin',
+      branch: '--force',
+    })
+    assert.equal(optionShaped.status, 400)
+    assert.equal(optionShaped.body.error.code, 'bad-request')
+    const unknownBeforeBranch = await callAt(baseUrl, 'checkout-remote', {
+      remote: 'missing',
+      branch: '--force',
+    })
+    assert.equal(unknownBeforeBranch.status, 404)
+    assert.equal(unknownBeforeBranch.body.error.code, 'unknown-remote')
+  })
+})
+
+test('checkout-remote leaves the previous branch when Git refuses the switch', async () => {
+  const local = await createRemoteRepository('checkout-remote-fail-local-')
+  const bare = await createBareRemote('checkout-remote-fail-bare-')
+  await git(local, 'remote', 'add', 'origin', bare)
+  await git(local, 'push', '-q', '-u', 'origin', 'main')
+  const peer = await createPeer(bare, 'checkout-remote-fail-peer-')
+  await git(peer, 'switch', '-q', '-c', 'feature/conflict')
+  await writeFile(join(peer, 'shared.txt'), 'remote version\n')
+  await git(peer, 'add', '-A')
+  await git(peer, 'commit', '-q', '-m', 'conflicting feature')
+  await git(peer, 'push', '-q', 'origin', 'feature/conflict')
+  await git(local, 'fetch', '-q', 'origin')
+  // The local main has no shared.txt, so an untracked file blocks the switch.
+  await writeFile(join(local, 'shared.txt'), 'local untracked\n')
+
+  await withSessionServer(local, async (baseUrl) => {
+    const refused = await callAt(baseUrl, 'checkout-remote', {
+      remote: 'origin',
+      branch: 'feature/conflict',
+    })
+    assert.equal(refused.status, 409)
+    assert.equal(refused.body.error.code, 'git-command-failed')
+    const status = requireRepo((await callAt(baseUrl, 'status')).body.value)
+    assert.equal(status.branch, 'main')
+    assert.equal(await readFile(join(local, 'shared.txt'), 'utf8'), 'local untracked\n')
+    assert.equal(await refValue(local, 'refs/heads/feature/conflict'), null)
+  })
 })

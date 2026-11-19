@@ -32,6 +32,8 @@ export interface GitResult {
   stderr: string
   /** Exit code or spawn error code; undefined on success. */
   code: GitExitCode
+  /** Whether the invocation was killed after its timeout. */
+  timedOut: boolean
 }
 
 /** Optional overrides for one Git invocation. */
@@ -64,6 +66,7 @@ export function runGit(
         env: {
           ...process.env,
           GIT_TERMINAL_PROMPT: '0',
+          GIT_MERGE_AUTOEDIT: 'no',
           GIT_OPTIONAL_LOCKS: '0',
           GIT_PAGER: 'cat',
           LC_ALL: 'C',
@@ -76,6 +79,7 @@ export function runGit(
           stdout: typeof stdout === 'string' ? stdout : '',
           stderr: typeof stderr === 'string' ? stderr : '',
           code: error === null ? undefined : (error.code ?? undefined),
+          timedOut: error !== null && error.killed === true,
         })
       },
     )

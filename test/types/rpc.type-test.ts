@@ -12,9 +12,20 @@ export function assertRpcTypes(call: RpcCall, status: StatusResult): void {
   void call('stage', { paths: ['src/example.ts'] })
   void call('commit', { message: 'Keep the wire contract checked' })
   void call('diff', { path: 'src/example.ts', staged: true })
+  void call('remotes')
+  void call('fetch')
+  void call('pull')
+  void call('pull', { rebase: true })
+  void call('push')
+  void call('publish')
+  void call('publish', { remote: 'origin' })
+  void call('sync')
+  void call('add-remote', { name: 'origin', url: 'https://example.test/repo.git' })
+  void call('remove-remote', { name: 'origin' })
+  void call('checkout-remote', { remote: 'origin', branch: 'main' })
 
   // @ts-expect-error Unknown operation names must not reach the wire.
-  void call('push')
+  void call('rebase')
   // @ts-expect-error Each operation accepts only its own argument shape.
   void call('commit', { paths: ['src/example.ts'] })
   // @ts-expect-error Repository-relative file paths are strings.

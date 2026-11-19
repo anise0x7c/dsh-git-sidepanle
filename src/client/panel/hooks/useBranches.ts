@@ -1,11 +1,13 @@
 /**
- * Branch picker state: the branch list, its loading/failure flags, the open
- * state of the dropdown and its outside-click/Escape dismissal, and checkout.
+ * Branch picker state: local and remote-tracking branch lists, their
+ * loading/failure flags, the open state of the dropdown and its
+ * outside-click/Escape dismissal, and checkout.
  */
 
 import { useCallback, useEffect, useState } from 'react'
 import { toFailure } from '../../data/caller.ts'
-import type { BranchInfo, Failure, RpcCall } from '../../types/domain.ts'
+import type { BranchInfo, Failure, RemoteBranchInfo, RpcCall } from '../../types/domain.ts'
+import type { LocaleBinder } from '../../types/dsh.ts'
 import type { PanelRefs } from '../menu.ts'
 import type { Perform } from './useChangeActions.ts'
 
@@ -13,6 +15,8 @@ import type { Perform } from './useChangeActions.ts'
 export interface UseBranchesOptions {
   /** Panel RPC caller. */
   readonly call: RpcCall
+  /** Locale binder. */
+  readonly t: LocaleBinder
   /** Shared panel refs. */
   readonly refs: PanelRefs
   /** Busy-locked action wrapper. */
@@ -23,8 +27,10 @@ export interface UseBranchesOptions {
 export interface BranchesState {
   /** Whether the dropdown is open. */
   readonly branchMenu: boolean
-  /** Branch list, or null before it has loaded. */
+  /** Local branch list, or null before it has loaded. */
   readonly branches: BranchInfo[] | null
+  /** Remote-tracking branch list, or null before it has loaded. */
+  readonly remoteBranches: RemoteBranchInfo[] | null
   /** Whether the list is loading. */
   readonly branchLoading: boolean
   /** Failed branch-list read. */
@@ -33,8 +39,12 @@ export interface BranchesState {
   readonly loadBranches: () => Promise<void>
   /** Open or close the dropdown. */
   readonly toggleBranchMenu: () => void
-  /** Check out one branch. */
+  /** Close the dropdown without toggling it. */
+  readonly closeBranchMenu: () => void
+  /** Check out one local branch. */
   readonly checkout: (branch: string) => void
+  /** Check out a local branch for one remote-tracking branch. */
+  readonly checkoutRemote: (remote: string, branch: string) => void
   /** Discard the cached branch list after a reference mutation. */
   readonly resetBranches: () => void
 }
@@ -46,9 +56,10 @@ export interface BranchesState {
  * @returns branch state and handlers.
  */
 export function useBranches(options: UseBranchesOptions): BranchesState {
-  const { call, refs, perform } = options
+  const { call, t, refs, perform } = options
   const [branchMenu, setBranchMenu] = useState(false)
   const [branches, setBranches] = useState<BranchInfo[] | null>(null)
+  const [remoteBranches, setRemoteBranches] = useState<RemoteBranchInfo[] | null>(null)
   const [branchLoading, setBranchLoading] = useState(false)
   const [branchFailure, setBranchFailure] = useState<Failure | null>(null)
 
@@ -58,6 +69,7 @@ export function useBranches(options: UseBranchesOptions): BranchesState {
       const value = await call('branches')
       if (!refs.mounted.current) return
       setBranches(Array.isArray(value.branches) ? value.branches : [])
+      setRemoteBranches(Array.isArray(value.remoteBranches) ? value.remoteBranches : [])
       setBranchFailure(null)
     } catch (error) {
       if (!refs.mounted.current) return
@@ -91,8 +103,13 @@ export function useBranches(options: UseBranchesOptions): BranchesState {
     if (next && branches === null && branchFailure === null) void loadBranches()
   }
 
+  const closeBranchMenu = (): void => {
+    setBranchMenu(false)
+  }
+
   const resetBranches = useCallback((): void => {
     setBranches(null)
+    setRemoteBranches(null)
     setBranchFailure(null)
   }, [])
 
@@ -104,14 +121,26 @@ export function useBranches(options: UseBranchesOptions): BranchesState {
     })
   }
 
+  const checkoutRemote = (remote: string, branch: string): void => {
+    setBranchMenu(false)
+    void perform('checkout-remote', () => call('checkout-remote', { remote, branch }), {
+      graph: true,
+      after: resetBranches,
+      notice: t('branch.checkedOutRemote', { name: `${remote}/${branch}` }),
+    })
+  }
+
   return {
     branchMenu,
     branches,
+    remoteBranches,
     branchLoading,
     branchFailure,
     loadBranches,
     toggleBranchMenu,
+    closeBranchMenu,
     checkout,
+    checkoutRemote,
     resetBranches,
   }
 }

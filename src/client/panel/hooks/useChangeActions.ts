@@ -18,6 +18,8 @@ export interface PerformOptions<Result> {
   readonly notice?: string
   /** Also refresh the commit graph. */
   readonly graph?: boolean
+  /** Refresh the status silently after a failure, so partial writes stay visible. */
+  readonly refreshOnFailure?: boolean
   /** Extra work after the action resolves, before the status refresh. */
   readonly after?: (result: Result) => void | Promise<void>
 }
@@ -118,7 +120,10 @@ export function useChangeActions(options: UseChangeActionsOptions): ChangeAction
         if (actionOptions.graph === true) await loadGraph()
         return result
       } catch (error) {
-        if (refs.mounted.current) setActionFailure(toFailure(error))
+        if (refs.mounted.current) {
+          setActionFailure(toFailure(error))
+          if (actionOptions.refreshOnFailure === true) await loadStatus({ silent: true })
+        }
         return undefined
       } finally {
         refs.busy.current = null

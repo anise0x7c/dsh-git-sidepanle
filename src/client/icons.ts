@@ -123,6 +123,20 @@ export function CheckIcon(props: IconProps): React.ReactElement {
   return svgIcon(size, h('path', { d: 'M3 8.5 6.2 11.5 13 4.5' }))
 }
 
+/** Overflow ellipsis, after VS Code's `ellipsis` codicon. */
+export function MoreIcon(props: IconProps): React.ReactElement {
+  const size = props?.size ?? 16
+  return svgIcon(
+    size,
+    [
+      h('circle', { key: 'a', cx: 3.5, cy: 8, r: 1.1, fill: 'currentColor', stroke: 'none' }),
+      h('circle', { key: 'b', cx: 8, cy: 8, r: 1.1, fill: 'currentColor', stroke: 'none' }),
+      h('circle', { key: 'c', cx: 12.5, cy: 8, r: 1.1, fill: 'currentColor', stroke: 'none' }),
+    ],
+    { className: props?.className },
+  )
+}
+
 export function CloseIcon(props: IconProps): React.ReactElement {
   const size = props?.size ?? 12
   return svgIcon(size, [

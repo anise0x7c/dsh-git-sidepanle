@@ -10,6 +10,7 @@ import type {
   BranchesResult,
   CommitDetails,
   HistoryResult,
+  RemotesResult,
   RepositoryStatus,
   StatusResult,
 } from '../../src/shared/git.ts'
@@ -77,14 +78,33 @@ export const HISTORY: HistoryResult = {
  * Build a branch-list response.
  * @param names - branch names in display order.
  * @param current - name rendered as current; defaults to the first.
+ * @param remoteBranches - remote-tracking branches; defaults to none.
  * @returns `branches` RPC value.
  */
-export function createBranches(names: string[], current: string = names[0] ?? ''): BranchesResult {
-  return { branches: names.map((name) => ({ name, current: name === current })) }
+export function createBranches(
+  names: string[],
+  current: string = names[0] ?? '',
+  remoteBranches: BranchesResult['remoteBranches'] = [],
+): BranchesResult {
+  return {
+    branches: names.map((name) => ({ name, current: name === current })),
+    remoteBranches,
+  }
 }
 
 /** Default `branches` response: the checked-out branch plus one other local branch. */
 export const BRANCHES: BranchesResult = createBranches(['main', 'feature/sidebar'])
+
+/** Default `remotes` response: one configured `origin`. */
+export const REMOTES: RemotesResult = {
+  remotes: [
+    {
+      name: 'origin',
+      fetchUrl: 'https://example.test/repo.git',
+      pushUrl: 'https://example.test/repo.git',
+    },
+  ],
+}
 
 /** Default `commit-details` response for the head commit of `HISTORY`. */
 export const COMMIT_DETAILS: CommitDetails = {

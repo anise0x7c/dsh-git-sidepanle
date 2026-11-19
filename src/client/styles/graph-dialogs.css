@@ -39,6 +39,14 @@
   opacity: 0.5;
 }
 
+.dshgg-dialogSelect {
+  cursor: pointer;
+}
+
+.dshgg-dialogSelect:disabled {
+  cursor: default;
+}
+
 .dshgg-dialogMessage {
   min-height: 48px;
   max-height: 120px;

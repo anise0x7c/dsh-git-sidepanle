@@ -121,6 +121,7 @@ function runGit(cwd, args, options = {}) {
         env: {
           ...process.env,
           GIT_TERMINAL_PROMPT: "0",
+          GIT_MERGE_AUTOEDIT: "no",
           GIT_OPTIONAL_LOCKS: "0",
           GIT_PAGER: "cat",
           LC_ALL: "C",
@@ -132,7 +133,8 @@ function runGit(cwd, args, options = {}) {
           ok: error === null,
           stdout: typeof stdout === "string" ? stdout : "",
           stderr: typeof stderr === "string" ? stderr : "",
-          code: error === null ? void 0 : error.code ?? void 0
+          code: error === null ? void 0 : error.code ?? void 0,
+          timedOut: error !== null && error.killed === true
         });
       }
     );
@@ -164,6 +166,7 @@ async function readGitDirectory(root) {
 }
 
 // src/host/git/branches.ts
+var REMOTE_PREFIX = "refs/remotes/";
 async function readBranches(root) {
   const output = await gitOrThrow(root, [
     "for-each-ref",
@@ -180,6 +183,36 @@ async function readBranches(root) {
     branches.push({ name, current: line.slice(0, separator).trim() === "*" });
   }
   return branches;
+}
+function parseRemoteBranches(stdout, remotes) {
+  const branches = [];
+  for (const rawLine of stdout.split("\n")) {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    if (line === "") continue;
+    const separator = line.indexOf("	");
+    const refname = (separator < 0 ? line : line.slice(0, separator)).trim();
+    const symref = separator < 0 ? "" : line.slice(separator + 1).trim();
+    if (symref !== "" || !refname.startsWith(REMOTE_PREFIX)) continue;
+    const remainder = refname.slice(REMOTE_PREFIX.length);
+    let remote = "";
+    for (const candidate of remotes) {
+      if (candidate === "" || candidate.length <= remote.length) continue;
+      if (remainder.startsWith(`${candidate}/`)) remote = candidate;
+    }
+    if (remote === "") continue;
+    const branch = remainder.slice(remote.length + 1);
+    if (branch === "" || branch === "HEAD") continue;
+    branches.push({ name: `${remote}/${branch}`, remote, branch });
+  }
+  return branches;
+}
+async function readRemoteBranches(root, remotes) {
+  const output = await gitOrThrow(root, [
+    "for-each-ref",
+    "--format=%(refname)%09%(symref)",
+    "refs/remotes"
+  ]);
+  return parseRemoteBranches(output, remotes);
 }
 async function branchExists(root, name) {
   const result = await runGit(root, ["show-ref", "--verify", "--quiet", `refs/heads/${name}`]);
@@ -844,6 +877,40 @@ ${switched.stderr}`.trim() || "git switch failed",
     );
   }
 }
+async function checkoutRemoteBranch(root, remote, branch) {
+  const remoteBranch = `${remote}/${branch}`;
+  const exists = await runGit(root, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `refs/remotes/${remoteBranch}`
+  ]);
+  if (!exists.ok) {
+    if (exists.code === "ENOENT")
+      throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
+    throw new GitGraphError(
+      "unknown-remote-branch",
+      `No remote branch named "${remoteBranch}" exists.`,
+      404
+    );
+  }
+  if (await branchExists(root, branch)) {
+    await checkoutBranch(root, branch);
+    return branch;
+  }
+  const switched = await runGit(root, ["switch", "-c", branch, "--track", remoteBranch]);
+  if (!switched.ok) {
+    if (switched.code === "ENOENT")
+      throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
+    throw new GitGraphError(
+      "git-command-failed",
+      `${switched.stdout}
+${switched.stderr}`.trim() || "git switch failed",
+      409
+    );
+  }
+  return branch;
+}
 async function checkoutDetached(root, oid) {
   await gitOrThrow(root, ["switch", "--detach", "--", oid]);
 }
@@ -941,6 +1008,130 @@ async function readGraphReferences(root) {
     mergeBase,
     detachedHead: branch === void 0 && head.ok ? head.stdout.trim() : null
   });
+}
+
+// src/host/git/remotes.ts
+var REMOTE_TIMEOUT_MS = 12e4;
+var REMOTE_LINE = /^([^\t]+)\t(.+) \((fetch|push)\)$/;
+function parseRemoteVerbose(stdout) {
+  const records = /* @__PURE__ */ new Map();
+  for (const rawLine of stdout.split("\n")) {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    const match = REMOTE_LINE.exec(line);
+    if (match === null) continue;
+    const name = (match[1] ?? "").trim();
+    const url = (match[2] ?? "").trim();
+    if (name === "" || url === "") continue;
+    const record = records.get(name) ?? {};
+    if (match[3] === "fetch") {
+      if (record.fetchUrl === void 0) record.fetchUrl = url;
+    } else if (record.pushUrl === void 0) {
+      record.pushUrl = url;
+    }
+    records.set(name, record);
+  }
+  const remotes = [];
+  for (const [name, record] of records) {
+    const fetchUrl = record.fetchUrl ?? record.pushUrl;
+    if (fetchUrl === void 0) continue;
+    remotes.push({ name, fetchUrl, pushUrl: record.pushUrl ?? fetchUrl });
+  }
+  return remotes;
+}
+async function readRemotes(root) {
+  return parseRemoteVerbose(await gitOrThrow(root, ["remote", "-v"]));
+}
+async function addRemote(root, name, url) {
+  const remotes = await readRemotes(root);
+  if (remotes.some((remote) => remote.name === name)) {
+    throw new GitGraphError("remote-exists", `A remote named "${name}" is already configured.`, 409);
+  }
+  await gitOrThrow(root, ["remote", "add", "--", name, url]);
+}
+async function removeRemote(root, name) {
+  const remotes = await readRemotes(root);
+  if (!remotes.some((remote) => remote.name === name)) {
+    throw new GitGraphError("unknown-remote", `No remote named "${name}" is configured.`, 404);
+  }
+  await gitOrThrow(root, ["remote", "remove", "--", name]);
+}
+async function currentBranch(root) {
+  const result = await runGit(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+  if (!result.ok) return null;
+  const branch = result.stdout.trim();
+  return branch === "" ? null : branch;
+}
+async function headExists(root) {
+  return (await runGit(root, ["rev-parse", "--verify", "--quiet", "HEAD"])).ok;
+}
+async function upstreamOf(root) {
+  const branch = await currentBranch(root);
+  if (branch === null) return null;
+  const result = await runGit(root, [
+    "for-each-ref",
+    "--format=%(upstream:short)",
+    `refs/heads/${branch}`
+  ]);
+  if (!result.ok) return null;
+  const upstream = result.stdout.trim().split("\n")[0]?.trim() ?? "";
+  return upstream === "" ? null : upstream;
+}
+async function runRemote(root, args) {
+  const result = await runGit(root, args, { timeout: REMOTE_TIMEOUT_MS });
+  if (result.ok) return;
+  if (result.timedOut) {
+    throw new GitGraphError("remote-timeout", "The remote operation did not finish in time.", 504);
+  }
+  const detail = `${result.stdout}
+${result.stderr}`.trim() || `git ${args[0] ?? ""} failed`;
+  throw new GitGraphError("git-command-failed", detail, 409);
+}
+async function requireUpstream(root) {
+  if (await upstreamOf(root) === null) {
+    throw new GitGraphError("no-upstream", "The current branch has no upstream branch.", 409);
+  }
+}
+async function fetchAll(root) {
+  await runRemote(root, ["fetch", "--all", "--prune"]);
+}
+async function pullBranch(root, rebase) {
+  await requireUpstream(root);
+  await runRemote(root, ["pull", rebase ? "--rebase" : "--no-rebase", "--no-edit"]);
+}
+async function pushBranch(root) {
+  await requireUpstream(root);
+  await runRemote(root, ["push"]);
+}
+async function publishBranch(root, remote) {
+  const branch = await currentBranch(root);
+  if (branch === null) {
+    throw new GitGraphError("no-current-branch", "No branch is checked out.", 409);
+  }
+  if (!await headExists(root)) {
+    throw new GitGraphError("unborn-branch", "The current branch has no commits yet.", 409);
+  }
+  const remotes = await readRemotes(root);
+  if (remotes.length === 0) {
+    throw new GitGraphError("no-remotes", "No remote is configured for this repository.", 409);
+  }
+  let target;
+  if (remote === void 0) {
+    target = remotes.find((entry) => entry.name === "origin") ?? remotes[0];
+  } else {
+    target = remotes.find((entry) => entry.name === remote);
+    if (target === void 0) {
+      throw new GitGraphError("unknown-remote", `No remote named "${remote}" is configured.`, 404);
+    }
+  }
+  if (target === void 0) {
+    throw new GitGraphError("no-remotes", "No remote is configured for this repository.", 409);
+  }
+  await runRemote(root, ["push", "--set-upstream", target.name, branch]);
+}
+async function syncBranch(root) {
+  await requireUpstream(root);
+  await runRemote(root, ["pull", "--no-rebase", "--no-edit"]);
+  await runRemote(root, ["push"]);
 }
 
 // src/host/git/status.ts
@@ -1076,6 +1267,20 @@ async function resolveSessionDirectory(ctx, sessionId) {
 // src/host/validation.ts
 var FULL_OID4 = /^[0-9a-f]{40}$/;
 var PANEL_ID = /^[A-Za-z0-9._:-]{1,80}$/;
+function hasForbiddenCharacter(value) {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code < 32 || code === 127 || /\s/.test(character)) return true;
+  }
+  return false;
+}
+function hasControlCharacter(value) {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code < 32 || code === 127) return true;
+  }
+  return false;
+}
 function commitOf(value) {
   if (typeof value !== "string" || !FULL_OID4.test(value)) {
     throw new GitGraphError("bad-request", "A full commit identifier is required.", 400);
@@ -1139,6 +1344,30 @@ async function tagNameOf(root, value) {
     throw new GitGraphError("bad-request", `"${value}" is not a valid tag name.`, 400);
   return value;
 }
+function remoteNameOf(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 200 || value.startsWith("-") || hasForbiddenCharacter(value) || /[~^:?*[\\]/.test(value) || value.includes("..") || value.includes("@{") || value.endsWith("/") || value.endsWith(".") || value.endsWith(".lock")) {
+    throw new GitGraphError("bad-request", "A valid remote name is required.", 400);
+  }
+  return value;
+}
+function optionalRemoteNameOf(value) {
+  return value === void 0 ? void 0 : remoteNameOf(value);
+}
+function remoteUrlOf(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 4096 || value.startsWith("-") || hasControlCharacter(value)) {
+    throw new GitGraphError("bad-request", "A valid remote URL is required.", 400);
+  }
+  return value;
+}
+async function remoteBranchNameOf(root, remote, value) {
+  if (typeof value !== "string" || value === "" || value.startsWith("-") || value === "HEAD" || hasControlCharacter(value)) {
+    throw new GitGraphError("bad-request", "A valid remote branch name is required.", 400);
+  }
+  const formatted = await runGit(root, ["check-ref-format", `refs/remotes/${remote}/${value}`]);
+  if (!formatted.ok)
+    throw new GitGraphError("bad-request", `"${value}" is not a valid remote branch name.`, 400);
+  return value;
+}
 function filePathOf(value) {
   if (typeof value !== "string") {
     throw new GitGraphError("bad-request", "A file path is required.", 400);
@@ -1187,8 +1416,37 @@ async function dispatch(ctx, payload, registry) {
     }
     case "commit-details":
       return readCommitDetails(root, commitOf(payload.oid));
-    case "branches":
-      return { branches: await readBranches(root) };
+    case "branches": {
+      const [branches, remotes] = await Promise.all([readBranches(root), readRemotes(root)]);
+      const remoteBranches = await readRemoteBranches(
+        root,
+        remotes.map((remote) => remote.name)
+      );
+      return { branches, remoteBranches };
+    }
+    case "remotes":
+      return { remotes: await readRemotes(root) };
+    case "add-remote":
+      await addRemote(root, remoteNameOf(payload.name), remoteUrlOf(payload.url));
+      return { ok: true };
+    case "remove-remote":
+      await removeRemote(root, remoteNameOf(payload.name));
+      return { ok: true };
+    case "fetch":
+      await fetchAll(root);
+      return { ok: true };
+    case "pull":
+      await pullBranch(root, payload.rebase === true);
+      return { ok: true };
+    case "push":
+      await pushBranch(root);
+      return { ok: true };
+    case "publish":
+      await publishBranch(root, optionalRemoteNameOf(payload.remote));
+      return { ok: true };
+    case "sync":
+      await syncBranch(root);
+      return { ok: true };
     case "stage":
       await stagePaths(root, payload.paths);
       return { ok: true };
@@ -1214,6 +1472,15 @@ async function dispatch(ctx, payload, registry) {
       const branch = await checkoutBranchNameOf(root, payload.branch);
       await checkoutBranch(root, branch);
       return { ok: true, branch };
+    }
+    case "checkout-remote": {
+      const remote = remoteNameOf(payload.remote);
+      const remotes = await readRemotes(root);
+      if (!remotes.some((entry) => entry.name === remote)) {
+        throw new GitGraphError("unknown-remote", `No remote named "${remote}" is configured.`, 404);
+      }
+      const branch = await remoteBranchNameOf(root, remote, payload.branch);
+      return { ok: true, branch: await checkoutRemoteBranch(root, remote, branch) };
     }
     case "checkout-detached":
       await checkoutDetached(root, commitOf(payload.oid));

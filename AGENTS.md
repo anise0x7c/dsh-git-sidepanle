@@ -6,7 +6,9 @@
 source-control surface to the Web GUI's right Sidebar: staged/unstaged/merge
 changes as flat, path-sorted lists, a commit box, unified diff tabs, a commit graph
 whose commits expand inline to list the files they changed (the details view
-opens from the commit menu's View Details), branch switching, and right-click menus.
+opens from the commit menu's View Details), branch switching, local and remote
+branch checkout, fetch/pull/push/sync/publish, remote configuration, and
+right-click menus.
 
 - One bundle, two TypeScript halves: Host (`src/host-entry.ts` + `src/host/**`)
   and browser (`src/client-entry.ts` + `src/client/**`). Shared wire types live
@@ -17,7 +19,7 @@ opens from the commit menu's View Details), branch switching, and right-click me
 - Both halves compile to committed JavaScript: `index.js`, `client.js` and
   their maps. A prepared plugin directory needs no compiler at install time.
 - Behavior truth lives in `.litespec/specs/git-sidebar/spec.md`
-  (42 requirements; latest archived change 2026-11-19 overlay-commit-details). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
+  (51 requirements; latest archived change 2026-11-19 add-remote-management). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
   `docs/DETAIL.zh.md` (Chinese). Architecture: `docs/ARCHITECTURE.md`.
   `docs/REFACTOR-PLAN.md` records the 0.3.0 split that produced the current
   layout and subsequent maintenance rounds — read completed sections for rationale,
@@ -30,7 +32,7 @@ opens from the commit menu's View Details), branch switching, and right-click me
 |---|---|
 | `src/host-entry.ts` | Host source entry: `inject = ['webServer']`, `apply` registers the RPC and health routes and maps failures |
 | `src/host/http/` | `respond.ts` (sendJson, readJsonBody), `trust.ts` (loopback/same-origin fence) |
-| `src/host/git/` | `exec.ts` (literal-path Git execution + repository discovery), `paths.ts` (containment), `files.ts` (safe direct untracked access), `changes.ts` (file actions), `mutations.ts` (commit/ref writes), `status.ts`, `history.ts`, `references.ts` (graph's checked-out/upstream/base refs), `branches.ts`, `diff.ts`, `ignore.ts` |
+| `src/host/git/` | `exec.ts` (literal-path Git execution + repository discovery), `paths.ts` (containment), `files.ts` (safe direct untracked access), `changes.ts` (file actions), `mutations.ts` (commit/ref writes and remote-branch checkout), `remotes.ts` (remote listing/configuration and network synchronization), `status.ts`, `history.ts`, `references.ts` (graph's checked-out/upstream/base refs), `branches.ts` (local and remote-tracking branch listing), `diff.ts`, `ignore.ts` |
 | `src/host/watch/` | `classify.ts` (watch-event to change-kind rules, pure), `registry.ts` (shared per-repository watchers, debounce, subscription lifetime, change counters) |
 | `src/host/` | `rpc.ts` (dispatch + route paths), `validation.ts` (wire fields), `session.ts`, `errors.ts` |
 | `src/client/**` | Browser half, layered: `constants`, `types/` (local domain/DSH contracts), `locale/`, `styles/` (per-area CSS + ordered assembly in `index.ts`) and `styles.ts` (style lease), `icons`, `host-file-icon` (the host's file-type glyph with a local fallback), `data/caller`, `git/` (pure), `menu/` (pure + clipboard), `panel/` component files, `panel/hooks`, `panel/views`, `panel/GitPanel.ts`, `diff/`, `titles.ts`, `plugin.ts` |
@@ -106,6 +108,10 @@ to force a fresh version, and never chase patch releases the day they ship.
    (`sec-fetch-site: same-origin`, matching `Origin` when present). Never run
    through a shell, and never accept a repository path from the browser (only
    session ids and repository-relative paths). Git file arguments remain literal.
+   Remote operations additionally validate every remote name, URL and branch
+   before Git sees them, disable terminal credential prompts, and use a bounded
+   network timeout. Adding a remote is user-authorized configuration; Git
+   transports, credential helpers and hooks stay inside the local trust boundary.
    Direct previews/deletion reject linked parent directories, and untracked
    classification is rechecked on the Host before direct access. A final link
    cannot be previewed but can be unlinked without touching its target. These
@@ -135,9 +141,10 @@ icons -> React only (presentational SVG, no ctx)
 host-file-icon -> { icons, react, one guarded host-module request }
 host: http/* -> no project imports; git/exec -> errors; git/paths -> errors
       git/files -> { exec, paths }; git/changes -> { exec, paths, files, ignore }
-      git/mutations -> { exec, branches }; readers -> exec/paths/files as needed
+      git/mutations -> { exec, branches }; git/remotes -> { exec }
+      readers -> exec/paths/files as needed
       validation -> { errors, git/exec }; watch -> git/exec
-      rpc -> { validation, session, errors, git/exec, readers, changes, mutations, watch }
+      rpc -> { validation, session, errors, git/exec, readers, changes, mutations, remotes, watch }
       host-entry -> { rpc, http, watch, errors }
 ```
 
