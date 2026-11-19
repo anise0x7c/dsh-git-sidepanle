@@ -1,7 +1,8 @@
 /**
  * Pure folder-tree builder for the commit-details changed-file list. It groups
  * the flat list into folders and files, collapses unbranched folder chains into
- * a single label, and never touches React or the plugin context.
+ * a single label, hides the subtrees of collapsed folders, and never touches
+ * React or the plugin context.
  */
 
 /** One rendered folder row, with a collapsed chain folded into its label. */
@@ -14,6 +15,8 @@ export interface FileTreeFolderRow {
   readonly label: string
   /** Rendered nesting level, root-level rows are 0. */
   readonly depth: number
+  /** Whether the folder's descendants are hidden. */
+  readonly collapsed: boolean
 }
 
 /** One rendered file row. */
@@ -43,6 +46,15 @@ interface FolderNode<Entry extends { path: string }> {
 
 /** Name ordering shared by folders and files. */
 const NAME_ORDER: Intl.CollatorOptions = { numeric: true, sensitivity: 'base' }
+
+/** Expansion state used when the caller supplies no collapsed folders. */
+const NO_COLLAPSED: ReadonlySet<string> = new Set()
+
+/** Folders whose subtrees the rendered tree hides. */
+export interface FileTreeOptions {
+  /** Paths of collapsed folders; every folder not listed starts expanded. */
+  readonly collapsed?: ReadonlySet<string>
+}
 
 /**
  * Split a repository-relative path into its non-empty segments. Empty segments
@@ -137,14 +149,17 @@ function compareFiles<Entry extends { path: string }>(a: Entry, b: Entry): numbe
 
 /**
  * Append one folder node's rendered rows: subfolders before files, with each
- * unbranched folder chain collapsed into one row.
+ * unbranched folder chain collapsed into one row and a collapsed folder's
+ * subtree left out.
  * @param node - folder whose children are rendered.
  * @param depth - rendered depth of this folder's children.
+ * @param collapsed - paths of collapsed folders.
  * @param rows - output rows.
  */
 function appendFolderRows<Entry extends { path: string }>(
   node: FolderNode<Entry>,
   depth: number,
+  collapsed: ReadonlySet<string>,
   rows: FileTreeRow<Entry>[],
 ): void {
   const folders = [...node.folders.values()].sort(compareFolders)
@@ -157,8 +172,9 @@ function appendFolderRows<Entry extends { path: string }>(
       deepest = child
       label += `/${child.name}`
     }
-    rows.push({ type: 'folder', path: deepest.path, label, depth })
-    appendFolderRows(deepest, depth + 1, rows)
+    const isCollapsed = collapsed.has(deepest.path)
+    rows.push({ type: 'folder', path: deepest.path, label, depth, collapsed: isCollapsed })
+    if (!isCollapsed) appendFolderRows(deepest, depth + 1, collapsed, rows)
   }
   const files = [...node.files].sort(compareFiles)
   for (const entry of files) rows.push({ type: 'file', entry, depth })
@@ -167,17 +183,20 @@ function appendFolderRows<Entry extends { path: string }>(
 /**
  * Build the commit-details folder tree from changed-file entries. Subfolders
  * are emitted before files at every level, each unbranched folder chain
- * collapses into one indented row, and the input is neither mutated nor
+ * collapses into one indented row, collapsed folders keep their own row while
+ * their descendants are left out, and the input is neither mutated nor
  * required to be pre-sorted.
  * @param entries - changed-file entries, in any order.
+ * @param options - optional collapsed folder paths.
  * @returns folder and file rows in display order.
  */
 export function buildFileTree<Entry extends { path: string }>(
   entries: readonly Entry[],
+  options: FileTreeOptions = {},
 ): FileTreeRow<Entry>[] {
   const root = createRoot<Entry>()
   for (const entry of entries) insertEntry(root, entry)
   const rows: FileTreeRow<Entry>[] = []
-  appendFolderRows(root, 0, rows)
+  appendFolderRows(root, 0, options.collapsed ?? NO_COLLAPSED, rows)
   return rows
 }

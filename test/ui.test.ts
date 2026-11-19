@@ -1022,15 +1022,138 @@ test('commit details render the changed files as a collapsed folder tree', async
   const openedTabsBefore = mounted.openedTabs.length
   const callsBefore = mounted.calls.length
   for (const folder of folderRows) {
-    assert.equal(folder.props.role, undefined, 'folder rows are not buttons')
-    assert.equal(folder.props.tabIndex, undefined, 'folder rows take no focus')
-    // A real click on a folder row reaches no handler; if one is ever added,
-    // dispatch it so this no-effect check still means something.
-    if (typeof folder.props.onClick === 'function') mounted.harness.click(folder)
+    assert.equal(folder.props.role, 'button', 'folder rows are disclosure controls')
+    assert.equal(folder.props.tabIndex, 0, 'folder rows take keyboard focus')
+    assert.equal(folder.props['aria-expanded'], true, 'folders start expanded')
+    const [toggle] = collectElements(folder, (element) => hasClass(element, 'dshgg-folderToggle'))
+    assert.ok(toggle, 'every folder row reserves the disclosure slot')
+    const [chevron] = collectElements(toggle, (element) => hasClass(element, 'dshgg-chevron'))
+    assert.ok(chevron, 'the disclosure slot holds the expansion arrow')
+    assert.equal(chevron.props['data-open'], 'true', 'an expanded folder points its arrow down')
+    assert.equal(
+      collectElements(folder, (element) => element.type === 'svg').length,
+      1,
+      'the folder row draws only its expansion arrow, not a folder glyph',
+    )
   }
   await mounted.harness.flush()
-  assert.equal(mounted.openedTabs.length, openedTabsBefore, 'a folder row opens no diff tab')
-  assert.equal(mounted.calls.length, callsBefore, 'a folder row requests nothing')
+  assert.equal(mounted.openedTabs.length, openedTabsBefore, 'rendering a folder row opens no diff')
+  assert.equal(mounted.calls.length, callsBefore, 'rendering a folder row requests nothing')
+  await mounted.harness.dispose()
+})
+
+test('a details folder collapses and expands by pointer and keyboard', async () => {
+  const treeDetails: CommitDetails = {
+    ...COMMIT_DETAILS,
+    files: [
+      { path: 'src/app.js', letter: 'M' },
+      { path: 'src/util/deep/b.ts', letter: 'A' },
+      { path: 'docs/gone.md', letter: 'D' },
+      { path: 'top.md', letter: 'M' },
+    ],
+  }
+  const mounted = await mountGit({ commitDetails: treeDetails })
+  await openCommitDetails(mounted)
+  const rows = (): TestElement[] =>
+    collectElements(
+      commitCard(mounted.harness),
+      (element) => hasClass(element, 'dshgg-folderRow') || hasClass(element, 'dshgg-fileRow'),
+    )
+  const titles = (): unknown[] => rows().map((row) => row.props.title)
+  const folder = (path: string): TestElement => {
+    const [row] = rows().filter(
+      (candidate) => hasClass(candidate, 'dshgg-folderRow') && candidate.props.title === path,
+    )
+    assert.ok(row, `no folder row rendered for ${path}`)
+    return row
+  }
+  const arrow = (path: string): TestElement => {
+    const [chevron] = collectElements(folder(path), (element) => hasClass(element, 'dshgg-chevron'))
+    assert.ok(chevron, `no expansion arrow rendered for ${path}`)
+    return chevron
+  }
+  const openedTabs = mounted.openedTabs.length
+  const calls = mounted.calls.length
+
+  mounted.harness.click(folder('src'))
+  await mounted.harness.flush()
+  assert.equal(folder('src').props['aria-expanded'], false, 'a pointer click collapses the folder')
+  assert.equal(arrow('src').props['data-open'], 'false', 'the collapsed arrow points right')
+  assert.deepEqual(
+    titles(),
+    ['docs', 'docs/gone.md', 'src', 'top.md'],
+    'the collapsed folder keeps its row and hides every nested row',
+  )
+  assert.equal(
+    collectElements(commitCard(mounted.harness), (element) => hasClass(element, 'dshgg-fileRow'))
+      .length,
+    2,
+    'only the files outside the collapsed subtree remain',
+  )
+
+  mounted.harness.click(folder('src'))
+  await mounted.harness.flush()
+  assert.equal(folder('src').props['aria-expanded'], true, 'a second click expands the folder')
+  assert.equal(arrow('src').props['data-open'], 'true', 'the expanded arrow points down')
+  assert.deepEqual(
+    titles(),
+    ['docs', 'docs/gone.md', 'src', 'src/util/deep', 'src/util/deep/b.ts', 'src/app.js', 'top.md'],
+    'expanding restores the subtree where it was',
+  )
+
+  mounted.harness.click(folder('src/util/deep'))
+  await mounted.harness.flush()
+  assert.equal(folder('src').props['aria-expanded'], true, 'the parent stays expanded')
+  assert.deepEqual(
+    titles(),
+    ['docs', 'docs/gone.md', 'src', 'src/util/deep', 'src/app.js', 'top.md'],
+    'collapsing a nested folder hides only its own descendants',
+  )
+  mounted.harness.click(folder('src/util/deep'))
+  await mounted.harness.flush()
+
+  let prevented = false
+  mounted.harness.keydown(folder('docs'), {
+    key: 'Enter',
+    preventDefault: () => {
+      prevented = true
+    },
+  })
+  await mounted.harness.flush()
+  assert.equal(prevented, true, 'keyboard activation consumes the key')
+  assert.equal(folder('docs').props['aria-expanded'], false, 'Enter collapses the folder')
+  assert.deepEqual(titles(), [
+    'docs',
+    'src',
+    'src/util/deep',
+    'src/util/deep/b.ts',
+    'src/app.js',
+    'top.md',
+  ])
+  mounted.harness.keydown(folder('docs'), { key: ' ' })
+  await mounted.harness.flush()
+  assert.equal(folder('docs').props['aria-expanded'], true, 'Space expands the folder')
+  assert.equal(folder('docs').props.tabIndex, 0, 'the activated row stays focusable')
+  assert.equal(mounted.openedTabs.length, openedTabs, 'toggling a folder opens no diff tab')
+  assert.equal(mounted.calls.length, calls, 'toggling a folder requests nothing')
+
+  mounted.harness.click(folder('src'))
+  await mounted.harness.flush()
+  assert.equal(folder('src').props['aria-expanded'], false)
+  mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
+  await finishMotion(mounted.harness)
+  await openCommitDetails(mounted, 1)
+  const reopened = collectElements(commitCard(mounted.harness), (element) =>
+    hasClass(element, 'dshgg-folderRow'),
+  )
+  assert.equal(reopened.length, 3, 'the newly opened details render the same tree')
+  for (const row of reopened) {
+    assert.equal(
+      row.props['aria-expanded'],
+      true,
+      'another commit opens every folder expanded again',
+    )
+  }
   await mounted.harness.dispose()
 })
 
@@ -2209,8 +2332,9 @@ test('View Details shows a commit and a file opens the commit diff', async () =>
       { paddingLeft: '6px' },
       'root folder rows sit at the first nesting level',
     )
-    assert.equal(row.props.role, undefined, 'folder rows are not buttons')
-    assert.equal(row.props.tabIndex, undefined, 'folder rows take no focus')
+    assert.equal(row.props.role, 'button', 'folder rows are disclosure controls')
+    assert.equal(row.props.tabIndex, 0, 'folder rows take keyboard focus')
+    assert.equal(row.props['aria-expanded'], true, 'folders start expanded')
     assert.equal(hasClass(row, 'dshgg-fileRow'), false, 'folder rows are not file rows')
   }
   const commitTitles = collectElements(card, (element) => hasClass(element, 'dshgg-fileRow')).map(

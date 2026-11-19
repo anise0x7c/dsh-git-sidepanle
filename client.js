@@ -312,16 +312,6 @@ function FileIcon(props) {
     h("path", { key: "b", d: "M9 1.8v3h3" })
   ]);
 }
-function FolderIcon(props) {
-  const size = props?.size ?? 14;
-  return svgIcon(
-    size,
-    h("path", {
-      d: "M2 3.5h4.1l1.5 1.7H14v7.3H2z"
-    }),
-    { className: props?.className }
-  );
-}
 function AlertIcon(props) {
   const size = props?.size ?? 16;
   return svgIcon(size, [
@@ -1549,12 +1539,14 @@ function useChangeActions(options) {
 
 // src/client/panel/hooks/useCommitDetails.ts
 var import_react10 = require("react");
+var NO_COLLAPSED_FOLDERS = /* @__PURE__ */ new Set();
 function useCommitDetails(options) {
   const { call, refs } = options;
   const [selected, setSelected] = (0, import_react10.useState)(null);
   const [details, setDetails] = (0, import_react10.useState)(null);
   const [loading, setLoading] = (0, import_react10.useState)(false);
   const [failure, setFailure] = (0, import_react10.useState)(null);
+  const [collapsedFolders, setCollapsedFolders] = (0, import_react10.useState)(NO_COLLAPSED_FOLDERS);
   const requestToken = (0, import_react10.useRef)(0);
   const loadCommit = (0, import_react10.useCallback)(
     async (commit) => {
@@ -1583,6 +1575,7 @@ function useCommitDetails(options) {
   const selectCommit = (0, import_react10.useCallback)(
     (commit) => {
       if (commit === null || commit === void 0) return;
+      setCollapsedFolders(NO_COLLAPSED_FOLDERS);
       setSelected({
         oid: commit.oid,
         shortOid: commit.shortOid,
@@ -1604,7 +1597,25 @@ function useCommitDetails(options) {
   const retryCommit = (0, import_react10.useCallback)(() => {
     if (selected !== null) void loadCommit(selected);
   }, [loadCommit, selected]);
-  return { selected, details, loading, failure, selectCommit, closeCommit, retryCommit };
+  const toggleFolder = (0, import_react10.useCallback)((path) => {
+    setCollapsedFolders((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+  return {
+    selected,
+    details,
+    loading,
+    failure,
+    collapsedFolders,
+    selectCommit,
+    closeCommit,
+    retryCommit,
+    toggleFolder
+  };
 }
 
 // src/client/panel/hooks/useCommitExpansion.ts
@@ -2497,20 +2508,42 @@ function renderFileRows(entries, context) {
 }
 function FileFolderRow(props) {
   const folder = props.folder;
+  const open = !folder.collapsed;
   return h9(
     "div",
     {
       className: "dshgg-folderRow",
+      role: "button",
+      tabIndex: 0,
+      "aria-expanded": open,
       title: folder.path,
-      style: { paddingLeft: `${6 + folder.depth * 14}px` }
+      style: { paddingLeft: `${6 + folder.depth * 14}px` },
+      onClick: () => props.onToggle(folder.path),
+      onKeyDown: (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        props.onToggle(folder.path);
+      }
     },
-    h9("span", { className: "dshgg-folderIcon" }, h9(FolderIcon, { size: 14 })),
+    h9(
+      "span",
+      { className: "dshgg-folderToggle" },
+      h9(
+        "span",
+        { className: "dshgg-chevron", "data-open": open ? "true" : "false" },
+        h9(ChevronRightIcon, { size: 12 })
+      )
+    ),
     h9("span", { className: "dshgg-folderName" }, folder.label)
   );
 }
 function renderFileTree(rows, context) {
   return rows.map(
-    (row) => row.type === "folder" ? h9(FileFolderRow, { key: `folder:${row.path}`, folder: row }) : fileRowElement(row.entry, context, row.depth)
+    (row) => row.type === "folder" ? h9(FileFolderRow, {
+      key: `folder:${row.path}`,
+      folder: row,
+      onToggle: context.onToggleFolder
+    }) : fileRowElement(row.entry, context, row.depth)
   );
 }
 
@@ -2770,6 +2803,7 @@ var import_react25 = require("react");
 
 // src/client/git/tree.ts
 var NAME_ORDER = { numeric: true, sensitivity: "base" };
+var NO_COLLAPSED = /* @__PURE__ */ new Set();
 function pathSegments(path) {
   return path.split("/").filter((segment) => segment !== "");
 }
@@ -2812,7 +2846,7 @@ function compareFiles(a, b) {
   if (byName !== 0) return byName;
   return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
 }
-function appendFolderRows(node, depth, rows) {
+function appendFolderRows(node, depth, collapsed, rows) {
   const folders = [...node.folders.values()].sort(compareFolders);
   for (const starting of folders) {
     let deepest = starting;
@@ -2823,17 +2857,18 @@ function appendFolderRows(node, depth, rows) {
       deepest = child;
       label += `/${child.name}`;
     }
-    rows.push({ type: "folder", path: deepest.path, label, depth });
-    appendFolderRows(deepest, depth + 1, rows);
+    const isCollapsed = collapsed.has(deepest.path);
+    rows.push({ type: "folder", path: deepest.path, label, depth, collapsed: isCollapsed });
+    if (!isCollapsed) appendFolderRows(deepest, depth + 1, collapsed, rows);
   }
   const files = [...node.files].sort(compareFiles);
   for (const entry of files) rows.push({ type: "file", entry, depth });
 }
-function buildFileTree(entries) {
+function buildFileTree(entries, options = {}) {
   const root = createRoot();
   for (const entry of entries) insertEntry(root, entry);
   const rows = [];
-  appendFolderRows(root, 0, rows);
+  appendFolderRows(root, 0, options.collapsed ?? NO_COLLAPSED, rows);
   return rows;
 }
 
@@ -2866,7 +2901,7 @@ function CommitDetails(props) {
   } else if (files.length === 0) {
     filesBody = h13("div", { key: "empty", className: "dshgg-commitNote" }, t("commitDetails.empty"));
   } else {
-    filesBody = renderFileTree(buildFileTree(files), {
+    filesBody = renderFileTree(buildFileTree(files, { collapsed: props.collapsedFolders }), {
       t,
       busy: false,
       mode: "commit",
@@ -2877,6 +2912,7 @@ function CommitDetails(props) {
       },
       onDiscard: () => {
       },
+      onToggleFolder: props.onToggleFolder,
       menuTrigger: props.menuTrigger,
       menuTarget: (entry) => props.rowTarget("commitFile", { section: "commit", path: entry.path })
     });
@@ -4233,6 +4269,8 @@ function GitPanel(props) {
     loading: commitState.loading,
     failure: commitState.failure,
     files: commitRows,
+    collapsedFolders: commitState.collapsedFolders,
+    onToggleFolder: commitState.toggleFolder,
     onBack: commitState.closeCommit,
     onRetry: commitState.retryCommit,
     onOpenFile: openCommitDiff,
@@ -4648,9 +4686,9 @@ var rows_default = `/* ---------------------------------------------------------
   text-decoration: line-through;
 }
 
-/* Commit-details folder tree: a collapsed chain is one non-interactive label.
- * The inline left padding adds the nesting depth while the right padding stays
- * compact. */
+/* Commit-details folder tree: a collapsed chain is one row, and every folder
+ * row is a disclosure control. The inline left padding adds the nesting depth
+ * while the right padding stays compact. */
 .dshgg-folderRow {
   display: flex;
   flex: none;
@@ -4662,10 +4700,25 @@ var rows_default = `/* ---------------------------------------------------------
   border-radius: var(--dsw-radius-md);
   color: var(--dsw-alias-label-secondary);
   font: var(--dsw-font-xs-13);
-  cursor: default;
+  cursor: pointer;
+  user-select: none;
 }
 
-.dshgg-folderIcon {
+@media (hover: hover) {
+  .dshgg-folderRow:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dshgg-folderRow:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
+/* The disclosure slot keeps the width of a file row's icon column so folder
+ * names and file names start on the same vertical line. */
+.dshgg-folderToggle {
   display: flex;
   flex: none;
   align-items: center;

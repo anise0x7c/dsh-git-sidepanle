@@ -31,6 +31,9 @@ export interface LoadedCommitDetails {
   readonly truncated: boolean
 }
 
+/** Every folder of a freshly opened details tree is expanded. */
+const NO_COLLAPSED_FOLDERS: ReadonlySet<string> = new Set()
+
 /** Inputs of {@link useCommitDetails}. */
 export interface UseCommitDetailsOptions {
   /** Panel RPC caller. */
@@ -49,12 +52,16 @@ export interface CommitDetailsState {
   readonly loading: boolean
   /** Failed details read. */
   readonly failure: Failure | null
+  /** Folder paths whose subtrees the open details tree hides. */
+  readonly collapsedFolders: ReadonlySet<string>
   /** Open one commit's details. */
   readonly selectCommit: (commit: CommitSummary | null | undefined) => void
   /** Return to the change list. */
   readonly closeCommit: () => void
   /** Retry the failed details read for the selected commit. */
   readonly retryCommit: () => void
+  /** Collapse or expand one folder of the open details tree. */
+  readonly toggleFolder: (path: string) => void
 }
 
 /**
@@ -70,6 +77,8 @@ export function useCommitDetails(options: UseCommitDetailsOptions): CommitDetail
   const [details, setDetails] = useState<LoadedCommitDetails | null>(null)
   const [loading, setLoading] = useState(false)
   const [failure, setFailure] = useState<Failure | null>(null)
+  const [collapsedFolders, setCollapsedFolders] =
+    useState<ReadonlySet<string>>(NO_COLLAPSED_FOLDERS)
   const requestToken = useRef(0)
 
   const loadCommit = useCallback(
@@ -100,6 +109,8 @@ export function useCommitDetails(options: UseCommitDetailsOptions): CommitDetail
   const selectCommit = useCallback(
     (commit: CommitSummary | null | undefined): void => {
       if (commit === null || commit === undefined) return
+      // Every folder starts expanded for the commit being opened.
+      setCollapsedFolders(NO_COLLAPSED_FOLDERS)
       setSelected({
         oid: commit.oid,
         shortOid: commit.shortOid,
@@ -124,5 +135,24 @@ export function useCommitDetails(options: UseCommitDetailsOptions): CommitDetail
     if (selected !== null) void loadCommit(selected)
   }, [loadCommit, selected])
 
-  return { selected, details, loading, failure, selectCommit, closeCommit, retryCommit }
+  const toggleFolder = useCallback((path: string): void => {
+    setCollapsedFolders((current) => {
+      const next = new Set(current)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }, [])
+
+  return {
+    selected,
+    details,
+    loading,
+    failure,
+    collapsedFolders,
+    selectCommit,
+    closeCommit,
+    retryCommit,
+    toggleFolder,
+  }
 }

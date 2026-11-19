@@ -103,9 +103,9 @@
   text-decoration: line-through;
 }
 
-/* Commit-details folder tree: a collapsed chain is one non-interactive label.
- * The inline left padding adds the nesting depth while the right padding stays
- * compact. */
+/* Commit-details folder tree: a collapsed chain is one row, and every folder
+ * row is a disclosure control. The inline left padding adds the nesting depth
+ * while the right padding stays compact. */
 .dshgg-folderRow {
   display: flex;
   flex: none;
@@ -117,10 +117,25 @@
   border-radius: var(--dsw-radius-md);
   color: var(--dsw-alias-label-secondary);
   font: var(--dsw-font-xs-13);
-  cursor: default;
+  cursor: pointer;
+  user-select: none;
 }
 
-.dshgg-folderIcon {
+@media (hover: hover) {
+  .dshgg-folderRow:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dshgg-folderRow:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
+/* The disclosure slot keeps the width of a file row's icon column so folder
+ * names and file names start on the same vertical line. */
+.dshgg-folderToggle {
   display: flex;
   flex: none;
   align-items: center;

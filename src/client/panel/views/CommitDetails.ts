@@ -39,6 +39,10 @@ export interface CommitDetailsProps {
   readonly failure: Failure | null
   /** Sorted changed files with display letters. */
   readonly files: readonly CommitFileRow[]
+  /** Folder paths whose subtrees the tree hides. */
+  readonly collapsedFolders: ReadonlySet<string>
+  /** Collapse or expand one folder of the tree. */
+  readonly onToggleFolder: (path: string) => void
   /** Leave the details view. */
   readonly onBack: () => void
   /** Retry the failed read. */
@@ -87,7 +91,7 @@ export function CommitDetails(props: CommitDetailsProps): React.ReactElement {
   } else if (files.length === 0) {
     filesBody = h('div', { key: 'empty', className: 'dshgg-commitNote' }, t('commitDetails.empty'))
   } else {
-    filesBody = renderFileTree(buildFileTree(files), {
+    filesBody = renderFileTree(buildFileTree(files, { collapsed: props.collapsedFolders }), {
       t,
       busy: false,
       mode: 'commit',
@@ -95,6 +99,7 @@ export function CommitDetails(props: CommitDetailsProps): React.ReactElement {
       onStage: () => {},
       onUnstage: () => {},
       onDiscard: () => {},
+      onToggleFolder: props.onToggleFolder,
       menuTrigger: props.menuTrigger,
       menuTarget: (entry) => props.rowTarget('commitFile', { section: 'commit', path: entry.path }),
     })

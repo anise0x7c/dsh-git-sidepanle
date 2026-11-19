@@ -139,18 +139,6 @@ export function FileIcon(props: IconProps): React.ReactElement {
   ])
 }
 
-/** Outlined folder glyph for the commit-details changed-file tree. */
-export function FolderIcon(props: IconProps): React.ReactElement {
-  const size = props?.size ?? 14
-  return svgIcon(
-    size,
-    h('path', {
-      d: 'M2 3.5h4.1l1.5 1.7H14v7.3H2z',
-    }),
-    { className: props?.className },
-  )
-}
-
 export function AlertIcon(props: IconProps): React.ReactElement {
   const size = props?.size ?? 16
   return svgIcon(size, [

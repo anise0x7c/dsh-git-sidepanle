@@ -423,9 +423,16 @@ so the chain costs one indentation level instead of one per folder; a file in a
 folder or more than one child SHALL end the collapse there. Within a folder,
 subfolders SHALL precede files, and both SHALL be ordered by name
 case-insensitively with numeric runs compared as numbers. Folder rows SHALL be
-labels rather than actions: they SHALL NOT open a diff, open a menu, or take
-keyboard focus. Each file row SHALL show the file's name with the Web
-application's own file-type icon for its repository-relative path before the
+disclosure controls: each SHALL show an expansion arrow in place of a folder
+icon, pointing right while the folder is collapsed and down while it is
+expanded, and SHALL expose its expanded state to assistive technology. Activating
+a folder row by pointer, Enter or Space SHALL collapse or expand every nested
+folder and file row beneath it, without opening a diff or a menu. Every folder
+SHALL start expanded whenever the details view opens, and collapsing or
+expanding one folder SHALL NOT change another folder's state. The collapse state
+SHALL belong to the open details card and SHALL be discarded when the user
+returns to the change list. Each file row SHALL show the file's name with the
+Web application's own file-type icon for its repository-relative path before the
 name, drawn as the application's workspace explorer draws it, and the status
 letter identifying the file's change at the row's end in that status's color;
 the full path SHALL remain in the row tooltip. When the application provides no
@@ -463,9 +470,9 @@ without moving.
 
 - **GIVEN** a commit changed several files below a shared directory
 - **WHEN** the user opens that commit's details
-- **THEN** each folder appears once above its contents, the files inside are
-  one indentation level below that folder, more deeply nested contents are
-  indented further, and folder rows are labels rather than actions
+- **THEN** each folder appears once above its contents with its expansion arrow,
+  the files inside are one indentation level below that folder, more deeply
+  nested contents are indented further, and no folder row shows a folder glyph
 
 #### Scenario: Unbranched folder chains collapse into one row
 
@@ -483,9 +490,51 @@ without moving.
 - **THEN** the shared parent appears as its own folder row and each sibling
   folder is a separate row one indentation level below it
 
-#### Scenario: Folder rows are not actions
+#### Scenario: Folders start expanded
 
-- **WHEN** the user points at or activates a folder row in the details tree
+- **WHEN** the user opens a commit's details
+- **THEN** every folder row shows the down arrow of an expanded folder and its
+  whole subtree is listed
+
+#### Scenario: A folder collapses and expands
+
+- **GIVEN** a folder row is expanded and its subtree contains files and folders
+- **WHEN** the user activates that folder row
+- **THEN** every nested folder and file row disappears, the folder row stays in
+  place with a right-pointing arrow, and activating it again restores the
+  subtree
+
+#### Scenario: Nested folders toggle independently
+
+- **GIVEN** a folder has two expanded subfolders
+- **WHEN** the user collapses one subfolder
+- **THEN** only that subfolder's descendants disappear while the parent, the
+  other subfolder and the surrounding rows keep their places and states
+
+#### Scenario: Keyboard toggles a folder
+
+- **GIVEN** a folder row has keyboard focus
+- **WHEN** the user presses Enter or Space
+- **THEN** the folder collapses or expands as a pointer activation would and
+  the row keeps focus
+
+#### Scenario: A collapsed chain hides its contents
+
+- **GIVEN** an unbranched folder chain is shown as one row
+- **WHEN** the user collapses that row
+- **THEN** the rows of every folder and file below it disappear, and expanding
+  the row again restores them below it
+
+#### Scenario: Another commit starts expanded
+
+- **GIVEN** the user collapsed a folder in one commit's details and returned to
+  the change list
+- **WHEN** the user opens any commit's details again
+- **THEN** every folder of the newly opened details is expanded
+
+#### Scenario: Folder rows open nothing else
+
+- **WHEN** the user activates a folder row by pointer or keyboard
 - **THEN** no diff opens and no menu appears
 
 #### Scenario: The card matches the operation prompt's material

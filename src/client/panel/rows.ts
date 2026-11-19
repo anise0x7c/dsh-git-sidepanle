@@ -8,7 +8,7 @@ import { createElement } from 'react'
 import { splitPath, statusKey } from '../git/format.ts'
 import type { FileTreeFolderRow, FileTreeRow } from '../git/tree.ts'
 import { HostFileIcon } from '../host-file-icon.ts'
-import { FolderIcon, MinusIcon, PlusIcon, UndoIcon } from '../icons.ts'
+import { ChevronRightIcon, MinusIcon, PlusIcon, UndoIcon } from '../icons.ts'
 import type { MenuTarget, MenuTriggerFactory } from '../menu/trigger.ts'
 import type { LocaleBinder } from '../types/dsh.ts'
 import { IconButton } from './controls.ts'
@@ -245,37 +245,70 @@ export function renderFileRows<Entry extends FileRowEntry>(
 }
 
 /**
- * Render one non-interactive folder row of the commit-details tree.
- * @param props - folder row data.
+ * Render one folder row of the commit-details tree as a disclosure control: an
+ * expansion arrow replaces the folder glyph, and the row toggles its whole
+ * subtree by pointer, Enter or Space without opening a diff or a menu.
+ * @param props - folder row data and its toggle handler.
  * @returns the folder row element.
  */
-export function FileFolderRow(props: { readonly folder: FileTreeFolderRow }): React.ReactElement {
+export function FileFolderRow(props: {
+  readonly folder: FileTreeFolderRow
+  readonly onToggle: (path: string) => void
+}): React.ReactElement {
   const folder = props.folder
+  const open = !folder.collapsed
   return h(
     'div',
     {
       className: 'dshgg-folderRow',
+      role: 'button',
+      tabIndex: 0,
+      'aria-expanded': open,
       title: folder.path,
       style: { paddingLeft: `${6 + folder.depth * 14}px` },
+      onClick: () => props.onToggle(folder.path),
+      onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        props.onToggle(folder.path)
+      },
     },
-    h('span', { className: 'dshgg-folderIcon' }, h(FolderIcon, { size: 14 })),
+    h(
+      'span',
+      { className: 'dshgg-folderToggle' },
+      h(
+        'span',
+        { className: 'dshgg-chevron', 'data-open': open ? 'true' : 'false' },
+        h(ChevronRightIcon, { size: 12 }),
+      ),
+    ),
     h('span', { className: 'dshgg-folderName' }, folder.label),
   )
+}
+
+/** Row wiring of the commit-details folder tree. */
+export interface FileTreeContext<Entry extends FileRowEntry> extends FileRowsContext<Entry> {
+  /** Collapse or expand one folder row's subtree. */
+  readonly onToggleFolder: (path: string) => void
 }
 
 /**
  * Render the commit-details folder tree.
  * @param rows - tree rows in display order.
- * @param context - row wiring shared with the flat lists.
+ * @param context - row wiring shared with the flat lists plus the folder toggle.
  * @returns one folder or file row element per row.
  */
 export function renderFileTree<Entry extends FileRowEntry>(
   rows: readonly FileTreeRow<Entry>[],
-  context: FileRowsContext<Entry>,
+  context: FileTreeContext<Entry>,
 ): React.ReactElement[] {
   return rows.map((row) =>
     row.type === 'folder'
-      ? h(FileFolderRow, { key: `folder:${row.path}`, folder: row })
+      ? h(FileFolderRow, {
+          key: `folder:${row.path}`,
+          folder: row,
+          onToggle: context.onToggleFolder,
+        })
       : fileRowElement(row.entry, context, row.depth),
   )
 }

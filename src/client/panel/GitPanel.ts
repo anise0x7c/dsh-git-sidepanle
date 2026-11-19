@@ -436,6 +436,8 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           loading: commitState.loading,
           failure: commitState.failure,
           files: commitRows,
+          collapsedFolders: commitState.collapsedFolders,
+          onToggleFolder: commitState.toggleFolder,
           onBack: commitState.closeCommit,
           onRetry: commitState.retryCommit,
           onOpenFile: openCommitDiff,
