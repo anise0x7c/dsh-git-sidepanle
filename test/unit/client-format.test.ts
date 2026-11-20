@@ -302,6 +302,10 @@ describe('errorText', () => {
       errorText(t, { code: 'not-untracked', message: 'Host detail' }),
       'T(error.notUntracked)',
     )
+    assert.equal(
+      errorText(t, { code: 'nothing-to-amend', message: 'Host detail' }),
+      'T(error.nothingToAmend)',
+    )
   })
 
   test('shows the failure message for unmapped codes, falling back to unknown', () => {

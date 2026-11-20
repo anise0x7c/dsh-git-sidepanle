@@ -831,32 +831,46 @@ async function readCommitDetails(root, oid) {
 
 // src/host/git/mutations.ts
 var COMMIT_TIMEOUT_MS = 12e4;
-async function commitChanges(root, message, stageAll) {
-  if (stageAll) await gitOrThrow(root, ["add", "-A"]);
-  const staged = await runGit(root, ["diff", "--cached", "--quiet"]);
-  if (staged.ok)
-    throw new GitGraphError("nothing-staged", "There are no staged changes to commit.", 409);
-  if (staged.code !== 1) {
-    if (staged.code === "ENOENT")
-      throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
-    throw new GitGraphError(
-      "git-command-failed",
-      staged.stderr.trim() || "git diff --cached failed",
-      409
-    );
+async function commitChanges(root, message, stageAll, amend = false) {
+  if (amend) {
+    const head2 = await runGit(root, ["rev-parse", "--verify", "--quiet", "HEAD"]);
+    if (!head2.ok) {
+      if (head2.code === "ENOENT")
+        throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
+      throw new GitGraphError("nothing-to-amend", "The current branch has no commit to amend.", 409);
+    }
   }
-  const committed = await runGit(root, ["commit", "-m", message], {
+  if (stageAll) await gitOrThrow(root, ["add", "-A"]);
+  if (!amend) {
+    const staged = await runGit(root, ["diff", "--cached", "--quiet"]);
+    if (staged.ok)
+      throw new GitGraphError("nothing-staged", "There are no staged changes to commit.", 409);
+    if (staged.code !== 1) {
+      if (staged.code === "ENOENT")
+        throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
+      throw new GitGraphError(
+        "git-command-failed",
+        staged.stderr.trim() || "git diff --cached failed",
+        409
+      );
+    }
+  }
+  const committed = await runGit(root, ["commit", ...amend ? ["--amend"] : [], "-m", message], {
     timeout: COMMIT_TIMEOUT_MS
   });
   if (!committed.ok) {
     if (committed.code === "ENOENT")
       throw new GitGraphError("git-unavailable", "Git could not be run on the Host.", 503);
     const detail = `${committed.stdout}
-${committed.stderr}`.trim() || "git commit failed";
-    if (/nothing to commit|no changes added to commit/i.test(detail)) {
+${committed.stderr}`.trim();
+    if (amend) {
+      throw new GitGraphError("git-command-failed", detail || "git commit --amend failed", 409);
+    }
+    const failure = detail || "git commit failed";
+    if (/nothing to commit|no changes added to commit/i.test(failure)) {
       throw new GitGraphError("nothing-staged", "There are no staged changes to commit.", 409);
     }
-    throw new GitGraphError("git-command-failed", detail, 409);
+    throw new GitGraphError("git-command-failed", failure, 409);
   }
   const head = await runGit(root, ["rev-parse", "--short", "HEAD"]);
   return head.ok ? head.stdout.trim() : null;
@@ -1465,7 +1479,8 @@ async function dispatch(ctx, payload, registry) {
         commit: await commitChanges(
           root,
           commitMessageOf(payload.message),
-          payload.stageAll === true
+          payload.stageAll === true,
+          payload.amend === true
         )
       };
     case "checkout": {

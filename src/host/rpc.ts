@@ -160,6 +160,7 @@ export async function dispatch(
           root,
           commitMessageOf(payload.message),
           payload.stageAll === true,
+          payload.amend === true,
         ),
       }
     case 'checkout': {

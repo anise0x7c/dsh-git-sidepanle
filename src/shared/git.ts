@@ -370,7 +370,8 @@ export interface GitGraphPayloads {
   unstage: { paths: string[] }
   discard: { path: string; untracked?: boolean }
   ignore: { path: string }
-  commit: { message: string; stageAll?: boolean }
+  /** `amend` replaces HEAD instead of adding a commit; `stageAll` stages first. */
+  commit: { message: string; stageAll?: boolean; amend?: boolean }
   checkout: { branch: string }
   'checkout-detached': { oid: string }
   'create-branch': { oid: string; name: string }

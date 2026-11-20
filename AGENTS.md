@@ -19,7 +19,7 @@ right-click menus.
 - Both halves compile to committed JavaScript: `index.js`, `client.js` and
   their maps. A prepared plugin directory needs no compiler at install time.
 - Behavior truth lives in `.litespec/specs/git-sidebar/spec.md`
-  (51 requirements; latest archived change 2026-11-19 add-remote-management). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
+  (52 requirements; latest archived change 2026-11-20 commit-split-disabled). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
   `docs/DETAIL.zh.md` (Chinese). Architecture: `docs/ARCHITECTURE.md`.
   `docs/REFACTOR-PLAN.md` records the 0.3.0 split that produced the current
   layout and subsequent maintenance rounds — read completed sections for rationale,

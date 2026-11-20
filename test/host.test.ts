@@ -346,6 +346,40 @@ test('stage, unstage, diff, commit, and history work end to end', async () => {
   assert.equal(badOp.body.error.code, 'unknown-operation')
 })
 
+test('commit amend replaces the tip commit and is refused without HEAD', async () => {
+  const amendable = await mkdtemp(join(tmpRoot, 'amend-'))
+  await git(amendable, 'init', '-q', '-b', 'main')
+  await git(amendable, 'config', 'user.name', 'Git Graph Test')
+  await git(amendable, 'config', 'user.email', 'git-graph@example.test')
+  await writeFile(join(amendable, 'base.txt'), 'base\n')
+  await git(amendable, 'add', '-A')
+  await git(amendable, 'commit', '-q', '-m', 'base commit')
+  await writeFile(join(amendable, 'base.txt'), 'base amended\n')
+  await git(amendable, 'add', '-A')
+  const countBefore = (await git(amendable, 'rev-list', '--count', 'HEAD')).trim()
+
+  const amended = await withSessionServer(amendable, (baseUrl) =>
+    callAt(baseUrl, 'commit', { message: 'amended message', amend: true }),
+  )
+  assert.equal(amended.status, 200)
+  assert.equal(amended.body.ok, true)
+  assert.match(amended.body.value.commit ?? '', /^[0-9a-f]{7,}$/)
+  assert.equal((await git(amendable, 'rev-list', '--count', 'HEAD')).trim(), countBefore)
+  assert.equal((await git(amendable, 'log', '-1', '--format=%s')).trim(), 'amended message')
+  assert.match(await git(amendable, 'show', '--name-only', '--format=', 'HEAD'), /base\.txt/)
+
+  const unborn = await mkdtemp(join(tmpRoot, 'amend-unborn-'))
+  await git(unborn, 'init', '-q', '-b', 'main')
+  await git(unborn, 'config', 'user.name', 'Git Graph Test')
+  await git(unborn, 'config', 'user.email', 'git-graph@example.test')
+  const refused = await withSessionServer(unborn, (baseUrl) =>
+    callAt(baseUrl, 'commit', { message: 'nope', amend: true }),
+  )
+  assert.equal(refused.status, 409)
+  assert.equal(refused.body.ok, false)
+  assert.equal(refused.body.error.code, 'nothing-to-amend')
+})
+
 test('history pages backwards by offset and reports when older commits remain', async () => {
   const pagedRepo = await mkdtemp(join(tmpRoot, 'paged-'))
   await git(pagedRepo, 'init', '-b', 'main')

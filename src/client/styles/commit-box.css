@@ -38,18 +38,56 @@
   opacity: 0.5;
 }
 
-.dshgg-commitRow {
+/* The split button: the main commit control and its action-menu chevron share
+   one primary fill, separated by a hairline. An empty message or a running
+   action disables the whole control, so both halves and the hairline dim
+   together instead of reading as separate controls. */
+.dshgg-commitActions {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: stretch;
+  width: 100%;
+  height: 28px;
 }
 
-.dshgg-commitHint {
-  flex: 1;
+/* The wrapper dims as one control; its buttons opt out of their own disabled
+   opacity so the two halves and the hairline keep a single tone. */
+.dshgg-commitActions[data-disabled="true"] {
+  opacity: 0.4;
+}
+
+.dshgg-commitActions[data-disabled="true"] > .dshgg-btn {
+  opacity: 1;
+}
+
+.dshgg-commitMain {
+  flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
-  font: var(--dsw-font-xxxs-11);
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  height: 100%;
+  border-radius: var(--dsw-radius-sm) 0 0 var(--dsw-radius-sm);
+}
+
+.dshgg-commitExpand {
+  flex: none;
+  width: 30px;
+  height: 100%;
+  padding: 0;
+  border-radius: 0 var(--dsw-radius-sm) var(--dsw-radius-sm) 0;
+}
+
+.dshgg-commitDivider {
+  flex: none;
+  width: 0.5px;
+  margin: 6px 0;
+  background: var(--dsw-alias-label-primary-foreground);
+  opacity: 0.35;
+}
+
+.dshgg-commitActions .dshgg-commitMain:hover:not(:disabled),
+.dshgg-commitActions .dshgg-commitExpand:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.dshgg-commitMenu {
+  min-width: 200px;
 }

@@ -607,6 +607,26 @@ function buttonByText(harness: TestHarness, text: string): TestElement {
   return button
 }
 
+/** Open the split commit button's action menu. */
+async function openCommitMenu(mounted: MountedGit): Promise<void> {
+  mounted.harness.click(buttonByLabel(mounted.harness, 'commit.menu'))
+  await mounted.harness.flush()
+}
+
+/** Every rendered commit-menu entry, in menu order, without the separator. */
+function commitMenuItems(mounted: MountedGit): TestElement[] {
+  return mounted.harness.findAll(
+    (element) => element.type === 'button' && element.props['data-action'] !== undefined,
+  )
+}
+
+/** Find one commit-menu entry by its `data-action`. */
+function commitMenuItem(mounted: MountedGit, action: string): TestElement {
+  const item = commitMenuItems(mounted).find((element) => element.props['data-action'] === action)
+  assert.ok(item, `no commit menu item "${action}"`)
+  return item
+}
+
 /** Check the shared accessible content/footer contract, not component internals. */
 function floatingPanel(
   harness: TestHarness,
@@ -1949,6 +1969,267 @@ test('a failed commit keeps its message and reports no success Toast', async () 
     false,
     'a Git failure emits no success Toast',
   )
+  await mounted.harness.dispose()
+})
+
+test('an empty message disables both halves of the split commit button', async () => {
+  const mounted = await mountGit()
+  const [wrapper] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitActions'))
+  assert.ok(wrapper, 'the commit box renders the split commit actions')
+  assert.equal(wrapper.props['data-disabled'], 'true', 'the split control uses one disabled state')
+  const main = buttonByText(mounted.harness, 'commit.action')
+  assert.equal(
+    collectElements(wrapper, (element) => element === main).length,
+    1,
+    'the main commit control sits inside the split wrapper',
+  )
+  assert.equal(main.props.disabled, true)
+  const expand = buttonInside(wrapper, 'commit.menu')
+  assert.equal(expand.props.disabled, true, 'the expand control shares the commit button state')
+  assert.equal(expand.props['aria-haspopup'], 'menu')
+  assert.equal(expand.props['aria-expanded'], false)
+  mounted.harness.click(expand)
+  await mounted.harness.flush()
+  assert.equal(
+    commitMenuItems(mounted).length,
+    0,
+    'the menu cannot open while the message is empty',
+  )
+  await mounted.harness.dispose()
+})
+
+test('a typed message enables both halves and the menu lists the commit variants', async () => {
+  const mounted = await mountGit()
+  mounted.harness.change(
+    mounted.harness.findAll((element) => element.type === 'textarea')[0],
+    'feat: menu',
+  )
+  await mounted.harness.flush()
+  const [wrapper] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitActions'))
+  assert.ok(wrapper, 'the commit box renders the split commit actions')
+  assert.equal(
+    wrapper.props['data-disabled'],
+    undefined,
+    'a typed message enables the split control',
+  )
+  assert.equal(buttonByText(mounted.harness, 'commit.action').props.disabled, false)
+  assert.equal(buttonInside(wrapper, 'commit.menu').props.disabled, false)
+  await openCommitMenu(mounted)
+  assert.equal(buttonByLabel(mounted.harness, 'commit.menu').props['aria-expanded'], true)
+  const [menu] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitMenu'))
+  assert.ok(menu, 'the split button opens the commit action menu')
+  assert.equal(menu.props.role, 'menu')
+  assert.equal(menu.props['aria-label'], 'commit.menu')
+  const elements = menu.children.filter(isElement)
+  assert.deepEqual(
+    elements.map((element) =>
+      element.props.role === 'separator' ? 'separator' : element.props['data-action'],
+    ),
+    ['commit', 'amend', 'separator', 'commit-push', 'commit-sync'],
+  )
+  assert.deepEqual(
+    elements.map((element) =>
+      element.props.role === 'separator' ? 'separator' : elementText(element),
+    ),
+    ['commit.action', 'commit.amend', 'separator', 'commit.push', 'commit.sync'],
+  )
+  for (const element of elements) {
+    if (element.props.role === 'separator') continue
+    assert.equal(
+      element.props.disabled,
+      false,
+      'every entry is available with a message and an upstream',
+    )
+  }
+  await mounted.harness.dispose()
+})
+
+test('Escape and an outside press dismiss the commit action menu', async () => {
+  const mounted = await mountGit()
+  mounted.harness.change(
+    mounted.harness.findAll((element) => element.type === 'textarea')[0],
+    'feat: dismiss',
+  )
+  await mounted.harness.flush()
+  await openCommitMenu(mounted)
+  assert.equal(commitMenuItems(mounted).length, 4, 'the menu starts open')
+  const escapeResult = escapeKeydown()
+  assert.equal(escapeResult.prevented, false, 'the menu does not consume Escape')
+  await mounted.harness.flush()
+  assert.equal(commitMenuItems(mounted).length, 0, 'Escape closes the menu')
+  await openCommitMenu(mounted)
+  assert.equal(commitMenuItems(mounted).length, 4, 'the menu reopens')
+  dispatchDocumentPointerdown({})
+  await mounted.harness.flush()
+  assert.equal(commitMenuItems(mounted).length, 0, 'an outside pointerdown closes the menu')
+  await mounted.harness.dispose()
+})
+
+test('a running action disables both halves of the split commit button', async (t) => {
+  let release = (): void => {}
+  const until = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const mounted = await mountGit({ pending: { op: 'commit', until } })
+  t.after(async () => {
+    release()
+    await mounted.harness.flush()
+    await mounted.harness.dispose()
+  })
+  mounted.harness.change(
+    mounted.harness.findAll((element) => element.type === 'textarea')[0],
+    'feat: busy',
+  )
+  await mounted.harness.flush()
+  mounted.harness.click(buttonByText(mounted.harness, 'commit.action'))
+  await mounted.harness.flush()
+  const [wrapper] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitActions'))
+  assert.equal(wrapper?.props['data-disabled'], 'true', 'a running action dims the split control')
+  const [main] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitMain'))
+  assert.equal(main?.props.disabled, true, 'the commit control is unavailable')
+  assert.match(mounted.harness.text(), /commit\.committing/, 'the label shows the running commit')
+  assert.equal(buttonByLabel(mounted.harness, 'commit.menu').props.disabled, true)
+  assert.equal(commitMenuItems(mounted).length, 0, 'no menu opens over a running action')
+})
+
+test('the menu can amend HEAD with the typed message and no staging', async () => {
+  const mounted = await mountGit()
+  const messageBox = () => mounted.harness.findAll((element) => element.type === 'textarea')[0]
+  mounted.harness.change(messageBox(), 'fix: amend me')
+  await mounted.harness.flush()
+  await openCommitMenu(mounted)
+  mounted.harness.click(commitMenuItem(mounted, 'amend'))
+  await mounted.harness.flush()
+  const commitCall = mounted.calls.find((call) => call.op === 'commit')
+  assert.equal(commitCall?.message, 'fix: amend me')
+  assert.equal(commitCall?.amend, true, 'Amend replaces HEAD')
+  assert.equal(commitCall?.stageAll, undefined, 'Amend never stages every change')
+  assert.equal(messageBox()?.props.value, '', 'the amended message leaves the box empty')
+  assert.deepEqual(mounted.components.notifications, [{ text: 'commit.done', success: true }])
+  await mounted.harness.dispose()
+})
+
+test('Commit and Push commits and then pushes in that order', async () => {
+  const mounted = await mountGit()
+  const messageBox = () => mounted.harness.findAll((element) => element.type === 'textarea')[0]
+  mounted.harness.change(messageBox(), 'feat: ship it')
+  await mounted.harness.flush()
+  await openCommitMenu(mounted)
+  mounted.harness.click(commitMenuItem(mounted, 'commit-push'))
+  await mounted.harness.flush()
+  assert.deepEqual(
+    mounted.calls
+      .filter((call) => call.op === 'commit' || call.op === 'push')
+      .map((call) => call.op),
+    ['commit', 'push'],
+    'the commit lands before the push',
+  )
+  const commitCall = mounted.calls.find((call) => call.op === 'commit')
+  assert.equal(commitCall?.message, 'feat: ship it')
+  assert.notEqual(commitCall?.amend, true)
+  assert.deepEqual(mounted.components.notifications, [
+    { text: 'commit.done', success: true },
+    { text: 'remote.pushDone', success: true },
+  ])
+  assert.equal(messageBox()?.props.value, '', 'the committed message leaves the box empty')
+  await mounted.harness.dispose()
+})
+
+test('a failed push keeps the completed commit and reports the failure', async () => {
+  const mounted = await mountGit({ failOp: 'push' })
+  const messageBox = () => mounted.harness.findAll((element) => element.type === 'textarea')[0]
+  mounted.harness.change(messageBox(), 'fix: push fails')
+  await mounted.harness.flush()
+  await openCommitMenu(mounted)
+  mounted.harness.click(commitMenuItem(mounted, 'commit-push'))
+  await mounted.harness.flush()
+  assert.ok(
+    mounted.calls.some((call) => call.op === 'commit'),
+    'the commit still reaches the Host',
+  )
+  assert.equal(messageBox()?.props.value, '', 'the committed message stays cleared')
+  assert.deepEqual(mounted.components.notifications, [{ text: 'commit.done', success: true }])
+  assert.match(mounted.harness.text(), /git said no/, 'the panel shows the push failure')
+  await mounted.harness.dispose()
+})
+
+test('the combined commit entries need an upstream', async () => {
+  const mounted = await mountGit({
+    status: createStatus({ repo: createRepo({ upstream: null }) }),
+  })
+  mounted.harness.change(
+    mounted.harness.findAll((element) => element.type === 'textarea')[0],
+    'feat: no upstream',
+  )
+  await mounted.harness.flush()
+  await openCommitMenu(mounted)
+  for (const action of ['commit-push', 'commit-sync']) {
+    const item = commitMenuItem(mounted, action)
+    assert.equal(item.props.disabled, true, `${action} is blocked without an upstream`)
+    assert.equal(item.props.title, 'remote.noUpstream')
+  }
+  for (const action of ['commit', 'amend']) {
+    assert.equal(
+      commitMenuItem(mounted, action).props.disabled,
+      false,
+      `${action} stays available without an upstream`,
+    )
+  }
+  await mounted.harness.dispose()
+})
+
+test('Commit and Sync stages everything first when nothing is staged', async () => {
+  const stagedStatus = createStatus({
+    files: [
+      { kind: 'ordinary', x: '.', y: 'M', path: 'src/app.js', conflict: false, untracked: false },
+    ],
+  })
+  const mounted = await mountGit({ status: stagedStatus })
+  const messageBox = () => mounted.harness.findAll((element) => element.type === 'textarea')[0]
+  mounted.harness.change(messageBox(), 'chore: sync everything')
+  await mounted.harness.flush()
+  await openCommitMenu(mounted)
+  mounted.harness.click(commitMenuItem(mounted, 'commit-sync'))
+  await mounted.harness.flush()
+  assert.match(mounted.harness.text(), /commit\.emptyConfirm/)
+  assert.equal(
+    mounted.calls.filter((call) => call.op === 'commit' || call.op === 'sync').length,
+    0,
+    'no repository write happens before the confirmation',
+  )
+  mounted.harness.click(buttonByText(mounted.harness, 'commit.stageAll'))
+  await mounted.harness.flush()
+  assert.deepEqual(
+    mounted.calls
+      .filter((call) => call.op === 'commit' || call.op === 'sync')
+      .map((call) => call.op),
+    ['commit', 'sync'],
+    'the staged commit lands before the sync',
+  )
+  const commitCall = mounted.calls.find((call) => call.op === 'commit')
+  assert.equal(commitCall?.stageAll, true)
+  assert.notEqual(commitCall?.amend, true)
+  assert.equal(messageBox()?.props.value, '')
+  await mounted.harness.dispose()
+})
+
+test('Commit and Push with no changes reports that there is nothing to commit', async () => {
+  const mounted = await mountGit({ status: createStatus({ files: [] }) })
+  mounted.harness.change(
+    mounted.harness.findAll((element) => element.type === 'textarea')[0],
+    'feat: nothing',
+  )
+  await mounted.harness.flush()
+  await openCommitMenu(mounted)
+  mounted.harness.click(commitMenuItem(mounted, 'commit-push'))
+  await mounted.harness.flush()
+  assert.equal(
+    mounted.calls.filter((call) => call.op === 'commit' || call.op === 'push' || call.op === 'sync')
+      .length,
+    0,
+    'an empty change list runs no repository write',
+  )
+  assert.match(mounted.harness.text(), /commit\.nothing/)
   await mounted.harness.dispose()
 })
 

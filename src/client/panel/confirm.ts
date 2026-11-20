@@ -5,10 +5,11 @@
 import { baseName } from '../git/format.ts'
 import type { ChangeEntry } from '../types/domain.ts'
 import type { LocaleBinder } from '../types/dsh.ts'
+import type { StageAllCommitMode } from './commit-mode.ts'
 
 /** The confirmation dialog the panel currently shows. */
 export type ConfirmState =
-  | { readonly kind: 'commitAll' }
+  | { readonly kind: 'commitAll'; readonly mode: StageAllCommitMode }
   | { readonly kind: 'discard'; readonly entry: ChangeEntry }
   | { readonly kind: 'discardAll'; readonly entries: readonly ChangeEntry[] }
 

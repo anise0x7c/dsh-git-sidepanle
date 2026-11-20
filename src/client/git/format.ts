@@ -205,6 +205,7 @@ export function errorText(t: LocaleBinder, failure: Failure | null | undefined):
   if (code === 'discard-unborn') return t('error.discardUnborn')
   if (code === 'unknown-commit') return t('error.unknownCommit')
   if (code === 'not-untracked') return t('error.notUntracked')
+  if (code === 'nothing-to-amend') return t('error.nothingToAmend')
   if (code === 'no-upstream') return t('remote.noUpstream')
   if (code === 'no-current-branch') return t('remote.noBranch')
   if (code === 'unborn-branch') return t('remote.unborn')

@@ -172,6 +172,14 @@ every public export or semantic branch has a consumer.
    path. Commit/checkout also refresh history. The commit box sizes itself to its
    message (`panel/autosize.ts`): one line at rest, ten at most, re-measured from
    a layout effect per message and from a width watcher when the box rewraps.
+   The commit action is a split button: the main control commits, and the
+   trailing expand control opens the presentational `views/CommitMenu`, whose
+   dismissal lives in `useCommitActionMenu`; both halves share one disabled
+   state, so an empty message or a running action disables the whole control
+   and closes the menu. `useChangeActions` runs every
+   variant (Commit, Amend, Commit and Push, Commit and Sync) through the same
+   busy lock, committing first and treating a failed push or sync as a reported
+   failure that keeps the commit.
    `FloatingPanel` owns the presentation shared by discard/commit confirmations
    and reference forms: a non-modal absolute layer anchored inside the panel,
    with native frosted surface tokens, a height-bounded scrolling content area,

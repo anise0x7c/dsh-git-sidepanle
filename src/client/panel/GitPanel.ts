@@ -19,12 +19,14 @@ import type {
   UseContextMenu,
 } from '../types/dsh.ts'
 import { changeRowLetter, groupChangeEntries } from './change-groups.ts'
+import type { CommitMode } from './commit-mode.ts'
 import type { ConfirmState } from './confirm.ts'
 import { confirmActionLabel, confirmDescription, confirmTitle } from './confirm.ts'
 import { FloatingPanel } from './FloatingPanel.ts'
 import { Banner, EmptyState } from './feedback.ts'
 import { useBranches } from './hooks/useBranches.ts'
 import { useChangeActions } from './hooks/useChangeActions.ts'
+import { useCommitActionMenu } from './hooks/useCommitActionMenu.ts'
 import { useCommitDetails } from './hooks/useCommitDetails.ts'
 import { useCommitExpansion } from './hooks/useCommitExpansion.ts'
 import { useCommitMenuActions } from './hooks/useCommitMenuActions.ts'
@@ -207,13 +209,23 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     setActionFailure,
     onOpenDialog: closePromptsForRemote,
   })
+  const actionMenu = useCommitActionMenu({
+    enabled: busy === null && message.trim() !== '',
+  })
   const toggleBranchPicker = (): void => {
+    actionMenu.close()
     remoteActions.closeMenu()
     toggleBranchMenu()
   }
   const toggleRemoteMenu = (): void => {
+    actionMenu.close()
     closeBranchMenu()
     remoteActions.toggleMenu()
+  }
+  const toggleCommitActionMenu = (): void => {
+    closeBranchMenu()
+    remoteActions.closeMenu()
+    actionMenu.toggle()
   }
   // Replace the other idle prompt at its entry point, rather than hiding it
   // behind a render priority that could reveal stale forms after cancellation.
@@ -233,13 +245,14 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     setActionFailure(null)
     open()
   }
-  const requestCommit = (): void => {
+  const requestCommit = (mode: CommitMode = 'commit'): void => {
     if (refs.busy.current !== null || message.trim() === '') return
+    actionMenu.close()
     if (commitMenuActions.dialog !== null) commitMenuActions.closeDialog(false)
     rawSetConfirm(null)
     remoteActions.closeDialog()
     setActionFailure(null)
-    rawRequestCommit()
+    rawRequestCommit(mode)
   }
   const commitState = useCommitDetails({ call, refs })
   const expansion = useCommitExpansion({ call, refs })
@@ -707,8 +720,12 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
               hint: commitHint,
               placeholder,
               busy,
+              menuOpen: actionMenu.open,
+              menuWrapRef: actionMenu.wrap,
+              onToggleMenu: toggleCommitActionMenu,
+              onChoose: requestCommit,
+              canPush: remoteActions.hasUpstream,
               onChange: setMessage,
-              onCommit: requestCommit,
             }),
         loadFailure !== null && status !== null
           ? h(Banner, {

@@ -9,6 +9,7 @@ import { useCallback, useState } from 'react'
 import { makeFailure, toFailure } from '../../data/caller.ts'
 import type { ChangeEntry, CommitResult, Failure, OkResult, RpcCall } from '../../types/domain.ts'
 import type { ContextMenusService, LocaleBinder } from '../../types/dsh.ts'
+import type { CommitMode } from '../commit-mode.ts'
 import type { ConfirmState } from '../confirm.ts'
 import type { PanelRefs } from '../menu.ts'
 
@@ -81,8 +82,8 @@ export interface ChangeActionsState {
   readonly unstage: (entries: readonly ChangeEntry[]) => Promise<OkResult | undefined>
   /** Add one working-change path to the repository-root ignore file. */
   readonly ignore: (path: string, untracked?: boolean) => Promise<OkResult | undefined>
-  /** Commit the typed message. */
-  readonly requestCommit: () => void
+  /** Commit the typed message in the requested mode; defaults to a plain commit. */
+  readonly requestCommit: (mode?: CommitMode) => void
   /** Run the open confirmation. */
   readonly confirmAction: () => void
 }
@@ -142,23 +143,48 @@ export function useChangeActions(options: UseChangeActionsOptions): ChangeAction
       notice: t(untracked ? 'menu.ignored' : 'menu.ignoredTracked', { path }),
     })
 
-  const requestCommit = (): void => {
+  // One commit write followed by the optional remote step. The remote call runs
+  // inside `after`, so a failed push never rethrows: the commit already
+  // happened and `perform` must still refresh the status and the graph.
+  const runCommit = (mode: CommitMode, stageAll: boolean): void => {
+    const amend = mode === 'amend'
+    void perform(
+      mode,
+      () =>
+        call('commit', {
+          message,
+          ...(stageAll ? { stageAll: true } : {}),
+          ...(amend ? { amend: true } : {}),
+        }),
+      {
+        graph: true,
+        after: async (result: CommitResult) => {
+          setMessage('')
+          notify(t('commit.done', { hash: result.commit ?? '' }), true)
+          if (mode === 'commit-push' || mode === 'commit-sync') {
+            try {
+              await call(mode === 'commit-push' ? 'push' : 'sync')
+              notify(t(mode === 'commit-push' ? 'remote.pushDone' : 'remote.syncDone'), true)
+            } catch (error) {
+              if (refs.mounted.current) setActionFailure(toFailure(error))
+            }
+          }
+        },
+      },
+    )
+  }
+
+  const requestCommit = (mode: CommitMode = 'commit'): void => {
     if (message.trim() === '' || refs.busy.current !== null) return
-    if (stagedFiles.length === 0) {
+    if (mode !== 'amend' && stagedFiles.length === 0) {
       if (files.length === 0) {
         setActionFailure(makeFailure('nothing-staged', t('commit.nothing')))
         return
       }
-      setConfirm({ kind: 'commitAll' })
+      setConfirm({ kind: 'commitAll', mode })
       return
     }
-    void perform('commit', () => call('commit', { message }), {
-      graph: true,
-      after: (result: CommitResult) => {
-        setMessage('')
-        notify(t('commit.done', { hash: result.commit ?? '' }), true)
-      },
-    })
+    runCommit(mode, false)
   }
 
   const confirmAction = (): void => {
@@ -166,13 +192,7 @@ export function useChangeActions(options: UseChangeActionsOptions): ChangeAction
     if (current === null) return
     setConfirm(null)
     if (current.kind === 'commitAll') {
-      void perform('commit', () => call('commit', { message, stageAll: true }), {
-        graph: true,
-        after: (result: CommitResult) => {
-          setMessage('')
-          notify(t('commit.done', { hash: result.commit ?? '' }), true)
-        },
-      })
+      runCommit(current.mode, true)
       return
     }
     if (current.kind === 'discard') {
