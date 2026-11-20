@@ -50,6 +50,19 @@
   }
 }
 
+/* The commit graph header keeps the whole-row highlight off: its controls are
+ * separate targets, so each one carries its own hover surface instead. */
+.dshgg-sectionHeader[data-hover="controls"]::before {
+  display: none;
+}
+
+@media (hover: hover) {
+  .dshgg-sectionHeader[data-hover="controls"] .dshgg-sectionToggle:hover,
+  .dshgg-sectionHeader[data-hover="controls"] .dshgg-iconBtn:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
 .dshgg-sectionToggle {
   display: flex;
   flex: 1;
@@ -89,14 +102,14 @@
 }
 
 .dshgg-sectionActions .dshgg-iconBtn {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   padding: 5px;
 }
 
 .dshgg-sectionActions .dshgg-iconBtn svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
 }
 
 .dshgg-sectionBody {

@@ -586,22 +586,10 @@ function remotesCalls(mounted: MountedGit): number {
   return mounted.calls.filter((call) => call.op === 'remotes').length
 }
 
-/** Open the toolbar's remote overflow menu and let its remote read settle. */
+/** Open the commit graph header's overflow menu and let its remote read settle. */
 async function openRemoteMenu(mounted: MountedGit): Promise<void> {
   mounted.harness.click(buttonByLabel(mounted.harness, 'remote.menu'))
   await mounted.harness.flush()
-}
-
-/** Find the toolbar's remote status control by its current label. */
-function cloudButton(mounted: MountedGit): TestElement {
-  const labels = ['remote.statusSync', 'remote.statusPublish']
-  for (const label of labels) {
-    const [button] = mounted.harness.findAll(
-      (element) => element.type === 'button' && element.props['aria-label'] === label,
-    )
-    if (button !== undefined) return button
-  }
-  assert.fail('no remote status control rendered')
 }
 
 function buttonInside(element: TestElement, label: string): TestElement {
@@ -620,6 +608,20 @@ function buttonInside(element: TestElement, label: string): TestElement {
   const button = buttons[0]
   assert.ok(button)
   return button
+}
+
+/** Find the commit graph section so a control can be checked inside it. */
+function graphSection(mounted: MountedGit): TestElement {
+  const [section] = mounted.harness.findAll(
+    (element) => element.type === 'section' && element.props['data-section'] === 'graph',
+  )
+  assert.ok(section, 'no commit graph section rendered')
+  return section
+}
+
+/** Find one button inside the commit graph section header. */
+function graphHeaderButton(mounted: MountedGit, label: string): TestElement {
+  return buttonInside(graphSection(mounted), label)
 }
 
 function buttonByText(harness: TestHarness, text: string): TestElement {
@@ -2691,16 +2693,16 @@ test('the branch menu loads local branches and checks one out', async () => {
   await mounted.harness.dispose()
 })
 
-test('the remote menu opens, fetches, and reports success', async () => {
+test('the commit graph header fetches and reports success', async () => {
   const mounted = await mountGit({ menuService: true })
   await openRemoteMenu(mounted)
   assert.ok(
     mounted.calls.some((call) => call.op === 'remotes'),
     'opening the overflow menu reads the configured remotes',
   )
-  assert.equal(remoteMenuItem(mounted, 'remote.fetch').props.disabled, false)
+  assert.equal(graphHeaderButton(mounted, 'remote.fetch').props.disabled, false)
   const statusBefore = mounted.calls.filter((call) => call.op === 'status').length
-  mounted.harness.click(remoteMenuItem(mounted, 'remote.fetch'))
+  mounted.harness.click(graphHeaderButton(mounted, 'remote.fetch'))
   await mounted.harness.flush()
   assert.equal(mounted.calls.filter((call) => call.op === 'fetch').length, 1)
   assert.equal(
@@ -2716,47 +2718,50 @@ test('the remote menu opens, fetches, and reports success', async () => {
   await mounted.harness.dispose()
 })
 
-test('the remote menu runs pull, rebase pull, push and sync', async () => {
+test('the commit graph header runs pull and push', async () => {
   const mounted = await mountGit()
-  const run = async (label: string): Promise<void> => {
-    await openRemoteMenu(mounted)
-    mounted.harness.click(remoteMenuItem(mounted, label))
-    await mounted.harness.flush()
-  }
-  await run('remote.pull')
+  mounted.harness.click(graphHeaderButton(mounted, 'remote.pull'))
+  await mounted.harness.flush()
   const pull = mounted.calls.filter((call) => call.op === 'pull').at(-1)
   assert.equal(pull?.rebase, false, 'Pull merges the upstream')
-  await run('remote.pullRebase')
+  mounted.harness.click(graphHeaderButton(mounted, 'remote.push'))
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'push').length, 1)
+  assert.deepEqual(mounted.components.notifications, [
+    { text: 'remote.pullDone', success: true },
+    { text: 'remote.pushDone', success: true },
+  ])
+  await mounted.harness.dispose()
+})
+
+test('the remote menu runs pull with rebase and sync', async () => {
+  const mounted = await mountGit()
+  await openRemoteMenu(mounted)
+  mounted.harness.click(remoteMenuItem(mounted, 'remote.pullRebase'))
+  await mounted.harness.flush()
   assert.equal(
     mounted.calls.filter((call) => call.op === 'pull').at(-1)?.rebase,
     true,
     'Pull (Rebase) asks Git to rebase',
   )
-  await run('remote.push')
-  assert.equal(mounted.calls.filter((call) => call.op === 'push').length, 1)
-  await run('remote.sync')
+  await openRemoteMenu(mounted)
+  mounted.harness.click(remoteMenuItem(mounted, 'remote.sync'))
+  await mounted.harness.flush()
   assert.equal(mounted.calls.filter((call) => call.op === 'sync').length, 1)
   assert.deepEqual(mounted.components.notifications, [
-    { text: 'remote.pullDone', success: true },
     { text: 'remote.pullRebaseDone', success: true },
-    { text: 'remote.pushDone', success: true },
     { text: 'remote.syncDone', success: true },
   ])
   await mounted.harness.dispose()
 })
 
-test('Push becomes Publish Branch when the branch has no upstream', async () => {
+test('the header disables pull and push without an upstream while the menu publishes', async () => {
   const mounted = await mountGit({
     status: createStatus({ repo: createRepo({ upstream: null }) }),
   })
+  assert.equal(graphHeaderButton(mounted, 'remote.pull').props.disabled, true)
+  assert.equal(graphHeaderButton(mounted, 'remote.push').props.disabled, true)
   await openRemoteMenu(mounted)
-  assert.equal(
-    mounted.harness.findAll(
-      (element) => element.type === 'button' && elementText(element) === 'remote.push',
-    ).length,
-    0,
-    'no Push item without an upstream',
-  )
   assert.equal(remoteMenuItem(mounted, 'remote.publishBranch').props.disabled, false)
   mounted.harness.click(remoteMenuItem(mounted, 'remote.publishBranch'))
   await mounted.harness.flush()
@@ -2767,37 +2772,6 @@ test('Push becomes Publish Branch when the branch has no upstream', async () => 
     0,
     'one configured remote publishes without asking',
   )
-  await mounted.harness.dispose()
-})
-
-test('the remote status control syncs with an upstream and spins while busy', async () => {
-  let release!: () => void
-  const pending = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  const mounted = await mountGit({ pending: { op: 'sync', until: pending } })
-  assert.equal(cloudButton(mounted).props['aria-label'], 'remote.statusSync')
-  mounted.harness.click(cloudButton(mounted))
-  await mounted.harness.flush()
-  const spinning = cloudButton(mounted)
-  assert.equal(spinning.props['data-spinning'], 'true', 'the cloud spins while syncing')
-  assert.equal(spinning.props.disabled, true)
-  release()
-  await mounted.harness.flush()
-  assert.equal(mounted.calls.filter((call) => call.op === 'sync').length, 1)
-  assert.deepEqual(mounted.components.notifications, [{ text: 'remote.syncDone', success: true }])
-  await mounted.harness.dispose()
-})
-
-test('the remote status control publishes a branch without an upstream', async () => {
-  const mounted = await mountGit({
-    status: createStatus({ repo: createRepo({ upstream: null }) }),
-  })
-  assert.equal(cloudButton(mounted).props['aria-label'], 'remote.statusPublish')
-  mounted.harness.click(cloudButton(mounted))
-  await mounted.harness.flush()
-  assert.equal(mounted.calls.filter((call) => call.op === 'publish').length, 1)
-  assert.equal(mounted.calls.filter((call) => call.op === 'publish').at(-1)?.remote, 'origin')
   assert.deepEqual(mounted.components.notifications, [
     { text: 'remote.publishDone', success: true },
   ])
@@ -2932,7 +2906,7 @@ test('the remote menu shows the remote-list loading and failure notes with retry
   assert.match(loading.harness.text(), /remote\.loading/)
   release()
   await loading.harness.flush()
-  assert.equal(remoteMenuItem(loading, 'remote.fetch').props.disabled, false)
+  assert.equal(graphHeaderButton(loading, 'remote.fetch').props.disabled, false)
   await loading.harness.dispose()
 
   const failing = await mountGit({ failRemotesPages: [0] })
@@ -2943,7 +2917,7 @@ test('the remote menu shows the remote-list loading and failure notes with retry
   await failing.harness.flush()
   assert.equal(failing.calls.filter((call) => call.op === 'remotes').length, 2)
   assert.doesNotMatch(failing.harness.text(), /git said no/)
-  assert.equal(remoteMenuItem(failing, 'remote.fetch').props.disabled, false)
+  assert.equal(graphHeaderButton(failing, 'remote.fetch').props.disabled, false)
   await failing.harness.dispose()
 })
 
@@ -2952,13 +2926,13 @@ test('Escape and an outside pointerdown close the remote menu', async () => {
   const items = (): number =>
     mounted.harness.findAll((element) => hasClass(element, 'dshgg-menuItem')).length
   await openRemoteMenu(mounted)
-  assert.equal(items(), 6, 'five actions plus the Remote disclosure')
+  assert.equal(items(), 3, 'Pull (Rebase), Sync and the Remote disclosure')
   const escapeResult = escapeKeydown()
   await mounted.harness.flush()
   assert.equal(escapeResult.prevented, false, 'the menu does not consume the key')
   assert.equal(items(), 0)
   await openRemoteMenu(mounted)
-  assert.equal(items(), 6)
+  assert.equal(items(), 3)
   dispatchDocumentPointerdown({})
   await mounted.harness.flush()
   assert.equal(items(), 0, 'an outside pointerdown closes the menu')
@@ -2985,7 +2959,10 @@ test('the branch picker and remote menu never stay open together', async () => {
   assert.equal(chip().props['aria-expanded'], true)
   assert.equal(
     mounted.harness.findAll(
-      (element) => element.type === 'button' && elementText(element) === 'remote.fetch',
+      (element) =>
+        element.type === 'button' &&
+        hasClass(element, 'dshgg-menuItem') &&
+        elementText(element) === 'remote.pullRebase',
     ).length,
     0,
     'the branch picker closes the remote menu',
@@ -2999,30 +2976,26 @@ test('a busy panel disables every remote action', async () => {
     release = resolve
   })
   const mounted = await mountGit({ pending: { op: 'fetch', until: pending } })
-  await openRemoteMenu(mounted)
-  mounted.harness.click(remoteMenuItem(mounted, 'remote.fetch'))
+  mounted.harness.click(graphHeaderButton(mounted, 'remote.fetch'))
   await mounted.harness.flush()
   assert.equal(mounted.calls.filter((call) => call.op === 'fetch').length, 1)
   await openRemoteMenu(mounted)
-  for (const label of [
-    'remote.fetch',
-    'remote.pull',
-    'remote.pullRebase',
-    'remote.push',
-    'remote.sync',
-  ]) {
+  for (const label of ['remote.fetch', 'remote.pull', 'remote.push']) {
+    assert.equal(graphHeaderButton(mounted, label).props.disabled, true, `${label} is disabled`)
+  }
+  for (const label of ['remote.pullRebase', 'remote.sync']) {
     assert.equal(remoteMenuItem(mounted, label).props.disabled, true, `${label} is disabled`)
   }
-  assert.equal(cloudButton(mounted).props.disabled, true, 'the cloud is disabled while busy')
   release()
   await mounted.harness.flush()
-  for (const label of [
-    'remote.fetch',
-    'remote.pull',
-    'remote.pullRebase',
-    'remote.push',
-    'remote.sync',
-  ]) {
+  for (const label of ['remote.fetch', 'remote.pull', 'remote.push']) {
+    assert.equal(
+      graphHeaderButton(mounted, label).props.disabled,
+      false,
+      `${label} is enabled again`,
+    )
+  }
+  for (const label of ['remote.pullRebase', 'remote.sync']) {
     assert.equal(remoteMenuItem(mounted, label).props.disabled, false, `${label} is enabled again`)
   }
   await mounted.harness.dispose()
@@ -3252,8 +3225,18 @@ test('fetch and remote configuration work without a current branch', async () =>
     }),
   })
   await openRemoteMenu(detached)
-  assert.equal(remoteMenuItem(detached, 'remote.fetch').props.disabled, false)
-  detached.harness.click(remoteMenuItem(detached, 'remote.fetch'))
+  assert.equal(graphHeaderButton(detached, 'remote.fetch').props.disabled, false)
+  assert.equal(
+    graphHeaderButton(detached, 'remote.pull').props.disabled,
+    true,
+    'Pull needs a branch with an upstream',
+  )
+  assert.equal(
+    graphHeaderButton(detached, 'remote.push').props.disabled,
+    true,
+    'Push needs a branch with an upstream',
+  )
+  detached.harness.click(graphHeaderButton(detached, 'remote.fetch'))
   await detached.harness.flush()
   assert.equal(detached.calls.filter((call) => call.op === 'fetch').length, 1)
   await openRemoteMenu(detached)
@@ -3281,11 +3264,81 @@ test('fetch and remote configuration work without a current branch', async () =>
     }),
   })
   await openRemoteMenu(unborn)
-  assert.equal(remoteMenuItem(unborn, 'remote.fetch').props.disabled, false)
-  unborn.harness.click(remoteMenuItem(unborn, 'remote.fetch'))
+  assert.equal(graphHeaderButton(unborn, 'remote.fetch').props.disabled, false)
+  unborn.harness.click(graphHeaderButton(unborn, 'remote.fetch'))
   await unborn.harness.flush()
   assert.equal(unborn.calls.filter((call) => call.op === 'fetch').length, 1)
   await unborn.harness.dispose()
+})
+
+test('the commit graph header owns fetch, pull, push and the overflow menu', async () => {
+  const mounted = await mountGit()
+  for (const label of ['remote.fetch', 'remote.pull', 'remote.push', 'remote.menu']) {
+    assert.ok(graphHeaderButton(mounted, label), `${label} lives in the graph header`)
+  }
+  const [toolbar] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-toolbar'))
+  assert.ok(toolbar, 'no panel toolbar rendered')
+  assert.equal(
+    collectElements(
+      toolbar,
+      (element) => element.type === 'button' && element.props['aria-label'] === 'remote.menu',
+    ).length,
+    0,
+    'the toolbar no longer owns the overflow menu',
+  )
+  for (const label of ['remote.statusSync', 'remote.statusPublish', 'remote.fetch']) {
+    assert.equal(
+      collectElements(
+        toolbar,
+        (element) => element.type === 'button' && element.props['aria-label'] === label,
+      ).length,
+      0,
+      `the toolbar no longer owns ${label}`,
+    )
+  }
+  assert.ok(buttonInside(toolbar, 'refresh'), 'the refresh control stays in the toolbar')
+  const [header] = collectElements(graphSection(mounted), (element) =>
+    hasClass(element, 'dshgg-sectionHeader'),
+  )
+  assert.ok(header, 'no graph section header rendered')
+  assert.equal(header.props['data-hover'], 'controls', 'header controls highlight individually')
+  const toggle = (): TestElement => {
+    const [element] = collectElements(
+      graphSection(mounted),
+      (candidate) => candidate.type === 'button' && hasClass(candidate, 'dshgg-sectionToggle'),
+    )
+    assert.ok(element, 'no graph section toggle rendered')
+    return element
+  }
+  assert.equal(toggle().props['aria-expanded'], true)
+  mounted.harness.click(toggle())
+  await mounted.harness.flush()
+  assert.equal(toggle().props['aria-expanded'], false, 'the graph section collapses')
+  for (const label of ['remote.fetch', 'remote.pull', 'remote.push']) {
+    assert.ok(graphHeaderButton(mounted, label), `${label} survives the collapse`)
+  }
+  await mounted.harness.dispose()
+})
+
+test('the overflow menu keeps only actions that are not in the header', async () => {
+  const mounted = await mountGit()
+  await openRemoteMenu(mounted)
+  assert.deepEqual(
+    mounted.harness
+      .findAll((element) => element.type === 'button' && hasClass(element, 'dshgg-menuItem'))
+      .map((item) => elementText(item)),
+    ['remote.pullRebase', 'remote.sync', 'remote.group'],
+  )
+  for (const label of ['remote.fetch', 'remote.pull', 'remote.push']) {
+    assert.equal(
+      mounted.harness.findAll(
+        (element) => element.type === 'button' && elementText(element) === label,
+      ).length,
+      0,
+      `no ${label} menu item remains`,
+    )
+  }
+  await mounted.harness.dispose()
 })
 
 test('the branch picker lists remote branches and checks one out', async () => {

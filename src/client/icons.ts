@@ -97,6 +97,67 @@ export function RefreshIcon(props: IconProps): React.ReactElement {
   ])
 }
 
+/**
+ * Fetch from all remotes, after VS Code's Source Control Graph action: a
+ * dashed twin-tail arrow descending into a repository node, so it stays
+ * distinguishable from the solid Pull arrow at header size.
+ */
+export function RepoFetchIcon(props: IconProps): React.ReactElement {
+  const size = props?.size ?? 14
+  return svgIcon(
+    size,
+    [
+      h('path', { key: 'tailLeft1', d: 'M6.3 2.1v2.2' }),
+      h('path', { key: 'tailLeft2', d: 'M6.3 5.3v1.4' }),
+      h('path', { key: 'tailRight1', d: 'M9.7 2.1v2.2' }),
+      h('path', { key: 'tailRight2', d: 'M9.7 5.3v1.4' }),
+      h('path', { key: 'head', d: 'M5 7.2 8 10.3 11 7.2' }),
+      h('path', { key: 'lineLeft', d: 'M2.2 12.6h3.9' }),
+      h('path', { key: 'lineRight', d: 'M9.9 12.6h3.9' }),
+      h('circle', { key: 'node', cx: 8, cy: 12.6, r: 1.7 }),
+    ],
+    { strokeWidth: 1.1, className: props?.className },
+  )
+}
+
+/**
+ * Pull the upstream, after VS Code's Source Control Graph action: an arrow
+ * descending into a repository node.
+ */
+export function RepoPullIcon(props: IconProps): React.ReactElement {
+  const size = props?.size ?? 14
+  return svgIcon(
+    size,
+    [
+      h('path', { key: 'stem', d: 'M8 1.9v5.7' }),
+      h('path', { key: 'head', d: 'M5.4 7.6 8 10.2 10.6 7.6' }),
+      h('path', { key: 'lineLeft', d: 'M2.2 12.6h3.9' }),
+      h('path', { key: 'lineRight', d: 'M9.9 12.6h3.9' }),
+      h('circle', { key: 'node', cx: 8, cy: 12.6, r: 1.7 }),
+    ],
+    { strokeWidth: 1.1, className: props?.className },
+  )
+}
+
+/**
+ * Push to the upstream, after VS Code's Source Control Graph action: an arrow
+ * rising out of a repository node.
+ */
+export function RepoPushIcon(props: IconProps): React.ReactElement {
+  const size = props?.size ?? 14
+  return svgIcon(
+    size,
+    [
+      h('path', { key: 'stem', d: 'M8 11.1V5.8' }),
+      h('path', { key: 'head', d: 'M5.4 5.8 8 3.2 10.6 5.8' }),
+      h('path', { key: 'lineLeft', d: 'M2.2 12.6h3.9' }),
+      h('path', { key: 'lineRight', d: 'M9.9 12.6h3.9' }),
+      h('circle', { key: 'node', cx: 8, cy: 12.6, r: 1.7 }),
+    ],
+    { strokeWidth: 1.1, className: props?.className },
+  )
+}
+
 export function PlusIcon(props: IconProps): React.ReactElement {
   const size = props?.size ?? 14
   return svgIcon(size, [

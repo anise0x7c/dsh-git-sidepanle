@@ -1,6 +1,6 @@
 /**
- * Remote management and synchronization: the toolbar overflow menu, the lazy
- * remote list, the add/remove/publish forms, and the
+ * Remote management and synchronization: the commit graph header's overflow
+ * menu, the lazy remote list, the add/remove/publish forms, and the
  * fetch/pull/push/sync/publish actions.
  */
 
@@ -72,8 +72,6 @@ export interface RemoteActionsState {
   readonly closeMenu: () => void
   /** Close the open remote form without running Git. */
   readonly closeDialog: () => void
-  /** Sync when the branch has an upstream, otherwise start the publish flow. */
-  readonly statusAction: () => void
   /** Fetch from every configured remote, even on a detached or unborn HEAD. */
   readonly fetch: () => void
   /** Merge the upstream into the current branch. */
@@ -360,12 +358,6 @@ export function useRemoteActions(options: UseRemoteActionsOptions): RemoteAction
     runRemoveRemote(current.name)
   }
 
-  const statusAction = (): void => {
-    if (!canUseBranch || refs.busy.current !== null) return
-    if (hasUpstream) sync()
-    else publish()
-  }
-
   return {
     menuOpen,
     remotes,
@@ -377,7 +369,6 @@ export function useRemoteActions(options: UseRemoteActionsOptions): RemoteAction
     toggleMenu,
     closeMenu,
     closeDialog,
-    statusAction,
     fetch,
     pull,
     pullRebase,

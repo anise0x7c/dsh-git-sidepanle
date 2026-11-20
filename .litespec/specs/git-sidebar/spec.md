@@ -1041,9 +1041,11 @@ normal and pinned positions, so beginning to scroll its pane SHALL NOT shift
 the header; only the rows SHALL move beneath it. A pinned header SHALL paint
 the host's opaque surface from the pane's top edge down, so the rows scrolling
 beneath it are hidden and no part of a row is visible above or through the
-header. A header SHALL show the host's hover highlight over that surface while
-the pointer is over it, and the highlight SHALL stay inside the header's
-rounded corners. At most one header SHALL be pinned at a time: while a header
+header. A header SHALL show the host's hover highlight while the pointer is
+over it, and the highlight SHALL stay inside the header's rounded corners. The
+commit graph header SHALL instead highlight each of its controls separately —
+the section toggle and each action control — without highlighting the surface
+between them. At most one header SHALL be pinned at a time: while a header
 is pinned, the next section's header SHALL keep its normal position until the
 pinned header's section has left the top edge, and SHALL then take that place.
 A pinned header SHALL keep its toggle, its count where it shows one, and its
@@ -1077,6 +1079,11 @@ every header in its normal position.
 
 - **WHEN** the pointer moves over a section header, whether it is pinned or in its normal position
 - **THEN** the header shows the host hover highlight over its surface and the rows beneath a pinned header stay hidden
+
+#### Scenario: Hovering the graph header highlights one control
+
+- **WHEN** the pointer moves over the commit graph header's toggle or one of its action controls
+- **THEN** only that control shows the hover highlight, while the rest of the header surface keeps its background
 
 #### Scenario: Only one header is pinned
 
@@ -1786,8 +1793,16 @@ NOT move the nodes, curves or colors of any commit row.
 ### Requirement: Remote synchronization actions
 
 The panel SHALL offer Fetch, Pull, Pull (Rebase), Push, and Sync for the
-current branch, and SHALL run only the action the user chooses. Fetch SHALL
-update remote-tracking branches from every configured remote and SHALL prune
+current branch, and SHALL run only the action the user chooses. The commit
+graph section header SHALL present Fetch, Pull and Push as icon controls, and
+that header's overflow menu SHALL present Pull (Rebase), Sync, Publish Branch
+when the branch has no upstream, and the Remote configuration group. Fetch SHALL
+be labelled as fetching from every configured remote and SHALL use a dashed
+twin-tail arrow, so it stays distinguishable from Pull's solid arrow. Fetch
+SHALL remain available when HEAD is detached or the branch has no commits. Pull
+and Push SHALL be unavailable when the current branch has no upstream. The
+overflow menu SHALL NOT repeat Fetch, Pull or Push. Fetch SHALL update
+remote-tracking branches from every configured remote and SHALL prune
 remote-tracking branches whose remote ref no longer exists. Pull SHALL
 integrate the upstream into the current branch by merging, and Pull (Rebase)
 SHALL integrate it by rebasing. Push SHALL send the current branch's commits to
@@ -1800,6 +1815,12 @@ it SHALL NOT push.
 - **WHEN** the user chooses Fetch
 - **THEN** the fetched remote-tracking branches update and the refreshed header
   shows the new ahead or behind counts
+
+#### Scenario: Fetch is distinguishable from Pull
+
+- **WHEN** the commit graph section header is shown
+- **THEN** the Fetch control names every configured remote and draws a dashed
+  twin-tail arrow, while the Pull control draws a solid arrow
 
 #### Scenario: Pull merges the upstream
 
@@ -1832,6 +1853,33 @@ it SHALL NOT push.
 - **GIVEN** a pull from the upstream fails
 - **WHEN** the user chooses Sync
 - **THEN** the panel reports the pull failure and does not push
+
+#### Scenario: Commit graph header runs one action
+
+- **GIVEN** the current branch tracks an upstream
+- **WHEN** the user activates the Fetch, Pull or Push control in the commit
+  graph section header
+- **THEN** only that action runs, and on success the repository summary and
+  commit graph refresh
+
+#### Scenario: No upstream disables Pull and Push
+
+- **GIVEN** the current branch has no upstream
+- **WHEN** the commit graph section header is shown
+- **THEN** Pull and Push are unavailable, and Publish Branch is offered in the
+  header's overflow menu
+
+#### Scenario: Detached HEAD can still fetch
+
+- **GIVEN** HEAD is detached or the branch has no commits
+- **WHEN** the user activates Fetch in the commit graph section header
+- **THEN** the remote-tracking branches update
+
+#### Scenario: Overflow menu does not duplicate header actions
+
+- **WHEN** the commit graph section header's overflow menu is open
+- **THEN** it lists Pull (Rebase), Sync and the Remote group, and does not list
+  Fetch, Pull or Push
 
 ### Requirement: Publish branch
 
@@ -1866,33 +1914,6 @@ configured without changing the repository.
 
 - **WHEN** HEAD is detached or the branch has no commits
 - **THEN** Publish Branch is unavailable and no network operation runs
-
-### Requirement: Remote status control
-
-The toolbar SHALL provide one remote control for the current branch. When the
-branch has an upstream, activating the control SHALL sync it; when the branch
-has no upstream, activating the control SHALL publish it. The control SHALL be
-disabled while another Git operation runs and SHALL not act when there is no
-repository, HEAD is detached, or the branch has no commits. The existing ahead
-and behind counts SHALL remain visible alongside it.
-
-#### Scenario: Sync from the status control
-
-- **GIVEN** the current branch tracks an upstream
-- **WHEN** the user activates the remote status control
-- **THEN** the panel syncs the branch, with the control showing that the
-  operation is running
-
-#### Scenario: Publish from the status control
-
-- **GIVEN** the current branch has no upstream
-- **WHEN** the user activates the remote status control
-- **THEN** the panel starts the same publish flow as Publish Branch
-
-#### Scenario: No usable branch
-
-- **WHEN** there is no repository, HEAD is detached, or the branch has no commits
-- **THEN** the remote status control is unavailable and runs no Git command
 
 ### Requirement: Remote operation feedback and refresh
 

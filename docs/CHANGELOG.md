@@ -5,6 +5,24 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+Remote branch actions now live with the commit graph, following VS Code's
+Source Control Graph:
+
+- Fetch, Pull and Push appear as icon controls in the commit graph's section
+  header, before its overflow ellipsis. Fetch works with a detached or unborn
+  `HEAD`; Pull and Push need an upstream; all are disabled while another Git
+  operation runs.
+- The remote overflow menu moved out of the branch toolbar into that section
+  header. It no longer repeats Fetch, Pull and Push; it offers Pull (Rebase),
+  Sync, Publish Branch when the branch has no upstream, and the Remote group.
+- The graph header controls highlight individually on hover instead of the
+  whole header row, and their icons are larger.
+- Fetch is labelled "Fetch from every remote" (从所有远程库中抓取) and uses a
+  dashed twin-tail arrow, so it stays distinguishable from Pull.
+- The branch toolbar keeps only the branch chip and the refresh control; its
+  cloud remote-status control was removed, with Sync and Publish Branch still
+  reachable from the graph header's overflow menu.
+
 Every success and failure notice now renders through DSH's native Toast instead
 of a private inline banner:
 

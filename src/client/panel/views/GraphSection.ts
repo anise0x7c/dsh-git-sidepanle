@@ -3,7 +3,8 @@
  * the commit rows, drawn like VS Code's Source Control Graph — the swimlane
  * lines of the whole graph in one layer, each row's node, the subject with its
  * dimmed author, and the colored reference badges — plus the rows an expanded
- * commit lists below itself and the copy-menu targets.
+ * commit lists below itself and the copy-menu targets. The section header also
+ * carries the remote actions.
  */
 
 import type React from 'react'
@@ -66,6 +67,8 @@ export interface GraphSectionProps {
   readonly onLoadMore?: () => void
   /** Whether the section is expanded. */
   readonly open: boolean
+  /** Header actions, rendered at the end of the section header. */
+  readonly actions?: React.ReactNode
   /** Toggle the section. */
   readonly onToggle: () => void
   /** Retry the history load. */
@@ -252,6 +255,8 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
       title: t('sections.graph'),
       open: props.open,
       onToggle: props.onToggle,
+      actions: props.actions,
+      hover: 'controls',
       menuTrigger: trigger,
       menuHint: t('menu.hint'),
       ...(menu === undefined || trigger === null

@@ -213,10 +213,10 @@ every public export or semantic branch has a consumer.
 
 ## Remote data flow
 
-The toolbar's cloud control and overflow menu call the guarded RPC like every
-other panel action. `remotes` reads `git remote -v` into name, fetch URL and
-push URL; publish uses that list to prefer `origin`, offer a choice, or report
-that none exists. `fetch`, `pull`, `push`, `sync` and `publish` run on the Host
+The commit graph header's Fetch, Pull and Push controls and its overflow menu
+call the guarded RPC like every other panel action. `remotes` reads
+`git remote -v` into name, fetch URL and push URL; publish uses that list to
+prefer `origin`, offer a choice, or report that none exists. `fetch`, `pull`, `push`, `sync` and `publish` run on the Host
 with the shared literal argument-vector executor, a longer bounded timeout,
 terminal prompts disabled, and `GIT_MERGE_AUTOEDIT=no` so a merge never waits
 for an editor. Pull merges (`--no-rebase`), Pull (Rebase) rebases, and Sync

@@ -1,10 +1,11 @@
 /**
- * Remote overflow menu rendered under the toolbar ellipsis.
+ * Remote overflow menu rendered in the commit graph section header.
  *
- * Labels follow the branch's upstream: Publish Branch replaces Push until the
- * branch tracks a remote, and the actions that need an upstream stay disabled.
- * Remote configuration lives behind a disclosure below the separator so the
- * menu keeps its compact size.
+ * Fetch, Pull and Push live in the header itself. The menu keeps Pull (Rebase),
+ * Sync, Publish Branch while the branch has no upstream, and the remote
+ * configuration: the actions that need an upstream stay disabled until the
+ * branch tracks a remote. Remote configuration lives behind a disclosure below
+ * the separator so the menu keeps its compact size.
  */
 
 import type React from 'react'
@@ -32,14 +33,8 @@ export interface RemoteMenuProps {
   readonly usable: boolean
   /** Whether the current branch tracks an upstream. */
   readonly hasUpstream: boolean
-  /** Fetch from every configured remote. */
-  readonly onFetch: () => void
-  /** Merge the upstream into the current branch. */
-  readonly onPull: () => void
   /** Rebase the current branch onto its upstream. */
   readonly onPullRebase: () => void
-  /** Push the current branch to its upstream. */
-  readonly onPush: () => void
   /** Start the publish flow. */
   readonly onPublish: () => void
   /** Pull by merging and then push. */
@@ -100,8 +95,6 @@ export function RemoteMenu(props: RemoteMenuProps): React.ReactElement {
       h('span', { className: 'dshgg-menuLabel' }, label),
     )
   const items: React.ReactNode[] = [
-    item('fetch', t('remote.fetch'), props.onFetch, props.busy),
-    item('pull', t('remote.pull'), props.onPull, branchBlocked || !props.hasUpstream),
     item(
       'pull-rebase',
       t('remote.pullRebase'),
@@ -109,11 +102,9 @@ export function RemoteMenu(props: RemoteMenuProps): React.ReactElement {
       branchBlocked || !props.hasUpstream,
     ),
   ]
-  items.push(
-    props.hasUpstream
-      ? item('push', t('remote.push'), props.onPush, branchBlocked)
-      : item('publish', t('remote.publishBranch'), props.onPublish, branchBlocked),
-  )
+  if (!props.hasUpstream) {
+    items.push(item('publish', t('remote.publishBranch'), props.onPublish, branchBlocked))
+  }
   items.push(item('sync', t('remote.sync'), props.onSync, branchBlocked || !props.hasUpstream))
   items.push(
     h('div', { key: 'separator', className: 'dshgg-menuSeparator', role: 'separator' }),

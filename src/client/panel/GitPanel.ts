@@ -41,6 +41,7 @@ import { ChangeGroups } from './views/ChangeGroups.ts'
 import { CommitBox } from './views/CommitBox.ts'
 import { CommitDetails } from './views/CommitDetails.ts'
 import { CommitMenuDialog } from './views/CommitMenuDialog.ts'
+import { GraphRemoteActions } from './views/GraphRemoteActions.ts'
 import { GraphSection } from './views/GraphSection.ts'
 import { RemoteDialog } from './views/RemoteDialog.ts'
 import { RemoteMenu } from './views/RemoteMenu.ts'
@@ -562,6 +563,42 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           h('div', { className: 'dshgg-scroll dshgg-commitCard' }, shownDetails),
         )
 
+  const remoteMenuNode = remoteActions.menuOpen
+    ? h(RemoteMenu, {
+        t,
+        remotes: remoteActions.remotes,
+        loading: remoteActions.remotesLoading,
+        failure: remoteActions.remotesFailure,
+        busy: busy !== null,
+        usable: remoteActions.canUseBranch,
+        hasUpstream: remoteActions.hasUpstream,
+        onPullRebase: remoteActions.pullRebase,
+        onPublish: remoteActions.publish,
+        onSync: remoteActions.sync,
+        onAddRemote: remoteActions.openAddRemote,
+        onRemoveRemote: remoteActions.openRemoveRemote,
+        onRetry: () => {
+          void remoteActions.loadRemotes()
+        },
+      })
+    : null
+  // The graph header owns the remote controls: Fetch/Pull/Push as icon buttons
+  // and the overflow menu under the ellipsis.
+  const graphActions = h(GraphRemoteActions, {
+    t,
+    hasRepo: repo !== null,
+    busy: busy !== null,
+    canUseBranch: remoteActions.canUseBranch,
+    hasUpstream: remoteActions.hasUpstream,
+    onFetch: remoteActions.fetch,
+    onPull: remoteActions.pull,
+    onPush: remoteActions.push,
+    menuOpen: remoteActions.menuOpen,
+    menuNode: remoteMenuNode,
+    wrapRef: refs.remoteWrap,
+    onToggleMenu: toggleRemoteMenu,
+  })
+
   const singlePane = renderState()
   const body =
     singlePane !== null
@@ -606,6 +643,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
               void history.loadMore()
             },
             open: openSections.graph === true,
+            actions: graphActions,
             onActivate: expansion.toggleCommit,
             expanded: expansion.expanded,
             onOpenChange: openFileAtCommit,
@@ -690,40 +728,12 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     ? ({ 'aria-hidden': 'true', inert: '' } as React.HTMLAttributes<HTMLDivElement>)
     : {}
 
-  const remoteMenuNode = remoteActions.menuOpen
-    ? h(RemoteMenu, {
-        t,
-        remotes: remoteActions.remotes,
-        loading: remoteActions.remotesLoading,
-        failure: remoteActions.remotesFailure,
-        busy: busy !== null,
-        usable: remoteActions.canUseBranch,
-        hasUpstream: remoteActions.hasUpstream,
-        onFetch: remoteActions.fetch,
-        onPull: remoteActions.pull,
-        onPullRebase: remoteActions.pullRebase,
-        onPush: remoteActions.push,
-        onPublish: remoteActions.publish,
-        onSync: remoteActions.sync,
-        onAddRemote: remoteActions.openAddRemote,
-        onRemoveRemote: remoteActions.openRemoveRemote,
-        onRetry: () => {
-          void remoteActions.loadRemotes()
-        },
-      })
-    : null
-
   return h(
     'div',
     { className: 'dshgg-root', 'data-dsh-git-graph': '', ref: rootPane },
     h(BranchHeader, {
       t,
       wrapRef: refs.wrap,
-      remoteWrapRef: refs.remoteWrap,
-      remoteMenu: remoteActions.menuOpen,
-      remoteMenuNode,
-      onToggleRemoteMenu: toggleRemoteMenu,
-      onRemoteStatus: remoteActions.statusAction,
       repo,
       branchLabel,
       ahead,
