@@ -7,7 +7,7 @@
 
 import type React from 'react'
 import { createElement } from 'react'
-import { errorText, formatAgo } from '../../git/format.ts'
+import { formatAgo } from '../../git/format.ts'
 import { buildFileTree } from '../../git/tree.ts'
 import { ArrowLeftIcon } from '../../icons.ts'
 import type {
@@ -19,7 +19,6 @@ import type {
 import type { CommitFileRow, Failure } from '../../types/domain.ts'
 import type { LocaleBinder } from '../../types/dsh.ts'
 import { IconButton } from '../controls.ts'
-import { Banner } from '../feedback.ts'
 import type { CommitSummaryPreview, LoadedCommitDetails } from '../hooks/useCommitDetails.ts'
 import { renderFileTree } from '../rows.ts'
 
@@ -81,13 +80,19 @@ export function CommitDetails(props: CommitDetailsProps): React.ReactElement {
       t('commitDetails.loading'),
     )
   } else if (props.failure !== null && props.failure !== undefined) {
-    filesBody = h(Banner, {
-      key: 'error',
-      title: t('error.title'),
-      detail: errorText(t, props.failure),
-      retryLabel: t('retry'),
-      onRetry: props.onRetry,
-    })
+    // The Toast carries the failure text and icon; this note keeps the retry
+    // reachable after the notice fades.
+    filesBody = h(
+      'div',
+      { key: 'error', className: 'dshgg-commitNote' },
+      t('error.title'),
+      ' ',
+      h(
+        'button',
+        { type: 'button', className: 'dshgg-linkBtn', onClick: props.onRetry },
+        t('retry'),
+      ),
+    )
   } else if (files.length === 0) {
     filesBody = h('div', { key: 'empty', className: 'dshgg-commitNote' }, t('commitDetails.empty'))
   } else {

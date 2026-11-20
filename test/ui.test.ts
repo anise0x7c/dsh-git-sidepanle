@@ -8,6 +8,7 @@
 
 import assert from 'node:assert/strict'
 import { afterEach, before, test } from 'node:test'
+import type { ToastStore } from '../src/client/toast/notify.ts'
 import type {
   BranchesResult,
   ChangeEntry,
@@ -389,13 +390,38 @@ async function mountGit(options: MountOptions = {}): Promise<MountedGit> {
   })
   const component = options.diff === true ? components.diff : components.git
   const menu = createMenuMock()
-  harness.setComponent(component, {
+  const panelProps: TestProps = {
     sessionId: 'session-1',
     t: options.t ?? translate,
     useTabInfo: options.tabInfo ?? useTabInfo,
     useSessions: () => undefined,
     ...(options.menus === false ? {} : { useContextMenu: menu.useContextMenu }),
-  })
+  }
+  const toast = nativeToastHost(components)
+  if (toast === undefined) {
+    harness.setComponent(component, panelProps)
+  } else {
+    // The bundle adds a frame-wide Toast host next to the panel. Render both
+    // as sibling seats so the native toast surface is exercised alongside the
+    // panel it reports for.
+    const PanelSeat: TestComponent = () => ({ type: component, props: panelProps, children: [] })
+    const ToastSeat: TestComponent = () => ({
+      type: toast.component,
+      props: toast.props,
+      children: [],
+    })
+    harness.setComponent(
+      () => ({
+        type: 'div',
+        props: { 'data-test-root': '' },
+        children: [
+          { type: PanelSeat, props: {}, children: [] },
+          { type: ToastSeat, props: {}, children: [] },
+        ],
+      }),
+      {},
+    )
+  }
   await harness.render()
   return { harness, calls, openedTabs, components, useTabInfo, menu }
 }
@@ -1962,7 +1988,12 @@ test('a failed commit keeps its message and reports no success Toast', async () 
   await mounted.harness.flush()
   mounted.harness.click(buttonByText(mounted.harness, 'commit.action'))
   await mounted.harness.flush()
-  assert.match(mounted.harness.text(), /git said no/)
+  assert.ok(
+    mounted.components.notifications.some(
+      (notification) => !notification.success && notification.text === 'git said no',
+    ),
+    'the failure is reported as a non-success notification',
+  )
   assert.equal(messageBox()?.props.value, 'fix: will fail', 'a failed commit keeps its message')
   assert.equal(
     mounted.components.notifications.some((notification) => notification.success),
@@ -2148,8 +2179,17 @@ test('a failed push keeps the completed commit and reports the failure', async (
     'the commit still reaches the Host',
   )
   assert.equal(messageBox()?.props.value, '', 'the committed message stays cleared')
-  assert.deepEqual(mounted.components.notifications, [{ text: 'commit.done', success: true }])
-  assert.match(mounted.harness.text(), /git said no/, 'the panel shows the push failure')
+  assert.ok(
+    mounted.components.notifications.some(
+      (notification) => notification.text === 'commit.done' && notification.success,
+    ),
+  )
+  assert.ok(
+    mounted.components.notifications.some(
+      (notification) => !notification.success && notification.text === 'git said no',
+    ),
+    'the push failure is reported as a non-success notification',
+  )
   await mounted.harness.dispose()
 })
 
@@ -2229,7 +2269,12 @@ test('Commit and Push with no changes reports that there is nothing to commit', 
     0,
     'an empty change list runs no repository write',
   )
-  assert.match(mounted.harness.text(), /commit\.nothing/)
+  assert.ok(
+    mounted.components.notifications.some(
+      (notification) => !notification.success && notification.text === 'commit.nothing',
+    ),
+    'the refusal is reported as a non-success notification',
+  )
   await mounted.harness.dispose()
 })
 
@@ -2597,7 +2642,7 @@ test('floating reference inputs keep IME Enter and ordinary annotation Enter out
   floatingPanel(mounted.harness)
 })
 
-test('floating branch failure remains inside the retained form', async (t) => {
+test('a floating branch failure keeps the retained form and reports the failure', async (t) => {
   const mounted = await mountGit({ failOp: 'create-branch' })
   t.after(() => mounted.harness.dispose())
   await runMenuAction(mounted.components, graphMenuTarget(mounted), 'create-branch')
@@ -2610,7 +2655,12 @@ test('floating branch failure remains inside the retained form', async (t) => {
   mounted.harness.click(buttonContaining(mounted.harness, 'menu.createBranch'))
   await mounted.harness.flush()
   const { body, dialog } = floatingPanel(mounted.harness)
-  assert.match(elementText(body), /git said no/)
+  assert.ok(
+    mounted.components.notifications.some(
+      (notification) => !notification.success && notification.text === 'git said no',
+    ),
+    'the failure is reported as a non-success notification',
+  )
   assert.equal(
     collectElements(body, (element) => element.props['aria-label'] === 'menu.referenceName')[0]
       ?.props.value,
@@ -2840,9 +2890,11 @@ test('a failed publish keeps the form and its selected remote', async () => {
     'the failed publish keeps the form open',
   )
   assert.equal(select()?.props.value, 'upstream', 'the chosen remote stays selected')
-  assert.match(
-    elementText(elementOf(mounted.harness.findAll((e) => e.props.role === 'alertdialog')[0])),
-    /git said no/,
+  assert.ok(
+    mounted.components.notifications.some(
+      (notification) => !notification.success && notification.text === 'git said no',
+    ),
+    'the failure is reported as a non-success notification',
   )
   assert.ok(
     mounted.calls.filter((call) => call.op === 'status').length > statusBefore,
@@ -2865,7 +2917,6 @@ test('publish with no configured remote reports it without calling Git', async (
   mounted.harness.click(remoteMenuItem(mounted, 'remote.publishBranch'))
   await mounted.harness.flush()
   assert.equal(mounted.calls.filter((call) => call.op === 'publish').length, 0)
-  assert.match(mounted.harness.text(), /remote\.noRemotes/)
   assert.deepEqual(mounted.components.notifications, [{ text: 'remote.noRemotes', success: false }])
   await mounted.harness.dispose()
 })
@@ -3057,7 +3108,7 @@ test('Add Remote submits the name and URL, closes and refreshes the list', async
   await mounted.harness.dispose()
 })
 
-test('a failed add keeps the form, its values and the inline error', async () => {
+test('a failed add keeps the form and its values and reports the failure', async () => {
   const mounted = await mountGit({ failOp: 'add-remote' })
   await openRemoteMenu(mounted)
   await openRemoteGroup(mounted)
@@ -3079,7 +3130,12 @@ test('a failed add keeps the form, its values and the inline error', async () =>
   )
   assert.equal(dialogInput(mounted, 'remote.nameField')?.props.value, 'upstream')
   assert.equal(dialogInput(mounted, 'remote.urlField')?.props.value, 'https://example.test/up.git')
-  assert.match(mounted.harness.text(), /git said no/)
+  assert.ok(
+    mounted.components.notifications.some(
+      (notification) => !notification.success && notification.text === 'git said no',
+    ),
+    'the failure is reported as a non-success notification',
+  )
   assert.equal(
     mounted.components.notifications.some((notification) => notification.success),
     false,
@@ -3132,7 +3188,6 @@ test('Remove reports no remotes after reading the list again', async () => {
     0,
     'no remove form opens without a configured remote',
   )
-  assert.match(mounted.harness.text(), /remote\.noRemotes/)
   assert.deepEqual(mounted.components.notifications, [{ text: 'remote.noRemotes', success: false }])
   await mounted.harness.dispose()
 })
@@ -3846,7 +3901,12 @@ test('a failed commit read reports the failure and retries', async () => {
   const mounted = await mountGit({ failOp: 'commit-details' })
   await openCommitDetails(mounted)
   assert.match(mounted.harness.text(), /error\.title/)
-  assert.match(mounted.harness.text(), /git said no/)
+  assert.ok(
+    mounted.components.notifications.some(
+      (notification) => !notification.success && notification.text === 'git said no',
+    ),
+    'the failure is reported as a non-success notification',
+  )
   const before = mounted.calls.filter((call) => call.op === 'commit-details').length
   mounted.harness.click(buttonByText(mounted.harness, 'retry'))
   await mounted.harness.flush()
@@ -3923,7 +3983,7 @@ test('a missing repository renders the explanation instead of actions', async ()
   await mounted.harness.dispose()
 })
 
-test('a Host failure surfaces a retryable banner', async () => {
+test('a Host failure surfaces a retryable state', async () => {
   const mounted = await mountGit({ failOp: 'status' })
   const text = mounted.harness.text()
   assert.match(text, /error\.title/)
@@ -4317,7 +4377,7 @@ test('a changed-file menu ignores its path through the shared action refresh', a
   await mounted.harness.dispose()
 })
 
-test('a failed ignore refreshes no success Toast and keeps its error', async () => {
+test('a failed ignore refreshes no success Toast and reports its error', async () => {
   const mounted = await mountGit({ failOp: 'ignore' })
   const rows = mounted.harness.findAll(
     (element) =>
@@ -4327,7 +4387,12 @@ test('a failed ignore refreshes no success Toast and keeps its error', async () 
   mounted.harness.contextmenu(rows[rows.length - 1])
   await runMenuAction(mounted.components, lastTarget(mounted.menu), 'ignore')
   await mounted.harness.flush()
-  assert.match(mounted.harness.text(), /git said no/)
+  assert.ok(
+    mounted.components.notifications.some(
+      (notification) => !notification.success && notification.text === 'git said no',
+    ),
+    'the failure is reported as a non-success notification',
+  )
   assert.equal(
     mounted.components.notifications.some((notification) => notification.success),
     false,
@@ -4496,7 +4561,7 @@ test('commit submenus run checkout, creation and confirmed deletion', async () =
   await mounted.harness.dispose()
 })
 
-test('a failed tag creation keeps the dialog text and displays the failure', async () => {
+test('a failed tag creation keeps the dialog text and reports the failure', async () => {
   const mounted = await mountGit({ failOp: 'create-tag' })
   const row = mounted.harness.findAll((element) =>
     String(element.props?.className ?? '').includes('dshgg-graphRow'),
@@ -4530,7 +4595,12 @@ test('a failed tag creation keeps the dialog text and displays the failure', asy
   assert.ok(currentMessage)
   mounted.harness.keydown(currentMessage, { key: 'Enter', ctrlKey: true })
   await mounted.harness.flush()
-  assert.match(mounted.harness.text(), /git said no/)
+  assert.ok(
+    mounted.components.notifications.some(
+      (notification) => !notification.success && notification.text === 'git said no',
+    ),
+    'the failure is reported as a non-success notification',
+  )
   assert.equal(
     mounted.harness.findAll(
       (element) => element.type === 'input' && element.props['aria-label'] === 'menu.referenceName',
@@ -4544,8 +4614,7 @@ test('a failed tag creation keeps the dialog text and displays the failure', asy
     'keep this text\non two lines',
   )
   assert.match(mounted.harness.text(), /menu\.createTagAt/)
-  const { body, dialog } = floatingPanel(mounted.harness)
-  assert.match(elementText(body), /git said no/, 'the retained form itself explains its failure')
+  const { dialog } = floatingPanel(mounted.harness)
   assert.notEqual(dialog.props['aria-busy'], true)
   assert.equal(mounted.calls.filter((call) => call.op === 'create-tag').length, 1)
   assert.equal(
@@ -5302,7 +5371,7 @@ test('a failed status read still drains the queued retry', async (t) => {
   assert.doesNotMatch(
     mounted.harness.text(),
     /error\.title/,
-    'the successful retry clears the failure banner',
+    'the successful retry clears the failed state',
   )
 })
 
@@ -5327,4 +5396,143 @@ test('an unmounting panel does not run a queued status read', async (t) => {
   gate.release()
   await mounted.harness.flush()
   assert.equal(opCount(mounted, 'status'), 2, 'unmounting drops the queued read')
+})
+
+/**
+ * Read the native Toast host registration the bundle adds to the frame overlay.
+ * @param components - loaded bundle components.
+ * @returns the host component, its injected store face, and the store.
+ */
+function nativeToastHost(
+  components: LoadedComponents,
+): { component: TestComponent; props: TestProps; store: ToastStore } | undefined {
+  const overlay = components.slots.find(({ options }) => options.name === 'shell.overlay')
+  if (overlay === undefined) return undefined
+  const props = overlay.options.inject?.() ?? {}
+  const store = props.store as ToastStore | undefined
+  if (store === undefined || typeof store.getSnapshot !== 'function') return undefined
+  return { component: overlay.component, props, store }
+}
+
+/** Native Toast stand-in that records the props the plugin host passes. */
+function recordingToast(seen: TestProps[]): TestComponent {
+  return (props: TestProps): TestNode => {
+    seen.push(props)
+    return { type: 'div', props: { 'data-native-toast': '' }, children: [] }
+  }
+}
+
+test('a failed operation reaches the native Toast store instead of the panel layout', async () => {
+  const seen: TestProps[] = []
+  const mounted = await mountGit({
+    failOp: 'commit',
+    hostModules: { '@deepseek-ai/dsh-client-ui-primitives': { Toast: recordingToast(seen) } },
+  })
+  const host = nativeToastHost(mounted.components)
+  assert.ok(host, 'the native Toast host is registered in the frame overlay')
+  assert.equal(host.store.getSnapshot(), null, 'nothing is delivered before a failure')
+  const messageBox = () => mounted.harness.findAll((element) => element.type === 'textarea')[0]
+  mounted.harness.change(messageBox(), 'fix: will fail')
+  await mounted.harness.flush()
+  mounted.harness.click(buttonByText(mounted.harness, 'commit.action'))
+  await mounted.harness.flush()
+  const notice = host.store.getSnapshot()
+  assert.equal(notice?.success, false)
+  assert.equal(notice?.text, 'git said no')
+  assert.doesNotMatch(
+    mounted.harness.text(),
+    /git said no/,
+    'the failure text lives in the notice, not in the panel layout',
+  )
+  assert.equal(
+    mounted.components.notifications.length,
+    0,
+    'the shared service is not used when the native host is available',
+  )
+  await mounted.harness.dispose()
+})
+
+test('the native Toast host distinguishes success and failure with type icons', async () => {
+  const seen: TestProps[] = []
+  const mounted = await mountGit({
+    hostModules: { '@deepseek-ai/dsh-client-ui-primitives': { Toast: recordingToast(seen) } },
+  })
+  const host = nativeToastHost(mounted.components)
+  assert.ok(host)
+  assert.equal(seen.length, 0, 'no notice renders no Toast')
+  host.store.push({ text: 'commit.done', success: true })
+  await mounted.harness.render()
+  const success = seen.at(-1)
+  assert.equal(success?.tone, 'success')
+  assert.equal(success?.icon, undefined, 'the success Toast uses its native check icon')
+  const ran: string[] = []
+  host.store.push({
+    text: 'git said no',
+    success: false,
+    action: { label: 'retry', run: () => ran.push('retry') },
+  })
+  await mounted.harness.render()
+  const failure = seen.at(-1)
+  assert.ok(failure)
+  assert.equal(failure.tone, undefined)
+  assert.ok(failure.icon, 'a failure carries the warning icon')
+  assert.equal(failure.holdMs, 6000)
+  const actions = failure.actions as Array<{ label: string; onClick: () => void }>
+  assert.equal(actions[0]?.label, 'retry')
+  actions[0]?.onClick()
+  await mounted.harness.render()
+  assert.deepEqual(ran, ['retry'])
+  assert.equal(host.store.getSnapshot(), null, 'the action dismisses the notice first')
+  await mounted.harness.dispose()
+})
+
+test('a retry that fails again reports a fresh native notice', async () => {
+  const seen: TestProps[] = []
+  const mounted = await mountGit({
+    failStatusPages: [1, 2],
+    hostModules: { '@deepseek-ai/dsh-client-ui-primitives': { Toast: recordingToast(seen) } },
+  })
+  const host = nativeToastHost(mounted.components)
+  assert.ok(host)
+  mounted.harness.click(buttonByLabel(mounted.harness, 'refresh'))
+  await mounted.harness.flush()
+  const first = host.store.getSnapshot()
+  assert.equal(first?.text, 'git said no')
+  assert.equal(first?.action?.label, 'retry')
+  const afterFirst = opCount(mounted, 'status')
+  assert.equal(afterFirst, 2, `expected two status reads, saw ${afterFirst}`)
+  const actions = seen.at(-1)?.actions as Array<{ label: string; onClick: () => void }> | undefined
+  assert.equal(actions?.[0]?.label, 'retry')
+  actions?.[0]?.onClick()
+  await mounted.harness.flush()
+  const afterRetry = opCount(mounted, 'status')
+  assert.equal(afterRetry, 3, `the retry ran, saw ${afterRetry} status reads`)
+  const second = host.store.getSnapshot()
+  assert.ok(second, 'the retry failure is reported again')
+  assert.notEqual(second?.seq, first?.seq)
+  assert.equal(second?.text, 'git said no')
+  await mounted.harness.dispose()
+})
+
+test('a retryable read failure offers a retry action in the native notice', async () => {
+  const seen: TestProps[] = []
+  const mounted = await mountGit({
+    failOp: 'commit-details',
+    hostModules: { '@deepseek-ai/dsh-client-ui-primitives': { Toast: recordingToast(seen) } },
+  })
+  const host = nativeToastHost(mounted.components)
+  assert.ok(host)
+  await openCommitDetails(mounted)
+  const notice = host.store.getSnapshot()
+  assert.equal(notice?.success, false)
+  assert.equal(notice?.text, 'git said no')
+  assert.equal(notice?.action?.label, 'retry')
+  const before = mounted.calls.filter((call) => call.op === 'commit-details').length
+  notice?.action?.run()
+  await mounted.harness.flush()
+  assert.ok(
+    mounted.calls.filter((call) => call.op === 'commit-details').length > before,
+    'the retry action reads the commit again',
+  )
+  await mounted.harness.dispose()
 })

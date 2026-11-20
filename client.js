@@ -55,7 +55,7 @@ function nextPanelId() {
 }
 
 // src/client/diff/DiffPanel.ts
-var import_react6 = require("react");
+var import_react7 = require("react");
 
 // src/client/data/caller.ts
 function makeFailure(code, message, status) {
@@ -319,13 +319,6 @@ function MoreIcon(props) {
     { className: props?.className }
   );
 }
-function CloseIcon(props) {
-  const size = props?.size ?? 12;
-  return svgIcon(size, [
-    h("path", { key: "a", d: "M4 4l8 8" }),
-    h("path", { key: "b", d: "M12 4l-8 8" })
-  ]);
-}
 function FileIcon(props) {
   const size = props?.size ?? 14;
   return svgIcon(size, [
@@ -417,36 +410,6 @@ function IconButton(props) {
 // src/client/panel/feedback.ts
 var import_react3 = require("react");
 var h3 = import_react3.createElement;
-function Banner(props) {
-  return h3(
-    "div",
-    {
-      className: "dshgg-banner",
-      "data-kind": props.kind ?? "error",
-      role: props.kind === "error" ? "alert" : "status"
-    },
-    h3(
-      "span",
-      { className: "dshgg-bannerText" },
-      h3("span", null, props.title),
-      props.detail === void 0 || props.detail === "" ? null : h3("div", { className: "dshgg-bannerDetail" }, props.detail)
-    ),
-    h3(
-      "span",
-      { className: "dshgg-bannerActions" },
-      props.onRetry === void 0 ? null : h3(
-        "button",
-        { type: "button", className: "dshgg-linkBtn", onClick: props.onRetry },
-        props.retryLabel
-      ),
-      props.onDismiss === void 0 ? null : h3(
-        IconButton,
-        { label: props.dismissLabel ?? "Dismiss", onClick: props.onDismiss },
-        h3(CloseIcon, { size: 12 })
-      )
-    )
-  );
-}
 function EmptyState(props) {
   return h3(
     "div",
@@ -458,12 +421,35 @@ function EmptyState(props) {
   );
 }
 
-// src/client/panel/menu.ts
+// src/client/panel/hooks/useFailureToasts.ts
 var import_react4 = require("react");
+function failureIdentity(entry) {
+  const failure = entry.failure;
+  if (failure === null) return "";
+  return `${failure.code}\0${failure.message}\0${entry.generation ?? 0}`;
+}
+function useFailureToasts(entries, notify) {
+  const shown = (0, import_react4.useRef)(/* @__PURE__ */ new Map());
+  (0, import_react4.useEffect)(() => {
+    for (const entry of entries) {
+      if (entry.failure === null) {
+        shown.current.delete(entry.key);
+        continue;
+      }
+      const identity = failureIdentity(entry);
+      if (shown.current.get(entry.key) === identity) continue;
+      shown.current.set(entry.key, identity);
+      notify(entry.text, false, entry.action);
+    }
+  });
+}
+
+// src/client/panel/menu.ts
+var import_react5 = require("react");
 function usePanelWiring(options) {
   const { sessionId, useContextMenu } = options;
-  const call = (0, import_react4.useMemo)(() => createCaller(sessionId), [sessionId]);
-  const menuTrigger = (0, import_react4.useMemo)(
+  const call = (0, import_react5.useMemo)(() => createCaller(sessionId), [sessionId]);
+  const menuTrigger = (0, import_react5.useMemo)(
     () => typeof sessionId === "string" && sessionId !== "" ? bindMenuTrigger(useContextMenu) : null,
     [useContextMenu, sessionId]
   );
@@ -471,24 +457,24 @@ function usePanelWiring(options) {
 }
 function usePanelMenu(options) {
   const wiring = usePanelWiring(options);
-  const panelId = (0, import_react4.useMemo)(() => nextPanelId(), []);
+  const panelId = (0, import_react5.useMemo)(() => nextPanelId(), []);
   return { ...wiring, panelId };
 }
 function usePanelRefs() {
-  const inFlight = (0, import_react4.useRef)(false);
-  const busy = (0, import_react4.useRef)(null);
-  const confirm = (0, import_react4.useRef)(null);
-  const mounted = (0, import_react4.useRef)(true);
-  const watching = (0, import_react4.useRef)(false);
-  const wrap = (0, import_react4.useRef)(null);
-  const remoteWrap = (0, import_react4.useRef)(null);
-  (0, import_react4.useEffect)(
+  const inFlight = (0, import_react5.useRef)(false);
+  const busy = (0, import_react5.useRef)(null);
+  const confirm = (0, import_react5.useRef)(null);
+  const mounted = (0, import_react5.useRef)(true);
+  const watching = (0, import_react5.useRef)(false);
+  const wrap = (0, import_react5.useRef)(null);
+  const remoteWrap = (0, import_react5.useRef)(null);
+  (0, import_react5.useEffect)(
     () => () => {
       mounted.current = false;
     },
     []
   );
-  return (0, import_react4.useMemo)(
+  return (0, import_react5.useMemo)(
     () => ({ inFlight, busy, confirm, mounted, watching, wrap, remoteWrap }),
     [inFlight, busy, confirm, mounted, watching, wrap, remoteWrap]
   );
@@ -518,8 +504,8 @@ function createMenuTargets(options) {
 }
 
 // src/client/diff/render.ts
-var import_react5 = require("react");
-var h4 = import_react5.createElement;
+var import_react6 = require("react");
+var h4 = import_react6.createElement;
 function renderDiff(t, diff) {
   if (diff === null || diff === void 0)
     return h4("div", { className: "dshgg-diffNote" }, t("diff.empty"));
@@ -579,7 +565,7 @@ function renderDiff(t, diff) {
 }
 
 // src/client/diff/DiffPanel.ts
-var h5 = import_react6.createElement;
+var h5 = import_react7.createElement;
 function DiffPanel(props) {
   const sessionId = props.sessionId;
   const t = props.t;
@@ -588,15 +574,35 @@ function DiffPanel(props) {
   const params = tab.navigation?.params ?? {};
   const revision = tab.navigation?.revision ?? 0;
   const { call, menuTrigger } = usePanelWiring({ sessionId, useContextMenu: props.useContextMenu });
-  const [state, setState] = (0, import_react6.useState)({ phase: "loading", diff: null, failure: null });
-  const [reload, setReload] = (0, import_react6.useState)(0);
+  const [state, setState] = (0, import_react7.useState)({ phase: "loading", diff: null, failure: null });
+  const [reload, setReload] = (0, import_react7.useState)(0);
+  const [retryGeneration, setRetryGeneration] = (0, import_react7.useState)(0);
+  const retry = () => {
+    setRetryGeneration((value) => value + 1);
+    setReload((value) => value + 1);
+  };
+  useFailureToasts(
+    [
+      {
+        key: "diff",
+        failure: state.phase === "error" ? state.failure : null,
+        text: errorText(t, state.failure),
+        generation: retryGeneration,
+        action: {
+          label: t("retry"),
+          run: retry
+        }
+      }
+    ],
+    props.notify
+  );
   const path = typeof params.path === "string" && params.path !== "" ? params.path : null;
   const commit = typeof params.commit === "string" && params.commit !== "" ? params.commit : null;
   const origPath = typeof params.origPath === "string" && params.origPath !== "" ? params.origPath : void 0;
   const cwd = typeof params.cwd === "string" && params.cwd !== "" ? params.cwd : void 0;
   const staged = params.staged === true;
   const untracked = params.untracked === true;
-  (0, import_react6.useEffect)(() => {
+  (0, import_react7.useEffect)(() => {
     if (path === null) {
       setState({ phase: "empty", diff: null, failure: null });
       return void 0;
@@ -656,7 +662,7 @@ function DiffPanel(props) {
       {
         label: t("diff.refresh"),
         title: t("diff.refresh"),
-        onClick: () => setReload((value) => value + 1)
+        onClick: retry
       },
       h5(RefreshIcon, { size: 14 })
     )
@@ -671,12 +677,21 @@ function DiffPanel(props) {
   } else if (state.phase === "loading") {
     content = h5("div", { className: "dshgg-diffNote" }, t("diff.loading"));
   } else if (state.phase === "error") {
-    content = h5(Banner, {
-      title: t("diff.error"),
-      detail: errorText(t, state.failure),
-      retryLabel: t("retry"),
-      onRetry: () => setReload((value) => value + 1)
-    });
+    content = h5(
+      "div",
+      { className: "dshgg-diffNote" },
+      t("diff.error"),
+      " ",
+      h5(
+        "button",
+        {
+          type: "button",
+          className: "dshgg-linkBtn",
+          onClick: retry
+        },
+        t("retry")
+      )
+    );
   } else {
     content = renderDiff(t, state.diff);
   }
@@ -827,7 +842,6 @@ var en = {
   "confirm.discard": "Discard",
   "confirm.discardAll": "Discard all",
   "action.cancel": "Cancel",
-  "action.dismiss": "Dismiss",
   "error.discardUnborn": "Changes cannot be discarded before the first commit.",
   "error.unknownCommit": "That commit is no longer available.",
   "error.notUntracked": "This file is tracked or ignored. Refresh the changes before trying again.",
@@ -1020,7 +1034,6 @@ var zh = {
   "confirm.discard": "放弃",
   "confirm.discardAll": "全部放弃",
   "action.cancel": "取消",
-  "action.dismiss": "关闭",
   "error.discardUnborn": "首次提交前无法放弃更改。",
   "error.unknownCommit": "该提交已不存在。",
   "error.notUntracked": "该文件已被跟踪或忽略，请刷新更改列表后重试。",
@@ -1367,7 +1380,7 @@ function resolveMenuActions(value, t, notify) {
 }
 
 // src/client/panel/GitPanel.ts
-var import_react37 = require("react");
+var import_react38 = require("react");
 
 // src/client/git/list.ts
 function sortChangeEntries(entries) {
@@ -1415,15 +1428,15 @@ function confirmActionLabel(t, confirm) {
 }
 
 // src/client/panel/FloatingPanel.ts
-var import_react7 = require("react");
-var h6 = import_react7.createElement;
+var import_react8 = require("react");
+var h6 = import_react8.createElement;
 function isCompositionKey(event) {
   return event.nativeEvent?.isComposing === true || event.keyCode === 229;
 }
 function FloatingPanel(props) {
-  const titleId = (0, import_react7.useId)();
-  const descriptionId = (0, import_react7.useId)();
-  const composing = (0, import_react7.useRef)(false);
+  const titleId = (0, import_react8.useId)();
+  const descriptionId = (0, import_react8.useId)();
+  const composing = (0, import_react8.useRef)(false);
   const hasDescription = props.description !== void 0 && props.description.trim() !== "";
   const canSubmit = props.canSubmit !== false;
   return h6(
@@ -1458,8 +1471,7 @@ function FloatingPanel(props) {
         h6("div", { id: titleId, className: "dshgg-confirmTitle" }, props.title),
         hasDescription ? h6("div", { id: descriptionId, className: "dshgg-confirmDesc" }, props.description) : null,
         props.children,
-        props.busy && props.progress ? h6("div", { className: "dshgg-dialogHint", role: "status" }, props.progress) : null,
-        props.feedback
+        props.busy && props.progress ? h6("div", { className: "dshgg-dialogHint", role: "status" }, props.progress) : null
       ),
       h6(
         "div",
@@ -1496,15 +1508,15 @@ function FloatingPanel(props) {
 }
 
 // src/client/panel/hooks/useBranches.ts
-var import_react8 = require("react");
+var import_react9 = require("react");
 function useBranches(options) {
   const { call, t, refs, perform } = options;
-  const [branchMenu, setBranchMenu] = (0, import_react8.useState)(false);
-  const [branches, setBranches] = (0, import_react8.useState)(null);
-  const [remoteBranches, setRemoteBranches] = (0, import_react8.useState)(null);
-  const [branchLoading, setBranchLoading] = (0, import_react8.useState)(false);
-  const [branchFailure, setBranchFailure] = (0, import_react8.useState)(null);
-  const loadBranches = (0, import_react8.useCallback)(async () => {
+  const [branchMenu, setBranchMenu] = (0, import_react9.useState)(false);
+  const [branches, setBranches] = (0, import_react9.useState)(null);
+  const [remoteBranches, setRemoteBranches] = (0, import_react9.useState)(null);
+  const [branchLoading, setBranchLoading] = (0, import_react9.useState)(false);
+  const [branchFailure, setBranchFailure] = (0, import_react9.useState)(null);
+  const loadBranches = (0, import_react9.useCallback)(async () => {
     if (refs.mounted.current) setBranchLoading(true);
     try {
       const value = await call("branches");
@@ -1519,7 +1531,7 @@ function useBranches(options) {
       if (refs.mounted.current) setBranchLoading(false);
     }
   }, [call, refs]);
-  (0, import_react8.useEffect)(() => {
+  (0, import_react9.useEffect)(() => {
     if (!branchMenu) return void 0;
     const onPointerDown = (event) => {
       const wrap = refs.wrap.current;
@@ -1544,7 +1556,7 @@ function useBranches(options) {
   const closeBranchMenu = () => {
     setBranchMenu(false);
   };
-  const resetBranches = (0, import_react8.useCallback)(() => {
+  const resetBranches = (0, import_react9.useCallback)(() => {
     setBranches(null);
     setRemoteBranches(null);
     setBranchFailure(null);
@@ -1580,16 +1592,16 @@ function useBranches(options) {
 }
 
 // src/client/panel/hooks/useChangeActions.ts
-var import_react9 = require("react");
+var import_react10 = require("react");
 function useChangeActions(options) {
   const { call, t, refs, files, stagedFiles, loadStatus, loadGraph, notify } = options;
-  const [actionFailure, setActionFailure] = (0, import_react9.useState)(null);
-  const [busy, setBusy] = (0, import_react9.useState)(null);
-  const [message, setMessage] = (0, import_react9.useState)("");
-  const [confirm, setConfirm] = (0, import_react9.useState)(null);
+  const [actionFailure, setActionFailure] = (0, import_react10.useState)(null);
+  const [busy, setBusy] = (0, import_react10.useState)(null);
+  const [message, setMessage] = (0, import_react10.useState)("");
+  const [confirm, setConfirm] = (0, import_react10.useState)(null);
   refs.busy.current = busy;
   refs.confirm.current = confirm;
-  const perform = (0, import_react9.useCallback)(
+  const perform = (0, import_react10.useCallback)(
     async (name, operation, actionOptions = {}) => {
       if (refs.busy.current !== null) return void 0;
       refs.busy.current = name;
@@ -1702,12 +1714,12 @@ function useChangeActions(options) {
 }
 
 // src/client/panel/hooks/useCommitActionMenu.ts
-var import_react10 = require("react");
+var import_react11 = require("react");
 function useCommitActionMenu(options) {
   const { enabled } = options;
-  const [open, setOpen] = (0, import_react10.useState)(false);
-  const wrap = (0, import_react10.useRef)(null);
-  (0, import_react10.useEffect)(() => {
+  const [open, setOpen] = (0, import_react11.useState)(false);
+  const wrap = (0, import_react11.useRef)(null);
+  (0, import_react11.useEffect)(() => {
     if (!open) return void 0;
     const onPointerDown = (event) => {
       const element = wrap.current;
@@ -1725,7 +1737,7 @@ function useCommitActionMenu(options) {
       document.removeEventListener("keydown", onKeyDown, true);
     };
   }, [open, wrap]);
-  (0, import_react10.useEffect)(() => {
+  (0, import_react11.useEffect)(() => {
     if (!enabled) setOpen(false);
   }, [enabled]);
   const toggle = () => {
@@ -1739,17 +1751,17 @@ function useCommitActionMenu(options) {
 }
 
 // src/client/panel/hooks/useCommitDetails.ts
-var import_react11 = require("react");
+var import_react12 = require("react");
 var NO_COLLAPSED_FOLDERS = /* @__PURE__ */ new Set();
 function useCommitDetails(options) {
   const { call, refs } = options;
-  const [selected, setSelected] = (0, import_react11.useState)(null);
-  const [details, setDetails] = (0, import_react11.useState)(null);
-  const [loading, setLoading] = (0, import_react11.useState)(false);
-  const [failure, setFailure] = (0, import_react11.useState)(null);
-  const [collapsedFolders, setCollapsedFolders] = (0, import_react11.useState)(NO_COLLAPSED_FOLDERS);
-  const requestToken = (0, import_react11.useRef)(0);
-  const loadCommit = (0, import_react11.useCallback)(
+  const [selected, setSelected] = (0, import_react12.useState)(null);
+  const [details, setDetails] = (0, import_react12.useState)(null);
+  const [loading, setLoading] = (0, import_react12.useState)(false);
+  const [failure, setFailure] = (0, import_react12.useState)(null);
+  const [collapsedFolders, setCollapsedFolders] = (0, import_react12.useState)(NO_COLLAPSED_FOLDERS);
+  const requestToken = (0, import_react12.useRef)(0);
+  const loadCommit = (0, import_react12.useCallback)(
     async (commit) => {
       requestToken.current += 1;
       const token = requestToken.current;
@@ -1773,7 +1785,7 @@ function useCommitDetails(options) {
     },
     [call, refs]
   );
-  const selectCommit = (0, import_react11.useCallback)(
+  const selectCommit = (0, import_react12.useCallback)(
     (commit) => {
       if (commit === null || commit === void 0) return;
       setCollapsedFolders(NO_COLLAPSED_FOLDERS);
@@ -1788,17 +1800,17 @@ function useCommitDetails(options) {
     },
     [loadCommit]
   );
-  const closeCommit = (0, import_react11.useCallback)(() => {
+  const closeCommit = (0, import_react12.useCallback)(() => {
     requestToken.current += 1;
     setSelected(null);
     setDetails(null);
     setFailure(null);
     setLoading(false);
   }, []);
-  const retryCommit = (0, import_react11.useCallback)(() => {
+  const retryCommit = (0, import_react12.useCallback)(() => {
     if (selected !== null) void loadCommit(selected);
   }, [loadCommit, selected]);
-  const toggleFolder = (0, import_react11.useCallback)((path) => {
+  const toggleFolder = (0, import_react12.useCallback)((path) => {
     setCollapsedFolders((current) => {
       const next = new Set(current);
       if (next.has(path)) next.delete(path);
@@ -1820,13 +1832,13 @@ function useCommitDetails(options) {
 }
 
 // src/client/panel/hooks/useCommitExpansion.ts
-var import_react12 = require("react");
+var import_react13 = require("react");
 var LOADING = { loading: true, failure: null, files: [], truncated: false };
 function useCommitExpansion(options) {
   const { call, refs } = options;
-  const [expanded, setExpanded] = (0, import_react12.useState)(() => /* @__PURE__ */ new Map());
-  const tokens = (0, import_react12.useRef)(/* @__PURE__ */ new Map());
-  const put = (0, import_react12.useCallback)((oid, next) => {
+  const [expanded, setExpanded] = (0, import_react13.useState)(() => /* @__PURE__ */ new Map());
+  const tokens = (0, import_react13.useRef)(/* @__PURE__ */ new Map());
+  const put = (0, import_react13.useCallback)((oid, next) => {
     setExpanded((current) => {
       const copy = new Map(current);
       if (next === null) copy.delete(oid);
@@ -1834,12 +1846,12 @@ function useCommitExpansion(options) {
       return copy;
     });
   }, []);
-  const nextToken = (0, import_react12.useCallback)((oid) => {
+  const nextToken = (0, import_react13.useCallback)((oid) => {
     const token = (tokens.current.get(oid) ?? 0) + 1;
     tokens.current.set(oid, token);
     return token;
   }, []);
-  const load = (0, import_react12.useCallback)(
+  const load = (0, import_react13.useCallback)(
     async (oid) => {
       const token = nextToken(oid);
       const current = () => refs.mounted.current && tokens.current.get(oid) === token;
@@ -1858,7 +1870,7 @@ function useCommitExpansion(options) {
     },
     [call, refs, put, nextToken]
   );
-  const toggleCommit = (0, import_react12.useCallback)(
+  const toggleCommit = (0, import_react13.useCallback)(
     (commit) => {
       if (commit === null || commit === void 0 || typeof commit.oid !== "string") return;
       const oid = commit.oid;
@@ -1871,7 +1883,7 @@ function useCommitExpansion(options) {
     },
     [expanded, load, put, nextToken]
   );
-  const retryCommit = (0, import_react12.useCallback)(
+  const retryCommit = (0, import_react13.useCallback)(
     (commit) => {
       if (commit === null || commit === void 0 || !expanded.has(commit.oid)) return;
       void load(commit.oid);
@@ -1882,11 +1894,11 @@ function useCommitExpansion(options) {
 }
 
 // src/client/panel/hooks/useCommitMenuActions.ts
-var import_react13 = require("react");
+var import_react14 = require("react");
 function useCommitMenuActions(options) {
   const { call, t, refs, perform, onReferencesChanged } = options;
-  const [dialog, setDialog] = (0, import_react13.useState)(null);
-  const invoker = (0, import_react13.useRef)(null);
+  const [dialog, setDialog] = (0, import_react14.useState)(null);
+  const invoker = (0, import_react14.useRef)(null);
   const rememberTrigger = (element) => {
     invoker.current = element;
   };
@@ -1984,26 +1996,29 @@ function useCommitMenuActions(options) {
 }
 
 // src/client/panel/hooks/useHistory.ts
-var import_react14 = require("react");
+var import_react15 = require("react");
 function isReferences(value) {
   return typeof value === "object" && value !== null && "current" in value;
 }
 function useHistory(options) {
   const { call, refs } = options;
-  const [graph, setGraph] = (0, import_react14.useState)(null);
-  const [references, setReferences] = (0, import_react14.useState)(null);
-  const [graphLoading, setGraphLoading] = (0, import_react14.useState)(false);
-  const [graphFailure, setGraphFailure] = (0, import_react14.useState)(null);
-  const [hasMore, setHasMore] = (0, import_react14.useState)(false);
-  const [moreLoading, setMoreLoading] = (0, import_react14.useState)(false);
-  const [moreFailure, setMoreFailure] = (0, import_react14.useState)(null);
-  const offset = (0, import_react14.useRef)(0);
-  const generation = (0, import_react14.useRef)(0);
-  const moreInFlight = (0, import_react14.useRef)(false);
-  const loadGraph = (0, import_react14.useCallback)(async () => {
+  const [graph, setGraph] = (0, import_react15.useState)(null);
+  const [references, setReferences] = (0, import_react15.useState)(null);
+  const [graphLoading, setGraphLoading] = (0, import_react15.useState)(false);
+  const [graphFailure, setGraphFailure] = (0, import_react15.useState)(null);
+  const [hasMore, setHasMore] = (0, import_react15.useState)(false);
+  const [moreLoading, setMoreLoading] = (0, import_react15.useState)(false);
+  const [moreFailure, setMoreFailure] = (0, import_react15.useState)(null);
+  const offset = (0, import_react15.useRef)(0);
+  const generation = (0, import_react15.useRef)(0);
+  const moreInFlight = (0, import_react15.useRef)(false);
+  const loadGraph = (0, import_react15.useCallback)(async () => {
     const current = generation.current + 1;
     generation.current = current;
-    if (refs.mounted.current) setGraphLoading(true);
+    if (refs.mounted.current) {
+      setGraphLoading(true);
+      setGraphFailure(null);
+    }
     try {
       const value = await call("history");
       if (!refs.mounted.current || generation.current !== current) return;
@@ -2028,7 +2043,7 @@ function useHistory(options) {
       if (refs.mounted.current && generation.current === current) setGraphLoading(false);
     }
   }, [call, refs]);
-  const refreshReferences = (0, import_react14.useCallback)(async () => {
+  const refreshReferences = (0, import_react15.useCallback)(async () => {
     try {
       const value = await call("references");
       if (!refs.mounted.current) return null;
@@ -2038,7 +2053,7 @@ function useHistory(options) {
       return null;
     }
   }, [call, refs]);
-  const loadMore = (0, import_react14.useCallback)(async () => {
+  const loadMore = (0, import_react15.useCallback)(async () => {
     if (!refs.mounted.current || moreInFlight.current || graphLoading || !hasMore) return;
     const current = generation.current;
     moreInFlight.current = true;
@@ -2064,7 +2079,7 @@ function useHistory(options) {
       if (refs.mounted.current) setMoreLoading(false);
     }
   }, [call, graphLoading, hasMore, refs]);
-  (0, import_react14.useEffect)(() => {
+  (0, import_react15.useEffect)(() => {
     void loadGraph();
   }, [loadGraph]);
   return {
@@ -2082,17 +2097,17 @@ function useHistory(options) {
 }
 
 // src/client/panel/hooks/useLiveUpdates.ts
-var import_react15 = require("react");
+var import_react16 = require("react");
 function useLiveUpdates(options) {
   const { call, panelId, visible, repoRoot, refs, onWorktreeChange, onReferencesChange } = options;
-  const [watching, setWatching] = (0, import_react15.useState)(false);
-  const baseline = (0, import_react15.useRef)(null);
-  const handlers = (0, import_react15.useRef)({ onWorktreeChange, onReferencesChange });
-  (0, import_react15.useEffect)(() => {
+  const [watching, setWatching] = (0, import_react16.useState)(false);
+  const baseline = (0, import_react16.useRef)(null);
+  const handlers = (0, import_react16.useRef)({ onWorktreeChange, onReferencesChange });
+  (0, import_react16.useEffect)(() => {
     handlers.current = { onWorktreeChange, onReferencesChange };
   });
   refs.watching.current = watching;
-  const subscribe = (0, import_react15.useCallback)(async () => {
+  const subscribe = (0, import_react16.useCallback)(async () => {
     try {
       const state = await call("watch", { panel: panelId });
       if (!refs.mounted.current) return;
@@ -2107,7 +2122,7 @@ function useLiveUpdates(options) {
       }
     }
   }, [call, panelId, refs]);
-  (0, import_react15.useEffect)(() => {
+  (0, import_react16.useEffect)(() => {
     void subscribe();
     return () => {
       if (!refs.mounted.current) refs.watching.current = false;
@@ -2115,7 +2130,7 @@ function useLiveUpdates(options) {
       });
     };
   }, [subscribe, call, panelId, repoRoot, refs]);
-  (0, import_react15.useEffect)(() => {
+  (0, import_react16.useEffect)(() => {
     if (!visible) return void 0;
     let active = true;
     const poll = async () => {
@@ -2175,10 +2190,10 @@ function useLiveUpdates(options) {
 }
 
 // src/client/panel/hooks/useMenuCommands.ts
-var import_react16 = require("react");
+var import_react17 = require("react");
 function useMenuCommands() {
-  const optionsRef = (0, import_react16.useRef)(null);
-  (0, import_react16.useEffect)(
+  const optionsRef = (0, import_react17.useRef)(null);
+  (0, import_react17.useEffect)(
     () => panelCommands.subscribe((command) => {
       const options = optionsRef.current;
       if (options !== null) dispatch(options, command);
@@ -2318,13 +2333,13 @@ function dispatch(options, command) {
 }
 
 // src/client/panel/hooks/usePresence.ts
-var import_react17 = require("react");
+var import_react18 = require("react");
 function usePresence(open, exitMs) {
-  const [mounted, setMounted] = (0, import_react17.useState)(open);
-  const [leaving, setLeaving] = (0, import_react17.useState)(false);
-  const mountedRef = (0, import_react17.useRef)(mounted);
+  const [mounted, setMounted] = (0, import_react18.useState)(open);
+  const [leaving, setLeaving] = (0, import_react18.useState)(false);
+  const mountedRef = (0, import_react18.useRef)(mounted);
   mountedRef.current = mounted;
-  (0, import_react17.useEffect)(() => {
+  (0, import_react18.useEffect)(() => {
     if (open) {
       setMounted(true);
       setLeaving(false);
@@ -2343,19 +2358,19 @@ function usePresence(open, exitMs) {
 }
 
 // src/client/panel/hooks/useRemoteActions.ts
-var import_react18 = require("react");
+var import_react19 = require("react");
 function useRemoteActions(options) {
-  const { call, t, refs, repo, perform, notify, setActionFailure, onOpenDialog } = options;
-  const [menuOpen, setMenuOpen] = (0, import_react18.useState)(false);
-  const [remotes, setRemotes] = (0, import_react18.useState)(null);
-  const [remotesLoading, setRemotesLoading] = (0, import_react18.useState)(false);
-  const [remotesFailure, setRemotesFailure] = (0, import_react18.useState)(null);
-  const [dialog, setDialog] = (0, import_react18.useState)(null);
-  const pendingLoad = (0, import_react18.useRef)(null);
-  const lastFailure = (0, import_react18.useRef)(null);
+  const { call, t, refs, repo, perform, setActionFailure, onOpenDialog } = options;
+  const [menuOpen, setMenuOpen] = (0, import_react19.useState)(false);
+  const [remotes, setRemotes] = (0, import_react19.useState)(null);
+  const [remotesLoading, setRemotesLoading] = (0, import_react19.useState)(false);
+  const [remotesFailure, setRemotesFailure] = (0, import_react19.useState)(null);
+  const [dialog, setDialog] = (0, import_react19.useState)(null);
+  const pendingLoad = (0, import_react19.useRef)(null);
+  const lastFailure = (0, import_react19.useRef)(null);
   const canUseBranch = repo !== null && repo.detached !== true && repo.unborn !== true;
   const hasUpstream = repo?.upstream !== null && repo?.upstream !== void 0;
-  const loadRemotes = (0, import_react18.useCallback)(async () => {
+  const loadRemotes = (0, import_react19.useCallback)(async () => {
     const active = pendingLoad.current;
     if (active !== null) return active;
     const task = (async () => {
@@ -2387,7 +2402,7 @@ function useRemoteActions(options) {
     pendingLoad.current = task;
     return task;
   }, [call, refs, t]);
-  (0, import_react18.useEffect)(() => {
+  (0, import_react19.useEffect)(() => {
     if (!menuOpen) return void 0;
     const onPointerDown = (event) => {
       const wrap = refs.remoteWrap.current;
@@ -2468,9 +2483,7 @@ function useRemoteActions(options) {
       }
       const [only] = list;
       if (list.length === 0) {
-        const failure = makeFailure("no-remotes", t("remote.noRemotes"));
-        setActionFailure(failure);
-        notify(t("remote.noRemotes"), false);
+        setActionFailure(makeFailure("no-remotes", t("remote.noRemotes")));
         return;
       }
       if (list.length === 1 && only !== void 0) {
@@ -2503,7 +2516,6 @@ function useRemoteActions(options) {
       const first = list[0];
       if (first === void 0) {
         setActionFailure(makeFailure("no-remotes", t("remote.noRemotes")));
-        notify(t("remote.noRemotes"), false);
         return;
       }
       setDialog({ kind: "remove", name: first.name, url: "" });
@@ -2599,16 +2611,16 @@ function useRemoteActions(options) {
 }
 
 // src/client/panel/hooks/useRepoStatus.ts
-var import_react19 = require("react");
+var import_react20 = require("react");
 function useRepoStatus(options) {
   const { sessionId, useContextMenu, visible, refs } = options;
   const { call, menuTrigger, panelId } = usePanelMenu({ sessionId, useContextMenu });
-  const [status, setStatus] = (0, import_react19.useState)(null);
-  const [loading, setLoading] = (0, import_react19.useState)(true);
-  const [loadFailure, setLoadFailure] = (0, import_react19.useState)(null);
-  const activeRead = (0, import_react19.useRef)(null);
-  const queuedRead = (0, import_react19.useRef)(null);
-  const drain = (0, import_react19.useCallback)(
+  const [status, setStatus] = (0, import_react20.useState)(null);
+  const [loading, setLoading] = (0, import_react20.useState)(true);
+  const [loadFailure, setLoadFailure] = (0, import_react20.useState)(null);
+  const activeRead = (0, import_react20.useRef)(null);
+  const queuedRead = (0, import_react20.useRef)(null);
+  const drain = (0, import_react20.useCallback)(
     async (firstSilent) => {
       refs.inFlight.current = true;
       let silent = firstSilent;
@@ -2638,7 +2650,7 @@ function useRepoStatus(options) {
     },
     [call, refs]
   );
-  const loadStatus = (0, import_react19.useCallback)(
+  const loadStatus = (0, import_react20.useCallback)(
     (loadOptions = {}) => {
       const silent = loadOptions.silent === true;
       const active = activeRead.current;
@@ -2653,10 +2665,10 @@ function useRepoStatus(options) {
     },
     [drain]
   );
-  (0, import_react19.useEffect)(() => {
+  (0, import_react20.useEffect)(() => {
     void loadStatus();
   }, [loadStatus]);
-  (0, import_react19.useEffect)(() => {
+  (0, import_react20.useEffect)(() => {
     if (!visible) return void 0;
     const timer = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
@@ -2702,11 +2714,11 @@ function adjustSplitRatio(ratio, key) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var import_react21 = require("react");
+var import_react22 = require("react");
 
 // src/client/panel/BranchMenu.ts
-var import_react20 = require("react");
-var h7 = import_react20.createElement;
+var import_react21 = require("react");
+var h7 = import_react21.createElement;
 function BranchMenu(props) {
   const t = props.t;
   const local = props.branches ?? [];
@@ -2784,7 +2796,7 @@ function BranchMenu(props) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var h8 = import_react21.createElement;
+var h8 = import_react22.createElement;
 function BranchHeader(props) {
   const t = props.t;
   const repo = props.repo;
@@ -2887,13 +2899,13 @@ function BranchHeader(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var import_react25 = require("react");
+var import_react26 = require("react");
 
 // src/client/panel/rows.ts
-var import_react23 = require("react");
+var import_react24 = require("react");
 
 // src/client/host-file-icon.ts
-var import_react22 = require("react");
+var import_react23 = require("react");
 function resolveHostIcon() {
   try {
     const hostModule = require("@deepseek-ai/dsh-client-ui-primitives");
@@ -2906,11 +2918,11 @@ function resolveHostIcon() {
 var hostIcon = resolveHostIcon();
 function HostFileIcon(props) {
   const size = props.size ?? 16;
-  return hostIcon === void 0 ? (0, import_react22.createElement)(FileIcon, { size }) : (0, import_react22.createElement)(hostIcon, { path: props.path, size });
+  return hostIcon === void 0 ? (0, import_react23.createElement)(FileIcon, { size }) : (0, import_react23.createElement)(hostIcon, { path: props.path, size });
 }
 
 // src/client/panel/rows.ts
-var h9 = import_react23.createElement;
+var h9 = import_react24.createElement;
 function FileRow(props) {
   const entry = props.entry;
   const letter = props.letter;
@@ -3068,8 +3080,8 @@ function renderFileTree(rows, context) {
 }
 
 // src/client/panel/Section.ts
-var import_react24 = require("react");
-var h10 = import_react24.createElement;
+var import_react25 = require("react");
+var h10 = import_react25.createElement;
 function Section(props) {
   const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
@@ -3107,7 +3119,7 @@ function Section(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var h11 = import_react25.createElement;
+var h11 = import_react26.createElement;
 function ChangeGroups(props) {
   const t = props.t;
   const sectionActions = {
@@ -3167,7 +3179,7 @@ function ChangeGroups(props) {
     menuTarget: (entry) => props.rowTarget("file", { section: mode, path: entry.path })
   });
   return h11(
-    import_react25.Fragment,
+    import_react26.Fragment,
     null,
     props.mergeRows.length === 0 ? null : h11(
       Section,
@@ -3224,7 +3236,7 @@ function ChangeGroups(props) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var import_react27 = require("react");
+var import_react28 = require("react");
 
 // src/client/panel/autosize.ts
 var COMMIT_MESSAGE_MAX_LINES = 10;
@@ -3271,8 +3283,8 @@ function autoGrowTextArea(area) {
 }
 
 // src/client/panel/views/CommitMenu.ts
-var import_react26 = require("react");
-var h12 = import_react26.createElement;
+var import_react27 = require("react");
+var h12 = import_react27.createElement;
 function CommitMenu(props) {
   const t = props.t;
   const item = (action, label, disabled, title) => h12(
@@ -3314,11 +3326,11 @@ function CommitMenu(props) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var h13 = import_react27.createElement;
+var h13 = import_react28.createElement;
 function CommitBox(props) {
   const t = props.t;
-  const messageArea = (0, import_react27.useRef)(null);
-  (0, import_react27.useLayoutEffect)(() => {
+  const messageArea = (0, import_react28.useRef)(null);
+  (0, import_react28.useLayoutEffect)(() => {
     const area = messageArea.current;
     if (area === null) return;
     return autoGrowTextArea(area);
@@ -3390,7 +3402,7 @@ function CommitBox(props) {
 }
 
 // src/client/panel/views/CommitDetails.ts
-var import_react28 = require("react");
+var import_react29 = require("react");
 
 // src/client/git/tree.ts
 var NAME_ORDER = { numeric: true, sensitivity: "base" };
@@ -3464,7 +3476,7 @@ function buildFileTree(entries, options = {}) {
 }
 
 // src/client/panel/views/CommitDetails.ts
-var h14 = import_react28.createElement;
+var h14 = import_react29.createElement;
 function CommitDetails(props) {
   const t = props.t;
   const summary = props.summary;
@@ -3482,13 +3494,17 @@ function CommitDetails(props) {
       t("commitDetails.loading")
     );
   } else if (props.failure !== null && props.failure !== void 0) {
-    filesBody = h14(Banner, {
-      key: "error",
-      title: t("error.title"),
-      detail: errorText(t, props.failure),
-      retryLabel: t("retry"),
-      onRetry: props.onRetry
-    });
+    filesBody = h14(
+      "div",
+      { key: "error", className: "dshgg-commitNote" },
+      t("error.title"),
+      " ",
+      h14(
+        "button",
+        { type: "button", className: "dshgg-linkBtn", onClick: props.onRetry },
+        t("retry")
+      )
+    );
   } else if (files.length === 0) {
     filesBody = h14("div", { key: "empty", className: "dshgg-commitNote" }, t("commitDetails.empty"));
   } else {
@@ -3554,11 +3570,11 @@ function CommitDetails(props) {
 }
 
 // src/client/panel/views/CommitMenuDialog.ts
-var import_react29 = require("react");
-var h15 = import_react29.createElement;
+var import_react30 = require("react");
+var h15 = import_react30.createElement;
 function CommitMenuDialog(props) {
   const { dialog, t } = props;
-  const composing = (0, import_react29.useRef)(false);
+  const composing = (0, import_react30.useRef)(false);
   const title = dialog.kind === "createBranch" ? t("menu.createBranch") : dialog.kind === "createTag" ? t("menu.createTag") : t("menu.deleteBranch");
   const description = dialog.kind === "createBranch" ? t("menu.createBranchAt", { hash: dialog.oid.slice(0, 7) }) : dialog.kind === "createTag" ? t("menu.createTagAt", { hash: dialog.oid.slice(0, 7) }) : t("menu.deleteBranchConfirm", { name: dialog.branch });
   const progress = dialog.kind === "createBranch" ? t("menu.creatingBranch") : dialog.kind === "createTag" ? t("menu.creatingTag") : t("menu.deletingBranch");
@@ -3597,7 +3613,6 @@ function CommitMenuDialog(props) {
       cancelLabel: t("action.cancel"),
       submitLabel: title,
       progress,
-      feedback: props.feedback,
       onCancel: props.onCancel,
       onSubmit: submit
     },
@@ -3643,7 +3658,7 @@ function CommitMenuDialog(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var import_react33 = require("react");
+var import_react34 = require("react");
 
 // src/client/git/graph.ts
 var SWIMLANE_HEIGHT = 22;
@@ -4022,8 +4037,8 @@ function refBadges(refs) {
 }
 
 // src/client/panel/views/graph/CommitChangeRows.ts
-var import_react30 = require("react");
-var h16 = import_react30.createElement;
+var import_react31 = require("react");
+var h16 = import_react31.createElement;
 function changeRowItems(expansion) {
   if (expansion.failure !== null) return [{ kind: "failure", failure: expansion.failure }];
   if (expansion.loading) return [{ kind: "loading" }];
@@ -4123,11 +4138,11 @@ function renderCommitChangeRows(props) {
 }
 
 // src/client/panel/views/graph/CommitGraphRow.ts
-var import_react32 = require("react");
+var import_react33 = require("react");
 
 // src/client/panel/views/graph/GraphArtwork.ts
-var import_react31 = require("react");
-var h17 = import_react31.createElement;
+var import_react32 = require("react");
+var h17 = import_react32.createElement;
 function graphColorValue(color) {
   return `var(--dshgg-scm-${color})`;
 }
@@ -4233,7 +4248,7 @@ function GraphCell(props) {
 }
 
 // src/client/panel/views/graph/CommitGraphRow.ts
-var h18 = import_react32.createElement;
+var h18 = import_react33.createElement;
 function badgeIconElement(icon) {
   if (icon === "target") return h18(TargetIcon, { size: 16 });
   if (icon === "cloud") return h18(CloudIcon, { size: 16 });
@@ -4314,12 +4329,12 @@ function GraphRow(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var h19 = import_react33.createElement;
+var h19 = import_react34.createElement;
 function GraphSection(props) {
   const t = props.t;
   const commits = Array.isArray(props.commits) ? props.commits : null;
   const references = props.references ?? null;
-  const rowsLayout = (0, import_react33.useMemo)(
+  const rowsLayout = (0, import_react34.useMemo)(
     () => computeGraph(
       bindReferenceTargets(
         (commits ?? []).map((commit) => ({
@@ -4335,21 +4350,21 @@ function GraphSection(props) {
   );
   const graphId = props.graphId ?? "git-graph";
   const expanded = props.expanded ?? null;
-  const inserted = (0, import_react33.useMemo)(
+  const inserted = (0, import_react34.useMemo)(
     () => (commits ?? []).map((commit) => {
       const expansion = expanded?.get(commit.oid);
       return expansion === void 0 ? [] : changeRowItems(expansion);
     }),
     [commits, expanded]
   );
-  const layer = (0, import_react33.useMemo)(
+  const layer = (0, import_react34.useMemo)(
     () => graphLayer(
       rowsLayout,
       inserted.map((items) => items.length)
     ),
     [rowsLayout, inserted]
   );
-  const [hovered, setHovered] = (0, import_react33.useState)(null);
+  const [hovered, setHovered] = (0, import_react34.useState)(null);
   const menu = props.menu;
   const trigger = menu === void 0 ? null : menu.trigger;
   const rows = [];
@@ -4357,13 +4372,16 @@ function GraphSection(props) {
     rows.push(h19("div", { key: "loading", className: "dshgg-note" }, t("graph.loading")));
   } else if (props.failure !== null) {
     rows.push(
-      h19(Banner, {
-        key: "error",
-        title: t("error.title"),
-        detail: errorText(t, props.failure),
-        retryLabel: t("retry"),
-        onRetry: props.onRetry
-      })
+      h19(
+        "div",
+        { key: "error", className: "dshgg-graphMore" },
+        h19("span", { className: "dshgg-graphMoreText" }, t("error.title")),
+        h19(
+          "button",
+          { type: "button", className: "dshgg-btn dshgg-btnGhost", onClick: props.onRetry },
+          t("retry")
+        )
+      )
     );
   } else if (commits === null || commits.length === 0) {
     rows.push(h19("div", { key: "empty", className: "dshgg-note" }, t("graph.empty")));
@@ -4471,12 +4489,12 @@ function GraphSection(props) {
 }
 
 // src/client/panel/views/RemoteDialog.ts
-var import_react34 = require("react");
-var h20 = import_react34.createElement;
+var import_react35 = require("react");
+var h20 = import_react35.createElement;
 function RemoteDialog(props) {
   const { dialog, t } = props;
   const busy = props.busyName !== null;
-  const composing = (0, import_react34.useRef)(false);
+  const composing = (0, import_react35.useRef)(false);
   const compositionHandlers = {
     onCompositionStart: () => {
       composing.current = true;
@@ -4506,7 +4524,6 @@ function RemoteDialog(props) {
         canSubmit,
         focusCancel: false,
         ...props.busyName === "add-remote" ? { progress: t("remote.adding", { name: dialog.name }) } : {},
-        feedback: props.feedback,
         onCancel: props.onCancel,
         onSubmit: submit
       },
@@ -4566,7 +4583,6 @@ function RemoteDialog(props) {
       canSubmit: dialog.name !== "",
       focusCancel: dialog.kind === "remove",
       ...progress === void 0 ? {} : { progress },
-      feedback: props.feedback,
       onCancel: props.onCancel,
       onSubmit: props.onSubmit
     },
@@ -4594,11 +4610,11 @@ function RemoteDialog(props) {
 }
 
 // src/client/panel/views/RemoteMenu.ts
-var import_react35 = require("react");
-var h21 = import_react35.createElement;
+var import_react36 = require("react");
+var h21 = import_react36.createElement;
 function RemoteMenu(props) {
   const t = props.t;
-  const [configOpen, setConfigOpen] = (0, import_react35.useState)(false);
+  const [configOpen, setConfigOpen] = (0, import_react36.useState)(false);
   const branchBlocked = props.busy || !props.usable;
   const canRemove = props.failure === null && props.remotes !== null && props.remotes.length > 0;
   const notes = [];
@@ -4686,11 +4702,11 @@ function RemoteMenu(props) {
 }
 
 // src/client/panel/views/SplitView.ts
-var import_react36 = require("react");
-var h22 = import_react36.createElement;
+var import_react37 = require("react");
+var h22 = import_react37.createElement;
 function SplitView(props) {
-  const [dragging, setDragging] = (0, import_react36.useState)(false);
-  const dragStart = (0, import_react36.useRef)(null);
+  const [dragging, setDragging] = (0, import_react37.useState)(false);
+  const dragStart = (0, import_react37.useRef)(null);
   const ratio = clampSplitRatio(props.ratio);
   const percent = `${Math.round(ratio * 1e3) / 10}%`;
   const beginDrag = (event) => {
@@ -4763,7 +4779,7 @@ function SplitView(props) {
 }
 
 // src/client/panel/GitPanel.ts
-var h23 = import_react37.createElement;
+var h23 = import_react38.createElement;
 function GitPanel(props) {
   const t = props.t;
   const tab = props.useTabInfo().tab;
@@ -4779,32 +4795,32 @@ function GitPanel(props) {
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const history = useHistory({ call, refs });
   const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history;
-  const rootPane = (0, import_react37.useRef)(null);
-  const graphPane = (0, import_react37.useRef)(null);
-  const reloadHistory = (0, import_react37.useCallback)(async () => {
+  const rootPane = (0, import_react38.useRef)(null);
+  const graphPane = (0, import_react38.useRef)(null);
+  const reloadHistory = (0, import_react38.useCallback)(async () => {
     await loadGraph();
     if (graphPane.current !== null) graphPane.current.scrollTop = 0;
   }, [loadGraph]);
-  const [openSections, setOpenSections] = (0, import_react37.useState)({
+  const [openSections, setOpenSections] = (0, import_react38.useState)({
     merge: true,
     staged: true,
     changes: true,
     graph: true
   });
-  const [splitRatio, setSplitRatio] = (0, import_react37.useState)(DEFAULT_SPLIT_RATIO);
-  const lastDetails = (0, import_react37.useRef)(null);
-  const lastPrompt = (0, import_react37.useRef)(null);
+  const [splitRatio, setSplitRatio] = (0, import_react38.useState)(DEFAULT_SPLIT_RATIO);
+  const lastDetails = (0, import_react38.useRef)(null);
+  const lastPrompt = (0, import_react38.useRef)(null);
   const repo = status?.repo ?? null;
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
   const files = status?.files ?? [];
-  const groups = (0, import_react37.useMemo)(() => groupChangeEntries(files), [files]);
+  const groups = (0, import_react38.useMemo)(() => groupChangeEntries(files), [files]);
   const { mergeRows, stagedRows, changedRows } = groups;
   const clean = repo !== null && mergeRows.length === 0 && stagedRows.length === 0 && changedRows.length === 0;
-  const handleWorktreeChange = (0, import_react37.useCallback)(() => {
+  const handleWorktreeChange = (0, import_react38.useCallback)(() => {
     void loadStatus({ silent: true });
   }, [loadStatus]);
-  const handleReferencesChange = (0, import_react37.useCallback)(async () => {
+  const handleReferencesChange = (0, import_react38.useCallback)(async () => {
     const next = await refreshReferences();
     await loadStatus({ silent: true });
     const revision = next?.current?.revision;
@@ -4878,7 +4894,6 @@ function GitPanel(props) {
     refs,
     repo,
     perform,
-    notify: props.notify,
     setActionFailure,
     onOpenDialog: closePromptsForRemote
   });
@@ -4927,8 +4942,54 @@ function GitPanel(props) {
   };
   const commitState = useCommitDetails({ call, refs });
   const expansion = useCommitExpansion({ call, refs });
+  const retryGenerations = (0, import_react38.useRef)({});
+  const [, setRetryTick] = (0, import_react38.useState)(0);
+  const retry = (key, run) => {
+    retryGenerations.current[key] = (retryGenerations.current[key] ?? 0) + 1;
+    setRetryTick((value) => value + 1);
+    run();
+  };
+  useFailureToasts(
+    [
+      {
+        key: "status",
+        failure: status === null ? null : loadFailure,
+        text: errorText(t, loadFailure),
+        generation: retryGenerations.current.status ?? 0,
+        action: {
+          label: t("retry"),
+          run: () => retry("status", () => {
+            setLoadFailure(null);
+            void loadStatus();
+          })
+        }
+      },
+      { key: "action", failure: actionFailure, text: errorText(t, actionFailure) },
+      {
+        key: "history",
+        failure: graphFailure,
+        text: errorText(t, graphFailure),
+        generation: retryGenerations.current.history ?? 0,
+        action: {
+          label: t("retry"),
+          run: () => retry("history", () => void reloadHistory())
+        }
+      },
+      {
+        key: "details",
+        failure: commitState.failure,
+        text: errorText(t, commitState.failure),
+        generation: retryGenerations.current.details ?? 0,
+        action: {
+          label: t("retry"),
+          run: () => retry("details", commitState.retryCommit)
+        }
+      }
+    ],
+    props.notify
+  );
   const selectedCommit = commitState.selected;
-  (0, import_react37.useEffect)(() => {
+  (0, import_react38.useEffect)(() => {
     if (!visible || selectedCommit === null) return void 0;
     const closeOnEscape = (event) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -4954,14 +5015,14 @@ function GitPanel(props) {
     remoteActions.dialog,
     commitState.closeCommit
   ]);
-  const commitRows = (0, import_react37.useMemo)(
+  const commitRows = (0, import_react38.useMemo)(
     () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
       ...file,
       kind: "commit"
     })),
     [commitState.details]
   );
-  const openDiff = (0, import_react37.useCallback)(
+  const openDiff = (0, import_react38.useCallback)(
     (entry, mode) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -4976,7 +5037,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openFileAtCommit = (0, import_react37.useCallback)(
+  const openFileAtCommit = (0, import_react38.useCallback)(
     (commit, entry) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -4991,7 +5052,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openCommitDiff = (0, import_react37.useCallback)(
+  const openCommitDiff = (0, import_react38.useCallback)(
     (entry) => {
       if (selectedCommit !== null) openFileAtCommit(selectedCommit, entry);
     },
@@ -5189,12 +5250,6 @@ function GitPanel(props) {
   });
   const commitHint = stagedRows.length > 0 ? t("commit.hint") : t("commit.hintNone");
   const placeholder = repo === null ? t("commit.placeholder", { branch: "" }) : t("commit.placeholder", { branch: branchLabel ?? "" });
-  const actionFeedback = actionFailure === null ? null : h23(Banner, {
-    title: t("error.title"),
-    detail: errorText(t, actionFailure),
-    dismissLabel: t("action.dismiss"),
-    onDismiss: () => setActionFailure(null)
-  });
   const promptNode = remoteActions.dialog !== null ? h23(RemoteDialog, {
     key: `remote:${remoteActions.dialog.kind}`,
     t,
@@ -5202,7 +5257,6 @@ function GitPanel(props) {
     remotes: remoteActions.remotes ?? [],
     dialog: remoteActions.dialog,
     busyName: busy,
-    feedback: actionFeedback,
     onSelect: remoteActions.setName,
     onNameChange: remoteActions.setName,
     onUrlChange: remoteActions.setUrl,
@@ -5213,7 +5267,6 @@ function GitPanel(props) {
     dialog: commitMenuActions.dialog,
     t,
     busy: busy !== null,
-    feedback: actionFeedback,
     onNameChange: commitMenuActions.setName,
     onMessageChange: commitMenuActions.setMessage,
     onCancel: () => commitMenuActions.closeDialog(),
@@ -5225,7 +5278,6 @@ function GitPanel(props) {
     cancelLabel: t("action.cancel"),
     submitLabel: confirmActionLabel(t, confirm),
     busy: busy !== null,
-    feedback: actionFeedback,
     onCancel: () => requestConfirmation(null),
     onSubmit: () => {
       if (refs.busy.current === null) confirmAction();
@@ -5308,17 +5360,6 @@ function GitPanel(props) {
           canPush: remoteActions.hasUpstream,
           onChange: setMessage
         }),
-        loadFailure !== null && status !== null ? h23(Banner, {
-          title: t("error.title"),
-          detail: errorText(t, loadFailure),
-          retryLabel: t("retry"),
-          onRetry: () => {
-            void loadStatus();
-          },
-          dismissLabel: t("action.dismiss"),
-          onDismiss: () => setLoadFailure(null)
-        }) : null,
-        promptMotion === null ? actionFeedback : null,
         body
       ),
       detailsMotion
@@ -5343,13 +5384,13 @@ var commit_box_default = '/* ---------------------------------------------------
 var commit_detail_default = "/* --------------------------------------------------------- commit detail --- */\n\n/* The details card keeps the scroll frame's scrolling and padding, and adds the\n * border and solid theme surface that separate it from the content it overlays\n * while it slides in and out. The solid surface is the readable fallback for\n * the native frosted material below. */\n.dshgg-root .dshgg-commitCard {\n  flex: 1 1 auto;\n  min-width: 0;\n  min-height: 0;\n  padding: 0 8px 10px;\n  background: var(--dsw-alias-bg-layer-1);\n  border: 0.5px solid var(--dsw-alias-border-l1);\n  border-radius: var(--dsw-radius-lg);\n  pointer-events: auto;\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n/* Match the bottom operation prompt's native frosted material. */\n@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {\n  .dshgg-root .dshgg-commitCard {\n    background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));\n    backdrop-filter: var(--dsw-menu-backdrop-filter);\n    -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);\n  }\n}\n\n.dshgg-commitView {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  padding: 2px 0 8px;\n}\n\n.dshgg-commitToolbar {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-height: 32px;\n  min-width: 0;\n}\n\n.dshgg-commitHash {\n  flex: none;\n  padding: 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-commitSubject {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-commitMeta {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  padding: 0 2px 8px 34px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-commitBody {\n  max-height: 160px;\n  margin: 0 0 8px 34px;\n  padding: 8px 10px;\n  overflow: auto;\n  color: var(--dsw-alias-label-primary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--dsw-alias-markdown-code-block);\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitFilesHeader {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  height: 30px;\n  margin-top: 6px;\n  padding: 0 4px;\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-strong-12);\n}\n\n.dshgg-commitNote {\n  padding: 6px 6px 10px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n";
 
 // src/client/styles/confirm.css
-var confirm_default = '/* ------------------------------------------------------------- confirm --- */\n\n/* This local layer never participates in the pane split or intercepts clicks\n   outside the card. No portal, viewport positioning or modal backdrop. */\n.dshgg-root .dshgg-floating-panel-layer {\n  position: absolute;\n  inset: 4px;\n  z-index: 25;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: flex-end;\n  min-width: 0;\n  min-height: 0;\n  pointer-events: none;\n}\n\n.dshgg-root .dshgg-floating-panel {\n  box-sizing: border-box;\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  max-height: 100%;\n  /* If even the wrapping footer exceeds the pane, every action stays reachable. */\n  overflow-x: hidden;\n  overflow-y: auto;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-alias-bg-layer-1);\n  border: 0.5px solid var(--dsw-alias-border-l1);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  pointer-events: auto;\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n/* Keep the solid theme surface on browsers without backdrop filtering. */\n@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {\n  .dshgg-root .dshgg-floating-panel {\n    background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));\n    backdrop-filter: var(--dsw-menu-backdrop-filter);\n    -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);\n  }\n}\n\n.dshgg-root .dshgg-floating-panel-body {\n  flex: 1 1 auto;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px 8px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overflow-wrap: anywhere;\n  overscroll-behavior: contain;\n}\n\n.dshgg-root .dshgg-floating-panel-footer {\n  display: flex;\n  flex: none;\n  flex-wrap: wrap;\n  align-items: center;\n  justify-content: flex-end;\n  gap: 8px;\n  min-width: 0;\n  padding: 10px 8px;\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-root .dshgg-floating-panel-footer .dshgg-btn {\n  flex: 0 1 auto;\n  min-width: 0;\n  max-width: 100%;\n  height: auto;\n  min-height: 28px;\n  padding: 6px 12px;\n  white-space: normal;\n  overflow-wrap: anywhere;\n}\n\n.dshgg-root .dshgg-floating-panel [aria-disabled="true"] {\n  opacity: 0.5;\n  cursor: default;\n}\n\n.dshgg-root .dshgg-floating-panel .dshgg-banner {\n  margin: 10px 0 0;\n}\n\n.dshgg-confirmTitle {\n  font: var(--dsw-font-xs-strong-13);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmDesc {\n  margin-top: 3px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n';
+var confirm_default = '/* ------------------------------------------------------------- confirm --- */\n\n/* This local layer never participates in the pane split or intercepts clicks\n   outside the card. No portal, viewport positioning or modal backdrop. */\n.dshgg-root .dshgg-floating-panel-layer {\n  position: absolute;\n  inset: 4px;\n  z-index: 25;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: flex-end;\n  min-width: 0;\n  min-height: 0;\n  pointer-events: none;\n}\n\n.dshgg-root .dshgg-floating-panel {\n  box-sizing: border-box;\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  max-height: 100%;\n  /* If even the wrapping footer exceeds the pane, every action stays reachable. */\n  overflow-x: hidden;\n  overflow-y: auto;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-alias-bg-layer-1);\n  border: 0.5px solid var(--dsw-alias-border-l1);\n  border-radius: var(--dsw-radius-lg);\n  box-shadow: var(--dsw-elevation-prominent);\n  pointer-events: auto;\n  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);\n  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);\n  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);\n}\n\n/* Keep the solid theme surface on browsers without backdrop filtering. */\n@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {\n  .dshgg-root .dshgg-floating-panel {\n    background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1));\n    backdrop-filter: var(--dsw-menu-backdrop-filter);\n    -webkit-backdrop-filter: var(--dsw-menu-backdrop-filter);\n  }\n}\n\n.dshgg-root .dshgg-floating-panel-body {\n  flex: 1 1 auto;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px 8px;\n  overflow-x: hidden;\n  overflow-y: auto;\n  overflow-wrap: anywhere;\n  overscroll-behavior: contain;\n}\n\n.dshgg-root .dshgg-floating-panel-footer {\n  display: flex;\n  flex: none;\n  flex-wrap: wrap;\n  align-items: center;\n  justify-content: flex-end;\n  gap: 8px;\n  min-width: 0;\n  padding: 10px 8px;\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-root .dshgg-floating-panel-footer .dshgg-btn {\n  flex: 0 1 auto;\n  min-width: 0;\n  max-width: 100%;\n  height: auto;\n  min-height: 28px;\n  padding: 6px 12px;\n  white-space: normal;\n  overflow-wrap: anywhere;\n}\n\n.dshgg-root .dshgg-floating-panel [aria-disabled="true"] {\n  opacity: 0.5;\n  cursor: default;\n}\n\n.dshgg-confirmTitle {\n  font: var(--dsw-font-xs-strong-13);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-confirmDesc {\n  margin-top: 3px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n';
 
 // src/client/styles/diff.css
 var diff_default = '/* ----------------------------------------------------------------- diff --- */\n\n.dshgg-diffRoot {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  height: 100%;\n  min-height: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n}\n\n.dshgg-diffHeader {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-width: 0;\n  height: 38px;\n  padding: 0 6px 0 10px;\n  /* Include the hairline, like the panel toolbar: 38px + the 38px tab strip. */\n  box-sizing: border-box;\n  border-bottom: 0.5px solid var(--dsw-alias-border-l3);\n}\n\n.dshgg-diffPath {\n  display: flex;\n  flex: 1;\n  flex-direction: column;\n  gap: 1px;\n  min-width: 0;\n}\n\n.dshgg-diffName {\n  overflow: hidden;\n  font: var(--dsw-font-xs-strong-13);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffFrom {\n  overflow: hidden;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxxs-11);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-diffBadge {\n  flex: none;\n  height: 20px;\n  padding: 0 7px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxxs-strong-11);\n  line-height: 20px;\n  white-space: nowrap;\n  background: var(--dsw-alias-bg-module-platform);\n  border-radius: 999px;\n}\n\n.dshgg-diffBadge[data-kind="staged"],\n.dshgg-diffBadge[data-kind="untracked"] {\n  color: var(--dsw-alias-state-success-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);\n}\n\n.dshgg-diffBadge[data-kind="commit"] {\n  color: var(--dsw-alias-state-business-primary);\n  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);\n}\n\n.dshgg-diffStats {\n  display: inline-flex;\n  flex: none;\n  gap: 6px;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  font-variant-numeric: tabular-nums;\n}\n\n.dshgg-diffAdd {\n  color: var(--dsw-alias-state-success-primary);\n}\n\n.dshgg-diffDel {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-diffBody {\n  flex: 1;\n  min-height: 0;\n  padding: 4px 0 16px;\n  overflow: auto;\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 20px;\n}\n\n.dshgg-hunkHeader {\n  padding: 4px 10px 2px;\n  margin-top: 4px;\n  color: var(--dsw-alias-label-tertiary);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre;\n}\n\n.dshgg-diffLine {\n  display: grid;\n  grid-template-columns: 40px 40px 14px minmax(0, 1fr);\n  min-width: max-content;\n  min-height: 20px;\n}\n\n.dshgg-gutter {\n  padding-right: 6px;\n  color: var(--dsw-alias-label-tertiary);\n  font-variant-numeric: tabular-nums;\n  text-align: right;\n  user-select: none;\n}\n\n.dshgg-marker {\n  color: var(--dsw-alias-label-tertiary);\n  font-weight: 500;\n  text-align: center;\n  user-select: none;\n}\n\n.dshgg-code {\n  min-width: 0;\n  padding: 0 10px;\n  white-space: pre;\n}\n\n.dshgg-diffLine[data-type="+"] {\n  background: var(--dsw-alias-file-diff-added-bg);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-added-gutter);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="+"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-added-marker);\n}\n\n.dshgg-diffLine[data-type="-"] {\n  background: var(--dsw-alias-file-diff-deleted-bg);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter {\n  background: var(--dsw-alias-file-diff-deleted-gutter);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-marker {\n  color: var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffLine[data-type="-"] .dshgg-gutter:first-child {\n  box-shadow: inset 3px 0 0 var(--dsw-alias-file-diff-deleted-marker);\n}\n\n.dshgg-diffNote {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 8px;\n  padding: 16px;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xs-13);\n}\n';
 
 // src/client/styles/feedback.css
-var feedback_default = "/* -------------------------------------------------------------- feedback --- */\n\n.dshgg-banner {\n  display: flex;\n  align-items: flex-start;\n  gap: 8px;\n  margin: 0 8px 8px;\n  padding: 8px 10px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xxs-12);\n  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);\n  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-bannerText {\n  flex: 1;\n  min-width: 0;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerText > span {\n  font-weight: 500;\n}\n\n.dshgg-bannerDetail {\n  max-height: 96px;\n  margin-top: 4px;\n  overflow: auto;\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--ds-font-family-code);\n  font-size: 11px;\n  line-height: 16px;\n  white-space: pre-wrap;\n}\n\n.dshgg-bannerActions {\n  display: flex;\n  flex: none;\n  align-items: center;\n  gap: 4px;\n  margin: -4px -4px -4px 0;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn {\n  width: 24px;\n  height: 24px;\n  padding: 5px;\n}\n\n.dshgg-bannerActions .dshgg-iconBtn svg {\n  width: 12px;\n  height: 12px;\n}\n\n.dshgg-state {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 6px;\n  padding: 28px 16px;\n  text-align: center;\n}\n\n.dshgg-stateIcon {\n  display: flex;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-stateTitle {\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-stateDesc {\n  max-width: 280px;\n  margin: 0;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-stateAction {\n  margin-top: 8px;\n}\n\n.dshgg-note {\n  padding: 4px 6px 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-menuNote {\n  padding: 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-clean {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n  padding: 20px 12px;\n  text-align: center;\n}\n\n.dshgg-cleanTitle {\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-cleanDesc {\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n";
+var feedback_default = "/* -------------------------------------------------------------- feedback --- */\n\n.dshgg-state {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 6px;\n  padding: 28px 16px;\n  text-align: center;\n}\n\n.dshgg-stateIcon {\n  display: flex;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-stateTitle {\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-stateDesc {\n  max-width: 280px;\n  margin: 0;\n  color: var(--dsw-alias-label-secondary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-stateAction {\n  margin-top: 8px;\n}\n\n.dshgg-note {\n  padding: 4px 6px 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-menuNote {\n  padding: 8px;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n\n.dshgg-clean {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n  padding: 20px 12px;\n  text-align: center;\n}\n\n.dshgg-cleanTitle {\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-strong-13);\n}\n\n.dshgg-cleanDesc {\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n}\n";
 
 // src/client/styles/graph.css
 var graph_default = "/* ---------------------------------------------------------------- graph --- */\n\n/* The commit graph reproduces VS Code's Source Control Graph, so its palette\n * is VS Code's `scmGraph.*` color set rather than host tokens: five rotation\n * colors shared by light and dark themes, plus the checked-out (`charts.blue`),\n * upstream (`charts.purple`) and base reference colors. Badge text uses the\n * host's base background, standing in for VS Code's `panel.background`. */\n.dshgg-root {\n  --dshgg-scm-lane1: #ffb000;\n  --dshgg-scm-lane2: #dc267f;\n  --dshgg-scm-lane3: #994f00;\n  --dshgg-scm-lane4: #40b0a6;\n  --dshgg-scm-lane5: #b66dff;\n  --dshgg-scm-ref: #1a85ff;\n  --dshgg-scm-remote: #652d90;\n  --dshgg-scm-base: #ea5c00;\n  --dshgg-scm-label-foreground: var(--dsw-alias-bg-base);\n}\n\nbody[data-ds-dark-theme] .dshgg-root {\n  --dshgg-scm-ref: #3794ff;\n  --dshgg-scm-remote: #b180d7;\n}\n\n/* The rows and the one layer that draws their lines. The layer is positioned so\n * it paints over a row's hover surface, and the row's cell keeps the node. */\n.dshgg-graphBody {\n  --dshgg-graph-inset: 4px;\n  position: relative;\n}\n\n.dshgg-graphLayer {\n  position: absolute;\n  top: 0;\n  left: var(--dshgg-graph-inset);\n  pointer-events: none;\n}\n\n/* VS Code `.history-item`: 22px rows, the graph cell, the label, the badges. */\n.dshgg-graphRow {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 22px;\n  min-width: 0;\n  padding: 0 6px 0 var(--dshgg-graph-inset);\n  border-radius: var(--dsw-radius-md);\n  cursor: pointer;\n}\n\n@media (hover: hover) {\n  .dshgg-graphRow:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-graphRow:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n  outline-offset: -2px;\n}\n\n/* The row's cell is as wide as its graph width and as tall as the row; both come\n * from the element's own attributes. */\n.dshgg-graphSvg {\n  display: block;\n  flex: none;\n}\n\n/* VS Code's one-pixel strokes. Every segment of one color in the whole graph\n * shares an element, so a lane crossing a row boundary is one continuous\n * stroke and no seam can appear between two rows. */\n.dshgg-graphEdge {\n  fill: none;\n  stroke-width: 1px;\n  stroke-linecap: round;\n}\n\n/* VS Code clears its node strokes on hover: the node's outer edge grows by half\n * a stroke. The geometry carries the hover radii; the node gap that also closes\n * is driven by the section's hovered row, because the gap belongs to the line\n * layer rather than to the row. */\n@media (hover: hover) {\n  .dshgg-graphRow:hover .dshgg-graphNode {\n    r: var(--dshgg-node-hover-r);\n  }\n\n  .dshgg-graphRow:hover .dshgg-graphNode[data-paint=\"ring\"] {\n    stroke-width: var(--dshgg-node-hover-stroke);\n  }\n}\n\n/* VS Code `.monaco-icon-label`: subject and description ellipsize together. */\n.dshgg-graphLabel {\n  flex: 1 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  line-height: 22px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphSubject {\n  white-space: pre;\n}\n\n.dshgg-graphAuthor {\n  margin-left: 0.5em;\n  font-size: 0.9em;\n  white-space: pre;\n  opacity: 0.7;\n}\n\n.dshgg-graphRow[data-current=\"true\"] .dshgg-graphSubject,\n.dshgg-graphRow[data-current=\"true\"] .dshgg-graphAuthor {\n  font-weight: 600;\n}\n\n/* VS Code `.label-container` and `.label`. */\n.dshgg-graphBadges {\n  display: flex;\n  flex-shrink: 0;\n  gap: 4px;\n  margin-left: 4px;\n}\n\n.dshgg-graphBadge {\n  display: flex;\n  align-items: center;\n  color: var(--dshgg-scm-label-foreground);\n  line-height: 18px;\n  border-radius: 10px;\n}\n\n.dshgg-graphBadgeCount {\n  padding-left: 4px;\n  font-size: 12px;\n}\n\n.dshgg-graphBadgeIcon {\n  display: flex;\n  padding: 1px;\n}\n\n/* The icon element is sized by its own attributes: 16px, or 12px for branches,\n * matching VS Code's codicon font sizes inside an 18px badge. */\n\n.dshgg-graphBadge[data-icon=\"branch\"] .dshgg-graphBadgeIcon {\n  padding: 3px;\n}\n\n.dshgg-graphBadgeName {\n  max-width: 100px;\n  padding-right: 4px;\n  overflow: hidden;\n  font-size: 12px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n/* End-of-graph paging: the load control keeps the section's inset instead of a\n * 22-pixel commit row, and a failed page puts its note beside the retry. */\n.dshgg-graphMore {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  margin: 2px 6px 8px;\n}\n\n.dshgg-graphMoreText {\n  min-width: 0;\n  color: var(--dsw-alias-label-tertiary);\n  font: var(--dsw-font-xxs-12);\n  overflow-wrap: anywhere;\n}\n\n.dshgg-graphMoreBtn {\n  margin: 2px 6px 8px;\n}\n\n/* The paging control stays focusable while it loads, so it dims instead of\n * becoming disabled and dropping keyboard focus. */\n.dshgg-graphMoreBtn[data-loading=\"true\"] {\n  opacity: 0.6;\n  cursor: default;\n}\n\n/* VS Code `.history-item-change`: the rows an expanded commit lists below\n * itself. Each is a 22px row whose graph area is as wide as the commit's\n * outgoing lanes; the lanes themselves come from the section's line layer. */\n.dshgg-graphChange {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 22px;\n  min-width: 0;\n  padding: 0 6px 0 var(--dshgg-graph-inset);\n  border-radius: var(--dsw-radius-md);\n}\n\n.dshgg-graphChangeLanes {\n  display: block;\n  flex: none;\n  height: 22px;\n}\n\n/* VS Code's file icon: a 16px icon with 6px before the label. */\n.dshgg-graphChangeIcon {\n  display: flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 22px;\n  margin: 0 6px 0 4px;\n  color: var(--dsw-alias-label-secondary);\n}\n\n.dshgg-graphChangeLabel {\n  flex: 1 1 auto;\n  min-width: 0;\n  overflow: hidden;\n  font: var(--dsw-font-xs-13);\n  line-height: 22px;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphChangeName {\n  white-space: pre;\n}\n\n/* VS Code `.label-description`: the dimmed directory after the name. */\n.dshgg-graphChangeDir {\n  margin-left: 0.5em;\n  font-size: 0.9em;\n  white-space: pre;\n  opacity: 0.7;\n}\n\n/* VS Code's decoration badge: the status letter at the row's end. */\n.dshgg-graphChangeStatus {\n  margin: 0 3px 0 6px;\n}\n\n.dshgg-graphChangeNote {\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshgg-graphChangeText {\n  flex: 0 1 auto;\n  min-width: 0;\n  margin-left: 4px;\n  overflow: hidden;\n  font: var(--dsw-font-xxs-12);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n\n.dshgg-graphChangeNote[data-note=\"failure\"] .dshgg-graphChangeText {\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshgg-graphChangeRetry {\n  flex: none;\n  margin-left: 8px;\n  padding: 0 4px;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-12);\n  background: none;\n  border: 0;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-graphChangeRetry:focus-visible {\n  outline: var(--dsw-focus-ring-width) solid\n    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));\n}\n";
@@ -5960,8 +6001,8 @@ function installStyles(target) {
 }
 
 // src/client/titles.ts
-var import_react38 = require("react");
-var h24 = import_react38.createElement;
+var import_react39 = require("react");
+var h24 = import_react39.createElement;
 function GitTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;
@@ -5986,6 +6027,77 @@ function DiffTabTitle(props) {
   );
 }
 
+// src/client/toast/notify.ts
+function createToastStore() {
+  let notice = null;
+  let seq = 0;
+  const listeners = /* @__PURE__ */ new Set();
+  const publish = () => {
+    for (const listener of [...listeners]) listener();
+  };
+  return {
+    getSnapshot: () => notice,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    push(input) {
+      seq += 1;
+      notice = {
+        seq,
+        text: input.text,
+        success: input.success,
+        ...input.action === void 0 ? {} : { action: input.action }
+      };
+      publish();
+    },
+    dismiss() {
+      if (notice === null) return;
+      notice = null;
+      publish();
+    }
+  };
+}
+
+// src/client/toast/ToastHost.ts
+var import_react40 = require("react");
+var h25 = import_react40.createElement;
+var FAILURE_HOLD_MS = 6e3;
+function resolveHostToast() {
+  try {
+    const hostModule = require("@deepseek-ai/dsh-client-ui-primitives");
+    return typeof hostModule?.Toast === "function" ? hostModule.Toast : void 0;
+  } catch {
+    return void 0;
+  }
+}
+var hostToast = resolveHostToast();
+function ToastHost(props) {
+  const [notice, setNotice] = (0, import_react40.useState)(() => props.store.getSnapshot());
+  (0, import_react40.useEffect)(() => props.store.subscribe(() => setNotice(props.store.getSnapshot())), [props.store]);
+  if (hostToast === void 0 || notice === null) return null;
+  const dismiss = () => props.store.dismiss();
+  const action = notice.action;
+  const actions = action === void 0 ? void 0 : [
+    {
+      label: action.label,
+      onClick: () => {
+        dismiss();
+        action.run();
+      }
+    }
+  ];
+  return h25(hostToast, {
+    key: notice.seq,
+    text: notice.text,
+    ...notice.success ? { tone: "success" } : { icon: h25(AlertIcon, { size: 16 }), holdMs: FAILURE_HOLD_MS },
+    ...actions === void 0 ? {} : { actions },
+    onDone: dismiss
+  });
+}
+
 // src/client/plugin.ts
 var inject = ["slots", "locale", "sidebarRightTabs", "sidebarRight"];
 function registerPaneSlot(ctx, name, key, component, label, inject2) {
@@ -6007,16 +6119,38 @@ function withOptionalService(ctx, service, labels, register) {
 }
 function apply(ctx) {
   const t = ctx.locale.bind(NS);
-  let toast;
-  const notify = (text, success) => {
+  const toasts = createToastStore();
+  let sharedToast;
+  const notify = (text, success = false, action) => {
+    if (hostToast !== void 0) {
+      toasts.push({ text, success, ...action === void 0 ? {} : { action } });
+      return;
+    }
     try {
-      toast?.notify(text, success);
+      sharedToast?.notify(text, success);
     } catch (error) {
       console.warn("[git-graph] shared toast failed", error);
     }
   };
   ctx.effect(() => installStyles(), "git-graph: styles");
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), "git-graph: dictionaries");
+  if (hostToast !== void 0) {
+    ctx.effect(
+      () => ctx.slots.inject(
+        "shell.overlay",
+        () => ctx.slots.register(
+          {
+            name: "shell.overlay",
+            id: "git-graph.toast",
+            locale: NS,
+            inject: () => ({ store: toasts })
+          },
+          ToastHost
+        )
+      ),
+      "git-graph: native toast host"
+    );
+  }
   const gitTab = {
     id: GIT_ID,
     kind: GIT_KIND,
@@ -6057,7 +6191,16 @@ function apply(ctx) {
     GitTabTitle,
     "git-graph: git tab title"
   );
-  registerPaneSlot(ctx, "sidebar.right.pane.tab", DIFF_ID, DiffPanel, "git-graph: diff tab body");
+  registerPaneSlot(
+    ctx,
+    "sidebar.right.pane.tab",
+    DIFF_ID,
+    DiffPanel,
+    "git-graph: diff tab body",
+    () => ({
+      notify
+    })
+  );
   registerPaneSlot(
     ctx,
     "sidebar.right.pane.tab.title",
@@ -6113,9 +6256,9 @@ function apply(ctx) {
     (menuCtx) => {
       menuCtx.effect(() => {
         const service = menuCtx.contextMenus;
-        toast = service;
+        sharedToast = service;
         return () => {
-          if (toast === service) toast = void 0;
+          if (sharedToast === service) sharedToast = void 0;
         };
       }, "git-graph: shared toast");
       menuCtx.effect(
@@ -6123,11 +6266,7 @@ function apply(ctx) {
           id: MENU_CONTRIBUTION_ID,
           target: MENU_TARGET,
           order: 10,
-          resolve: (value) => resolveMenuActions(
-            value,
-            t,
-            (text, success) => menuCtx.contextMenus.notify(text, success)
-          )
+          resolve: (value) => resolveMenuActions(value, t, notify)
         }),
         "git-graph: context menu actions"
       );

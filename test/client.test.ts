@@ -258,8 +258,17 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   assert.ok(gitBody, 'the Git pane body was not registered')
   assert.equal(typeof gitBody.options.inject, 'function', 'the Git pane injects its Toast face')
   assert.equal(typeof gitBody.options.inject?.().notify, 'function')
+  const diffBody = records.slots.find(
+    ({ options }) =>
+      options.name === 'sidebar.right.pane.tab' && options.key === '@local/dsh-git-graph/diff',
+  )
+  assert.ok(diffBody, 'the diff pane body was not registered')
+  assert.equal(typeof diffBody.options.inject, 'function', 'the diff pane injects its Toast face')
+  assert.equal(typeof diffBody.options.inject?.().notify, 'function')
   for (const slot of records.slots) {
-    if (slot !== gitBody) assert.equal(slot.options.inject, undefined, 'other seats stay plain')
+    if (slot !== gitBody && slot !== diffBody) {
+      assert.equal(slot.options.inject, undefined, 'other seats stay plain')
+    }
   }
 
   assert.equal(records.shortcuts.length, 1)

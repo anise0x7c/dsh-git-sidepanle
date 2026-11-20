@@ -24,12 +24,19 @@ export const HOST_ENTRY = 'src/host-entry.ts'
 /** Virtual path of the distribution browser entry. */
 export const CLIENT_ENTRY = 'src/client-entry.ts'
 /**
- * The bundle's one non-React runtime request, resolved from the host's frozen
+ * The bundle's non-React runtime request, resolved from the host's frozen
  * module table instead of being bundled.
  */
-const HOST_FILE_TYPE_ICON_REQUEST = '@deepseek-ai/dsh-client-ui-primitives'
-/** The only client module allowed to reach that host entry. */
-const HOST_FILE_TYPE_ICON_MODULE = 'src/client/host-file-icon.ts'
+const HOST_PRIMITIVES_REQUEST = '@deepseek-ai/dsh-client-ui-primitives'
+/**
+ * The two guarded client modules allowed to borrow from that host entry: the
+ * file-type glyph and the native Toast host that renders type-distinguished
+ * notifications.
+ */
+const HOST_PRIMITIVES_MODULES = new Set([
+  'src/client/host-file-icon.ts',
+  'src/client/toast/ToastHost.ts',
+])
 
 /** Architecture rule a violation belongs to. */
 export type ArchitectureRule =
@@ -387,8 +394,8 @@ function externalDiagnostic(
   if (half === 'client' && dependency.specifier === 'react') return undefined
   if (
     half === 'client' &&
-    source === HOST_FILE_TYPE_ICON_MODULE &&
-    dependency.specifier === HOST_FILE_TYPE_ICON_REQUEST
+    HOST_PRIMITIVES_MODULES.has(source) &&
+    dependency.specifier === HOST_PRIMITIVES_REQUEST
   ) {
     return undefined
   }

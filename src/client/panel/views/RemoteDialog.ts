@@ -24,8 +24,6 @@ export interface RemoteDialogProps {
   readonly dialog: RemoteDialogState
   /** Current busy operation name, or null. */
   readonly busyName: string | null
-  /** Existing action-failure presentation, kept inside the form. */
-  readonly feedback?: React.ReactNode
   /** Change the remote selected by the remove or publish form. */
   readonly onSelect: (remote: string) => void
   /** Edit the name in the Add Remote form. */
@@ -78,7 +76,6 @@ export function RemoteDialog(props: RemoteDialogProps): React.ReactElement {
         ...(props.busyName === 'add-remote'
           ? { progress: t('remote.adding', { name: dialog.name }) }
           : {}),
-        feedback: props.feedback,
         onCancel: props.onCancel,
         onSubmit: submit,
       },
@@ -147,7 +144,6 @@ export function RemoteDialog(props: RemoteDialogProps): React.ReactElement {
       canSubmit: dialog.name !== '',
       focusCancel: dialog.kind === 'remove',
       ...(progress === undefined ? {} : { progress }),
-      feedback: props.feedback,
       onCancel: props.onCancel,
       onSubmit: props.onSubmit,
     },

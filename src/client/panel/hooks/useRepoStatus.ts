@@ -52,7 +52,7 @@ export interface RepoStatusState {
   readonly loading: boolean
   /** Failed status load. */
   readonly loadFailure: Failure | null
-  /** Clear the failed status load. */
+  /** Clear the failed status load so an explicit retry can report again. */
   readonly setLoadFailure: Dispatch<SetStateAction<Failure | null>>
   /** Load the status once, waiting for a queued follow-up when required. */
   readonly loadStatus: (options?: LoadStatusOptions) => Promise<void>

@@ -86,10 +86,6 @@
   cursor: default;
 }
 
-.dshgg-root .dshgg-floating-panel .dshgg-banner {
-  margin: 10px 0 0;
-}
-
 .dshgg-confirmTitle {
   font: var(--dsw-font-xs-strong-13);
   overflow-wrap: anywhere;

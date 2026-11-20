@@ -7,8 +7,9 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { useCallback, useState } from 'react'
 import { makeFailure, toFailure } from '../../data/caller.ts'
+import type { Notify } from '../../toast/notify.ts'
 import type { ChangeEntry, CommitResult, Failure, OkResult, RpcCall } from '../../types/domain.ts'
-import type { ContextMenusService, LocaleBinder } from '../../types/dsh.ts'
+import type { LocaleBinder } from '../../types/dsh.ts'
 import type { CommitMode } from '../commit-mode.ts'
 import type { ConfirmState } from '../confirm.ts'
 import type { PanelRefs } from '../menu.ts'
@@ -55,7 +56,7 @@ export interface UseChangeActionsOptions {
   /** Graph refresh. */
   readonly loadGraph: () => Promise<void>
   /** Host Toast callback, a no-op when the service is unavailable. */
-  readonly notify: ContextMenusService['notify']
+  readonly notify: Notify
 }
 
 /** Action state and handlers. */
@@ -91,7 +92,7 @@ export interface ChangeActionsState {
 /**
  * Own the panel's mutating actions. Every action runs through `perform` so only
  * one Host write is in flight, the status is refreshed silently afterwards, and
- * failures surface as a dismissible banner.
+ * failures are reported through the native Toast.
  * @param options - hook inputs.
  * @returns action state and handlers.
  */

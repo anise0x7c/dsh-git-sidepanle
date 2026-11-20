@@ -38,12 +38,14 @@ export interface LocaleService {
   bind(namespace: string): LocaleBinder
 }
 
-/** Options of one keyed Slot registration. */
+/** Options of one Slot registration. */
 export interface SlotRegisterOptions {
   /** Slot name. */
   readonly name: string
-  /** Key within the slot domain. */
-  readonly key: string
+  /** Key within the slot domain; required for keyed slots. */
+  readonly key?: string
+  /** Registration identity within a list slot. */
+  readonly id?: string
   /** Locale namespace the component reads. */
   readonly locale: string
   /** Extra props the Slot merges into the registered component's own props. */

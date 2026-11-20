@@ -16,8 +16,6 @@ export interface CommitMenuDialogProps {
   readonly t: LocaleBinder
   /** Operation running: keep text visible and controls inactive but focused. */
   readonly busy: boolean
-  /** Existing action-failure presentation, kept inside the operation panel. */
-  readonly feedback?: React.ReactNode
   /** Edit the branch or tag name. */
   readonly onNameChange: (name: string) => void
   /** Edit an optional tag annotation. */
@@ -90,7 +88,6 @@ export function CommitMenuDialog(props: CommitMenuDialogProps): React.ReactEleme
       cancelLabel: t('action.cancel'),
       submitLabel: title,
       progress,
-      feedback: props.feedback,
       onCancel: props.onCancel,
       onSubmit: submit,
     },

@@ -1,5 +1,5 @@
 /**
- * The commit-history section: its loading note, failure banner, empty note and
+ * The commit-history section: its loading note, retryable failure note, empty note and
  * the commit rows, drawn like VS Code's Source Control Graph — the swimlane
  * lines of the whole graph in one layer, each row's node, the subject with its
  * dimmed author, and the colored reference badges — plus the rows an expanded
@@ -19,7 +19,6 @@ import {
 import type { MenuTarget, MenuTriggerFactory } from '../../menu/trigger.ts'
 import type { CommitFileRow, CommitSummary, Failure, GraphReferences } from '../../types/domain.ts'
 import type { LocaleBinder } from '../../types/dsh.ts'
-import { Banner } from '../feedback.ts'
 import type { CommitExpansion } from '../hooks/useCommitExpansion.ts'
 import { Section } from '../Section.ts'
 import type { ChangeRowItem } from './graph/CommitChangeRows.ts'
@@ -137,14 +136,19 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
   if (props.loading === true && commits === null) {
     rows.push(h('div', { key: 'loading', className: 'dshgg-note' }, t('graph.loading')))
   } else if (props.failure !== null) {
+    // The failure text and its type icon are the native Toast's job; the pane
+    // keeps a compact retry so the read stays reachable after the notice fades.
     rows.push(
-      h(Banner, {
-        key: 'error',
-        title: t('error.title'),
-        detail: errorText(t, props.failure),
-        retryLabel: t('retry'),
-        onRetry: props.onRetry,
-      }),
+      h(
+        'div',
+        { key: 'error', className: 'dshgg-graphMore' },
+        h('span', { className: 'dshgg-graphMoreText' }, t('error.title')),
+        h(
+          'button',
+          { type: 'button', className: 'dshgg-btn dshgg-btnGhost', onClick: props.onRetry },
+          t('retry'),
+        ),
+      ),
     )
   } else if (commits === null || commits.length === 0) {
     rows.push(h('div', { key: 'empty', className: 'dshgg-note' }, t('graph.empty')))

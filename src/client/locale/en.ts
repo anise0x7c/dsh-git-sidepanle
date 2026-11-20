@@ -147,7 +147,6 @@ export const en = {
   'confirm.discard': 'Discard',
   'confirm.discardAll': 'Discard all',
   'action.cancel': 'Cancel',
-  'action.dismiss': 'Dismiss',
   'error.discardUnborn': 'Changes cannot be discarded before the first commit.',
   'error.unknownCommit': 'That commit is no longer available.',
   'error.notUntracked': 'This file is tracked or ignored. Refresh the changes before trying again.',

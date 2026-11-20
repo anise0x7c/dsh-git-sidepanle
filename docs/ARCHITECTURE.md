@@ -59,6 +59,7 @@ src/
     styles.ts                 effect-owned, refcounted style lease
     icons.ts                  SVG renderers
     host-file-icon.ts         the host's file-type glyph, resolved softly with the plugin icon as fallback
+    toast/                    the single-notice store and the native Toast host with a shared-service fallback
     data/caller.ts            the only fetch layer
     git/{format,list,graph,tree}.ts pure formatting, list ordering, commit-file tree, VS Code graph port
     menu/                     targets, triggers, clipboard, actions, command bus
@@ -66,7 +67,7 @@ src/
       controls.ts, rows.ts    controls and rows for the flat change lists and the commit-details folder tree
       change-groups.ts        pure grouping, path ordering and display-letter rules
       Section.ts              collapsible section header
-      feedback.ts             banners and empty states
+      feedback.ts             empty states
       FloatingPanel.ts        shared panel-local floating operation surface and actions
       BranchMenu.ts           branch picker
       confirm.ts              confirmation wording
@@ -96,11 +97,13 @@ test/
 ## Dependency direction
 
 ```text
-client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/* }
+client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/*, toast/* }
 GitPanel -> panel/hooks/* -> { data/caller, panel/menu, menu/bus, git/* }
 panel/views/* -> { panel/FloatingPanel, panel/Section, panel/BranchMenu, panel/autosize, panel/controls, panel/feedback, panel/rows, panel/split, icons, host-file-icon, menu/trigger, git/format, git/graph, git/tree, type-only hooks/types }
 pure git/menu/locale logic -> no React, no ctx
 host-file-icon -> { icons, react, one guarded host-module request }
+toast/ToastHost -> { toast/notify, icons, react, one guarded host-module request }
+toast/notify -> no React, no ctx
 host: http/* -> nothing; git/paths -> errors; git/exec -> errors
       git/files -> { exec, paths }; git/changes -> { exec, paths, files, ignore }
       git/mutations -> { exec, branches }; git/remotes -> { exec }
@@ -184,15 +187,19 @@ every public export or semantic branch has a consumer.
    and reference forms: a non-modal absolute layer anchored inside the panel,
    with native frosted surface tokens, a height-bounded scrolling content area,
    and a separate wrapping action footer. It does not enter the split's flex
-   layout. `GitPanel` keeps prompts mutually exclusive and routes action errors
-   into the open surface; hooks retain all operation state and Git calls.
-   Transient commit/ignore/reference success and stale/busy menu feedback use a stable
-   callback passed through the Git body's Slot injection face. `plugin.ts` binds
-   it to the optional shared `contextMenus.notify` service for that service's
-   lifetime and isolates notification delivery errors from Git work. Success is
-   opt-in; menu guards are non-success. The Host UI owns Toast placement,
-   replacement and dismissal; there is no private notice state, timer or strip.
-   Missing notification support does not gate the pane or its inline controls.
+   layout. `GitPanel` keeps prompts mutually exclusive; hooks retain all
+   operation state and Git calls.
+   Success and failure notices use a stable callback passed through the Git and
+   diff bodies' Slot injection faces. `plugin.ts` owns one single-notice store;
+   when the shell's frozen module table provides the native `Toast` component,
+   a `shell.overlay` host renders that notice with the host's placement,
+   replacement and dismissal: successes keep the native check and failures add
+   the warning icon and a longer hold. A retryable read failure attaches one
+   localized retry action. When the native component is absent the same
+   callback falls back to `contextMenus.notify`, and delivery errors are
+   isolated from Git work. There is no private notice state, timer or strip in
+   the panel layout. Missing notification support does not gate the pane or its
+   inline controls.
 7. Triggers capture targets. The shared overlay calls a contribution with the
    target's **value**, never the wrapper. Nested native checkout/deletion submenus
    come from the commit's local branch heads. Menu actions travel through the bus
@@ -236,10 +243,12 @@ fetched refs appear.
   returns `{inject, apply}`, and has no side effects. Registrations belong to
   `apply` with `ctx.effect`; style leases are shared across module replacements
   and released on disposal. The platform supplies `react`; the only other
-  runtime request is the guarded host file-type icon module in
-  `host-file-icon.ts`.
+  runtime requests are the two guarded host-primitive wrappers: the file-type
+  icon in `host-file-icon.ts` and the native Toast component in
+  `toast/ToastHost.ts`.
 - `props.useContextMenu` is bound once inside `useMemo`. No DSH UI package is
-  imported as a module; the guarded host-icon request above is the sole exception.
+  imported as a module; the guarded host-icon and native-Toast requests above
+  are the only exceptions.
 - Absolute copy paths use `repo.root`, never the possibly nested Session cwd.
 - All visible copy comes from the bound English/Chinese dictionaries. Styling
   retains the Host theme tokens and keyboard/menu focus semantics. The one

@@ -3,6 +3,22 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
+## Unreleased
+
+Every success and failure notice now renders through DSH's native Toast instead
+of a private inline banner:
+
+- Successes keep the host Toast's native check icon; failures use the host's
+  warning icon and a longer hold, so the message type reads at a glance.
+- Retryable status, history, commit-details and diff failures attach a
+  localized retry action to the notice; the graph, commit-details and diff
+  panes keep a compact retry state after it fades.
+- Open remote and reference forms stay open with their entered values while the
+  failure shows as a notice.
+- The inline `Banner` component and its styles are removed. When the native
+  Toast component is unavailable the plugin falls back to the shared
+  `contextMenus.notify` service without an icon.
+
 ## 0.13.1
 
 Commit details now show in file tree which can be collapsed

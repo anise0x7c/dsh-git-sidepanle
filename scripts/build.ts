@@ -20,7 +20,9 @@ if (unknown.length > 0 || (watch && check)) {
 
 /**
  * Runtime requests the browser artifact resolves from the host's frozen module
- * table. Both are platform seeds, so the bundle itself stays dependency-free.
+ * table. Both are platform seeds, so the bundle itself stays dependency-free;
+ * the primitives specifier serves the guarded file-type icon and native Toast
+ * wrappers only.
  */
 const CLIENT_EXTERNALS = ['react', '@deepseek-ai/dsh-client-ui-primitives']
 
@@ -91,7 +93,7 @@ function validateResult(result: BuildResult): OutputFile[] {
     if (!text.includes('return module.exports;')) problems.push('missing factory return')
     if (!text.includes('require("react")')) problems.push('React is not external')
     if (!text.includes('require("@deepseek-ai/dsh-client-ui-primitives")')) {
-      problems.push('the host file-type icon request is not external')
+      problems.push('the guarded host primitives request is not external')
     }
   }
   for (const output of Object.values(result.metafile.outputs)) {

@@ -20,10 +20,9 @@ export interface FloatingPanelProps {
   readonly canSubmit?: boolean
   /** Creation forms focus their own name input instead. */
   readonly focusCancel?: boolean
-  /** Optional form fields, progress and operation failure. */
+  /** Optional form fields and progress. */
   readonly children?: React.ReactNode
   readonly progress?: string
-  readonly feedback?: React.ReactNode
   /** Idle-only callbacks; the owning hook retains the operation's busy lock. */
   readonly onCancel: () => void
   readonly onSubmit: () => void
@@ -79,7 +78,6 @@ export function FloatingPanel(props: FloatingPanelProps): React.ReactElement {
         props.busy && props.progress
           ? h('div', { className: 'dshgg-dialogHint', role: 'status' }, props.progress)
           : null,
-        props.feedback,
       ),
       h(
         'div',

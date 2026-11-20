@@ -11,25 +11,22 @@ import { DETAILS_MOTION_MS, DIFF_KIND, PROMPT_MOTION_MS } from '../constants.ts'
 import { errorText } from '../git/format.ts'
 import { sortChangeEntries } from '../git/list.ts'
 import { AlertIcon, GitBranchIcon } from '../icons.ts'
+import type { Notify } from '../toast/notify.ts'
 import type { ChangeEntry, CommitFileRow, CommitSummary } from '../types/domain.ts'
-import type {
-  ContextMenusService,
-  LocaleBinder,
-  TabInfoHook,
-  UseContextMenu,
-} from '../types/dsh.ts'
+import type { LocaleBinder, TabInfoHook, UseContextMenu } from '../types/dsh.ts'
 import { changeRowLetter, groupChangeEntries } from './change-groups.ts'
 import type { CommitMode } from './commit-mode.ts'
 import type { ConfirmState } from './confirm.ts'
 import { confirmActionLabel, confirmDescription, confirmTitle } from './confirm.ts'
 import { FloatingPanel } from './FloatingPanel.ts'
-import { Banner, EmptyState } from './feedback.ts'
+import { EmptyState } from './feedback.ts'
 import { useBranches } from './hooks/useBranches.ts'
 import { useChangeActions } from './hooks/useChangeActions.ts'
 import { useCommitActionMenu } from './hooks/useCommitActionMenu.ts'
 import { useCommitDetails } from './hooks/useCommitDetails.ts'
 import { useCommitExpansion } from './hooks/useCommitExpansion.ts'
 import { useCommitMenuActions } from './hooks/useCommitMenuActions.ts'
+import { useFailureToasts } from './hooks/useFailureToasts.ts'
 import { useHistory } from './hooks/useHistory.ts'
 import { useLiveUpdates } from './hooks/useLiveUpdates.ts'
 import { useMenuCommands } from './hooks/useMenuCommands.ts'
@@ -61,8 +58,8 @@ export interface GitPanelProps {
   readonly useTabInfo: TabInfoHook
   /** Host context-menu trigger hook from the slot's root props. */
   readonly useContextMenu?: UseContextMenu
-  /** Host Toast callback injected by this registration's Slot face. */
-  readonly notify: ContextMenusService['notify']
+  /** Host notification callback injected by this registration's Slot face. */
+  readonly notify: Notify
 }
 
 /**
@@ -205,7 +202,6 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     refs,
     repo,
     perform,
-    notify: props.notify,
     setActionFailure,
     onOpenDialog: closePromptsForRemote,
   })
@@ -256,6 +252,59 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   }
   const commitState = useCommitDetails({ call, refs })
   const expansion = useCommitExpansion({ call, refs })
+  // One generation per retryable failure. An explicit retry bumps the entry's
+  // generation so a retry that fails again reports a fresh notice even when
+  // the previous failure never cleared first; repeated poll failures with the
+  // same text stay suppressed.
+  const retryGenerations = useRef<Record<string, number>>({})
+  const [, setRetryTick] = useState(0)
+  const retry = (key: string, run: () => void): void => {
+    retryGenerations.current[key] = (retryGenerations.current[key] ?? 0) + 1
+    setRetryTick((value) => value + 1)
+    run()
+  }
+  // Every failure the panel already tracks is reported once through the
+  // native Toast; a cleared failure re-arms its notice for a later failure.
+  useFailureToasts(
+    [
+      {
+        key: 'status',
+        failure: status === null ? null : loadFailure,
+        text: errorText(t, loadFailure),
+        generation: retryGenerations.current.status ?? 0,
+        action: {
+          label: t('retry'),
+          run: () =>
+            retry('status', () => {
+              setLoadFailure(null)
+              void loadStatus()
+            }),
+        },
+      },
+      { key: 'action', failure: actionFailure, text: errorText(t, actionFailure) },
+      {
+        key: 'history',
+        failure: graphFailure,
+        text: errorText(t, graphFailure),
+        generation: retryGenerations.current.history ?? 0,
+        action: {
+          label: t('retry'),
+          run: () => retry('history', () => void reloadHistory()),
+        },
+      },
+      {
+        key: 'details',
+        failure: commitState.failure,
+        text: errorText(t, commitState.failure),
+        generation: retryGenerations.current.details ?? 0,
+        action: {
+          label: t('retry'),
+          run: () => retry('details', commitState.retryCommit),
+        },
+      },
+    ],
+    props.notify,
+  )
   const selectedCommit = commitState.selected
   // Escape leaves the details card like its back control. A prompt or the
   // branch menu owns the key while it is open, and a hidden tab must not react
@@ -575,16 +624,6 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
       ? t('commit.placeholder', { branch: '' })
       : t('commit.placeholder', { branch: branchLabel ?? '' })
 
-  const actionFeedback =
-    actionFailure === null
-      ? null
-      : h(Banner, {
-          title: t('error.title'),
-          detail: errorText(t, actionFailure),
-          dismissLabel: t('action.dismiss'),
-          onDismiss: () => setActionFailure(null),
-        })
-
   // The operation prompt rises from the pane's bottom edge and lowers away
   // again before it is removed; the last rendered prompt stays on screen while
   // it leaves. A reference form replaces an idle confirmation outright, so the
@@ -598,7 +637,6 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           remotes: remoteActions.remotes ?? [],
           dialog: remoteActions.dialog,
           busyName: busy,
-          feedback: actionFeedback,
           onSelect: remoteActions.setName,
           onNameChange: remoteActions.setName,
           onUrlChange: remoteActions.setUrl,
@@ -614,7 +652,6 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
             dialog: commitMenuActions.dialog,
             t,
             busy: busy !== null,
-            feedback: actionFeedback,
             onNameChange: commitMenuActions.setName,
             onMessageChange: commitMenuActions.setMessage,
             onCancel: () => commitMenuActions.closeDialog(),
@@ -628,7 +665,6 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
               cancelLabel: t('action.cancel'),
               submitLabel: confirmActionLabel(t, confirm),
               busy: busy !== null,
-              feedback: actionFeedback,
               onCancel: () => requestConfirmation(null),
               onSubmit: () => {
                 if (refs.busy.current === null) confirmAction()
@@ -727,19 +763,6 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
               canPush: remoteActions.hasUpstream,
               onChange: setMessage,
             }),
-        loadFailure !== null && status !== null
-          ? h(Banner, {
-              title: t('error.title'),
-              detail: errorText(t, loadFailure),
-              retryLabel: t('retry'),
-              onRetry: () => {
-                void loadStatus()
-              },
-              dismissLabel: t('action.dismiss'),
-              onDismiss: () => setLoadFailure(null),
-            })
-          : null,
-        promptMotion === null ? actionFeedback : null,
         body,
       ),
       detailsMotion,

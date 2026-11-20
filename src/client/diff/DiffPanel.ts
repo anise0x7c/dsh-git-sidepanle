@@ -9,8 +9,10 @@ import { baseName, errorText } from '../git/format.ts'
 import { FileIcon, RefreshIcon } from '../icons.ts'
 import { menuTarget } from '../menu/trigger.ts'
 import { IconButton } from '../panel/controls.ts'
-import { Banner, EmptyState } from '../panel/feedback.ts'
+import { EmptyState } from '../panel/feedback.ts'
+import { useFailureToasts } from '../panel/hooks/useFailureToasts.ts'
 import { usePanelWiring } from '../panel/menu.ts'
+import type { Notify } from '../toast/notify.ts'
 import type { DiffResult, Failure } from '../types/domain.ts'
 import type { LocaleBinder, TabInfoHook, UseContextMenu } from '../types/dsh.ts'
 import { renderDiff } from './render.ts'
@@ -27,6 +29,8 @@ export interface DiffPanelProps {
   readonly useTabInfo: TabInfoHook
   /** Host context-menu trigger hook from the slot's root props. */
   readonly useContextMenu?: UseContextMenu
+  /** Host notification callback injected by this registration's Slot face. */
+  readonly notify: Notify
 }
 
 /** One phase of the diff read. */
@@ -57,6 +61,28 @@ export function DiffPanel(props: DiffPanelProps): React.ReactElement {
   const { call, menuTrigger } = usePanelWiring({ sessionId, useContextMenu: props.useContextMenu })
   const [state, setState] = useState<DiffState>({ phase: 'loading', diff: null, failure: null })
   const [reload, setReload] = useState(0)
+  // Bumped by an explicit retry so a retry that fails again reports a fresh
+  // notice even when the loading render never cleared the previous failure.
+  const [retryGeneration, setRetryGeneration] = useState(0)
+  const retry = (): void => {
+    setRetryGeneration((value) => value + 1)
+    setReload((value) => value + 1)
+  }
+  useFailureToasts(
+    [
+      {
+        key: 'diff',
+        failure: state.phase === 'error' ? state.failure : null,
+        text: errorText(t, state.failure),
+        generation: retryGeneration,
+        action: {
+          label: t('retry'),
+          run: retry,
+        },
+      },
+    ],
+    props.notify,
+  )
 
   const path = typeof params.path === 'string' && params.path !== '' ? params.path : null
   const commit = typeof params.commit === 'string' && params.commit !== '' ? params.commit : null
@@ -149,7 +175,7 @@ export function DiffPanel(props: DiffPanelProps): React.ReactElement {
             {
               label: t('diff.refresh'),
               title: t('diff.refresh'),
-              onClick: () => setReload((value) => value + 1),
+              onClick: retry,
             },
             h(RefreshIcon, { size: 14 }),
           ),
@@ -166,12 +192,23 @@ export function DiffPanel(props: DiffPanelProps): React.ReactElement {
   } else if (state.phase === 'loading') {
     content = h('div', { className: 'dshgg-diffNote' }, t('diff.loading'))
   } else if (state.phase === 'error') {
-    content = h(Banner, {
-      title: t('diff.error'),
-      detail: errorText(t, state.failure),
-      retryLabel: t('retry'),
-      onRetry: () => setReload((value) => value + 1),
-    })
+    // The failure text and warning icon belong to the Toast; this note keeps a
+    // retry control in the tab after the notice fades.
+    content = h(
+      'div',
+      { className: 'dshgg-diffNote' },
+      t('diff.error'),
+      ' ',
+      h(
+        'button',
+        {
+          type: 'button',
+          className: 'dshgg-linkBtn',
+          onClick: retry,
+        },
+        t('retry'),
+      ),
+    )
   } else {
     content = renderDiff(t, state.diff)
   }

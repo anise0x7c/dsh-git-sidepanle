@@ -15,7 +15,7 @@ import type {
   RepositoryStatus,
   RpcCall,
 } from '../../types/domain.ts'
-import type { ContextMenusService, LocaleBinder } from '../../types/dsh.ts'
+import type { LocaleBinder } from '../../types/dsh.ts'
 import type { PanelRefs } from '../menu.ts'
 import type { Perform } from './useChangeActions.ts'
 
@@ -44,9 +44,7 @@ export interface UseRemoteActionsOptions {
   readonly repo: RepositoryStatus | null
   /** Busy-locked action wrapper. */
   readonly perform: Perform
-  /** Host Toast callback, a no-op when the service is unavailable. */
-  readonly notify: ContextMenusService['notify']
-  /** Record a failure in the panel's inline banner. */
+  /** Record a failure the panel reports through the native Toast. */
   readonly setActionFailure: Dispatch<SetStateAction<Failure | null>>
   /** Close the other idle prompts before a remote form opens. */
   readonly onOpenDialog?: () => void
@@ -110,7 +108,7 @@ export interface RemoteActionsState {
  * @returns remote state and handlers.
  */
 export function useRemoteActions(options: UseRemoteActionsOptions): RemoteActionsState {
-  const { call, t, refs, repo, perform, notify, setActionFailure, onOpenDialog } = options
+  const { call, t, refs, repo, perform, setActionFailure, onOpenDialog } = options
   const [menuOpen, setMenuOpen] = useState(false)
   const [remotes, setRemotes] = useState<RemoteInfo[] | null>(null)
   const [remotesLoading, setRemotesLoading] = useState(false)
@@ -255,9 +253,7 @@ export function useRemoteActions(options: UseRemoteActionsOptions): RemoteAction
       }
       const [only] = list
       if (list.length === 0) {
-        const failure = makeFailure('no-remotes', t('remote.noRemotes'))
-        setActionFailure(failure)
-        notify(t('remote.noRemotes'), false)
+        setActionFailure(makeFailure('no-remotes', t('remote.noRemotes')))
         return
       }
       if (list.length === 1 && only !== undefined) {
@@ -294,7 +290,6 @@ export function useRemoteActions(options: UseRemoteActionsOptions): RemoteAction
       const first = list[0]
       if (first === undefined) {
         setActionFailure(makeFailure('no-remotes', t('remote.noRemotes')))
-        notify(t('remote.noRemotes'), false)
         return
       }
       setDialog({ kind: 'remove', name: first.name, url: '' })

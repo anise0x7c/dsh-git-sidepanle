@@ -382,7 +382,7 @@ test('runtime externals stay within the half allowlists', () => {
   )
 })
 
-test('only the host file-icon wrapper may request the shared primitives', () => {
+test('only the two guarded host-primitive wrappers may request the shared primitives', () => {
   assert.deepEqual(
     check({
       [HOST_ENTRY]: `export const inject = []\nexport function apply(): void {}`,
@@ -393,6 +393,22 @@ test('only the host file-icon wrapper may request the shared primitives', () => 
       `,
       'src/client/host-file-icon.ts': `
         export function HostFileIcon(): unknown {
+          return require('@deepseek-ai/dsh-client-ui-primitives')
+        }
+      `,
+    }).violations,
+    [],
+  )
+  assert.deepEqual(
+    check({
+      [HOST_ENTRY]: `export const inject = []\nexport function apply(): void {}`,
+      [CLIENT_ENTRY]: `
+        import { createElement } from 'react'
+        import { ToastHost } from './client/toast/ToastHost.ts'
+        export function apply(): unknown { return createElement('div', null, ToastHost()) }
+      `,
+      'src/client/toast/ToastHost.ts': `
+        export function ToastHost(): unknown {
           return require('@deepseek-ai/dsh-client-ui-primitives')
         }
       `,
@@ -416,11 +432,11 @@ test('only the host file-icon wrapper may request the shared primitives', () => 
     {
       [HOST_ENTRY]: `export const inject = []\nexport function apply(): void {}`,
       [CLIENT_ENTRY]: `
-        import { HostFileIcon } from './client/host-file-icon.ts'
-        export function apply(): unknown { return HostFileIcon() }
+        import { ToastHost } from './client/toast/ToastHost.ts'
+        export function apply(): unknown { return ToastHost() }
       `,
-      'src/client/host-file-icon.ts': `
-        export function HostFileIcon(): unknown {
+      'src/client/toast/ToastHost.ts': `
+        export function ToastHost(): unknown {
           return require('@deepseek-ai/dsh-client-ui-sidebar-files')
         }
       `,

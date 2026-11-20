@@ -145,7 +145,6 @@ export const zh: Record<GitGraphLocaleKey, string> = {
   'confirm.discard': '放弃',
   'confirm.discardAll': '全部放弃',
   'action.cancel': '取消',
-  'action.dismiss': '关闭',
   'error.discardUnborn': '首次提交前无法放弃更改。',
   'error.unknownCommit': '该提交已不存在。',
   'error.notUntracked': '该文件已被跟踪或忽略，请刷新更改列表后重试。',

@@ -76,7 +76,12 @@ export function useHistory(options: UseHistoryOptions): HistoryState {
   const loadGraph = useCallback(async (): Promise<void> => {
     const current = generation.current + 1
     generation.current = current
-    if (refs.mounted.current) setGraphLoading(true)
+    if (refs.mounted.current) {
+      setGraphLoading(true)
+      // Clear the previous failure so an explicit retry can report again; the
+      // dedupe in the notice hook re-arms only when this value goes null.
+      setGraphFailure(null)
+    }
     try {
       const value = await call('history')
       if (!refs.mounted.current || generation.current !== current) return

@@ -28,6 +28,8 @@ import { resolveMenuActions } from './menu/actions.ts'
 import { GitPanel } from './panel/GitPanel.ts'
 import { installStyles } from './styles.ts'
 import { DiffTabTitle, GitTabTitle } from './titles.ts'
+import { createToastStore, type Notify } from './toast/notify.ts'
+import { hostToast, ToastHost } from './toast/ToastHost.ts'
 import type {
   ClientContext,
   ClientServices,
@@ -107,20 +109,45 @@ function withOptionalService<Service extends keyof ClientServices>(
  */
 export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
-  // The shared Toast service is optional and can be rebound over the plugin
-  // lifetime. This stable delegate is what the Git pane receives through its
-  // Slot registration; it no-ops while no service is bound and contains a
-  // failing delivery so Git actions and refreshes still finish.
-  let toast: ContextMenusService | undefined
-  const notify: ContextMenusService['notify'] = (text, success) => {
+  // One single-notice store backs every success and failure notice. The
+  // guarded native Toast host renders it; when the host provides no Toast
+  // component the same callback falls back to the shared notification service.
+  const toasts = createToastStore()
+  // The shared notification service is optional and can be rebound over the
+  // plugin lifetime. This stable delegate is what the Git and diff panes
+  // receive through their Slot registrations; it contains a failing delivery
+  // so Git actions and refreshes still finish.
+  let sharedToast: ContextMenusService | undefined
+  const notify: Notify = (text, success = false, action) => {
+    if (hostToast !== undefined) {
+      toasts.push({ text, success, ...(action === undefined ? {} : { action }) })
+      return
+    }
     try {
-      toast?.notify(text, success)
+      sharedToast?.notify(text, success)
     } catch (error) {
       console.warn('[git-graph] shared toast failed', error)
     }
   }
   ctx.effect(() => installStyles(), 'git-graph: styles')
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'git-graph: dictionaries')
+  if (hostToast !== undefined) {
+    ctx.effect(
+      () =>
+        ctx.slots.inject('shell.overlay', () =>
+          ctx.slots.register(
+            {
+              name: 'shell.overlay',
+              id: 'git-graph.toast',
+              locale: NS,
+              inject: () => ({ store: toasts }),
+            },
+            ToastHost,
+          ),
+        ),
+      'git-graph: native toast host',
+    )
+  }
 
   const gitTab: SidebarRightTabDefinition = {
     id: GIT_ID,
@@ -165,7 +192,16 @@ export function apply(ctx: ClientContext): void {
     GitTabTitle,
     'git-graph: git tab title',
   )
-  registerPaneSlot(ctx, 'sidebar.right.pane.tab', DIFF_ID, DiffPanel, 'git-graph: diff tab body')
+  registerPaneSlot(
+    ctx,
+    'sidebar.right.pane.tab',
+    DIFF_ID,
+    DiffPanel,
+    'git-graph: diff tab body',
+    () => ({
+      notify,
+    }),
+  )
   registerPaneSlot(
     ctx,
     'sidebar.right.pane.tab.title',
@@ -222,13 +258,13 @@ export function apply(ctx: ClientContext): void {
       register: '[git-graph] context menu registration failed',
     },
     (menuCtx) => {
-      // Bind the current shared Toast service for the pane's stable delegate
-      // and unbind that exact service when this optional scope is disposed.
+      // Bind the current shared notification service for the fallback
+      // delegate and unbind that exact service when this scope is disposed.
       menuCtx.effect(() => {
         const service = menuCtx.contextMenus
-        toast = service
+        sharedToast = service
         return () => {
-          if (toast === service) toast = undefined
+          if (sharedToast === service) sharedToast = undefined
         }
       }, 'git-graph: shared toast')
       // The shared registry calls a contribution with the value captured
@@ -240,10 +276,7 @@ export function apply(ctx: ClientContext): void {
             id: MENU_CONTRIBUTION_ID,
             target: MENU_TARGET,
             order: 10,
-            resolve: (value) =>
-              resolveMenuActions(value, t, (text, success) =>
-                menuCtx.contextMenus.notify(text, success),
-              ),
+            resolve: (value) => resolveMenuActions(value, t, notify),
           }),
         'git-graph: context menu actions',
       )

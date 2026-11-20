@@ -9,8 +9,9 @@ import { useEffect, useRef } from 'react'
 import { isStaged, isUnstaged } from '../../git/format.ts'
 import type { PanelCommand } from '../../menu/bus.ts'
 import { panelCommands } from '../../menu/bus.ts'
+import type { Notify } from '../../toast/notify.ts'
 import type { ChangeEntry, RepositoryStatus } from '../../types/domain.ts'
-import type { ContextMenusService, LocaleBinder } from '../../types/dsh.ts'
+import type { LocaleBinder } from '../../types/dsh.ts'
 import type { ConfirmState } from '../confirm.ts'
 
 /** Command options the panel refreshes at the end of every render. */
@@ -56,7 +57,7 @@ export interface MenuCommandOptions {
   /** Open the confirmation dialog. */
   readonly setConfirm: (confirm: ConfirmState | null) => void
   /** Report a stale or busy command through the host's shared feedback. */
-  readonly notify: ContextMenusService['notify']
+  readonly notify: Notify
   /** Open one file's diff. */
   readonly openDiff: (entry: ChangeEntry, mode: 'staged' | 'changes') => void
 }
