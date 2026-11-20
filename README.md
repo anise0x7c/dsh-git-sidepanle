@@ -1,5 +1,7 @@
 # dsh-git-graph
 
+[![AI-DECLARATION: copilot](https://img.shields.io/badge/䷼%20AI--DECLARATION-copilot-fee2e2?labelColor=fee2e2)](https://ai-declaration.md)
+
 A VS Code-style Git source-control sidebar for the DeepSeek Harness Web GUI.
 It adds a **Source control** tab to the right Sidebar: staged/unstaged/merge
 changes as flat, path-sorted lists, a commit box, unified diff tabs, a commit graph
