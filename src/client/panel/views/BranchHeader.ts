@@ -29,6 +29,8 @@ export interface BranchHeaderProps {
   readonly behind: number
   /** Current busy operation name or null. */
   readonly busy: string | null
+  /** Whether the panel is loading repository data or running an operation. */
+  readonly progress: boolean
   /** Whether the picker is open. */
   readonly branchMenu: boolean
   /** Local branch list. */
@@ -136,5 +138,16 @@ export function BranchHeader(props: BranchHeaderProps): React.ReactElement {
       },
       h(RefreshIcon, { size: 14 }),
     ),
+    props.progress
+      ? h(
+          'span',
+          {
+            className: 'dshgg-progress',
+            role: 'progressbar',
+            'aria-label': t('progress.label'),
+          },
+          h('span', { className: 'dshgg-progressBar' }),
+        )
+      : null,
   )
 }

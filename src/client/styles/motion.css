@@ -102,6 +102,12 @@
     animation: none;
   }
 
+  /* The panel is still busy, so the bar stays; it just stops sweeping. */
+  .dshgg-progressBar {
+    width: 100%;
+    animation: none;
+  }
+
   .dshgg-chevron {
     transition: none;
   }

@@ -46,6 +46,7 @@ var LIVE_POLL_INTERVAL_MS = 700;
 var MAX_RENDERED_DIFF_LINES = 4e3;
 var PROMPT_MOTION_MS = 180;
 var DETAILS_MOTION_MS = 200;
+var PROGRESS_MIN_VISIBLE_MS = 500;
 var MENU_TARGET = "gitGraphItem";
 var MENU_CONTRIBUTION_ID = "git-graph.actions";
 var panelSequence = 0;
@@ -755,6 +756,7 @@ var en = {
   guideDescription: "Review changes, stage files, commit, and follow history",
   refresh: "Refresh",
   loading: "Loading source control…",
+  "progress.label": "Working…",
   retry: "Retry",
   "shortcut.noSession": "Open a session to use source control",
   "noRepo.title": "No Git repository",
@@ -945,6 +947,7 @@ var zh = {
   guideDescription: "查看更改、暂存文件、提交并浏览提交历史",
   refresh: "刷新",
   loading: "正在加载源代码管理…",
+  "progress.label": "正在处理…",
   retry: "重试",
   "shortcut.noSession": "请先打开一个会话再使用源代码管理",
   "noRepo.title": "没有 Git 仓库",
@@ -1421,7 +1424,7 @@ function resolveMenuActions(value, t, notify) {
 }
 
 // src/client/panel/GitPanel.ts
-var import_react39 = require("react");
+var import_react40 = require("react");
 
 // src/client/git/list.ts
 function sortChangeEntries(entries) {
@@ -2380,14 +2383,53 @@ function dispatch(options, command) {
   }
 }
 
-// src/client/panel/hooks/usePresence.ts
+// src/client/panel/hooks/useMinimumVisible.ts
 var import_react18 = require("react");
-function usePresence(open, exitMs) {
-  const [mounted, setMounted] = (0, import_react18.useState)(open);
-  const [leaving, setLeaving] = (0, import_react18.useState)(false);
-  const mountedRef = (0, import_react18.useRef)(mounted);
-  mountedRef.current = mounted;
+function useMinimumVisible(active, minimumMs) {
+  const [visible, setVisible] = (0, import_react18.useState)(active);
+  const timer = (0, import_react18.useRef)(null);
+  const minimumElapsed = (0, import_react18.useRef)(false);
+  const hidePending = (0, import_react18.useRef)(false);
   (0, import_react18.useEffect)(() => {
+    if (active) {
+      hidePending.current = false;
+      setVisible(true);
+      if (timer.current !== null || minimumElapsed.current) return;
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        minimumElapsed.current = true;
+        if (!hidePending.current) return;
+        hidePending.current = false;
+        minimumElapsed.current = false;
+        setVisible(false);
+      }, minimumMs);
+      return;
+    }
+    if (timer.current !== null) {
+      hidePending.current = true;
+      return;
+    }
+    if (!minimumElapsed.current) return;
+    minimumElapsed.current = false;
+    setVisible(false);
+  }, [active, minimumMs]);
+  (0, import_react18.useEffect)(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    []
+  );
+  return visible;
+}
+
+// src/client/panel/hooks/usePresence.ts
+var import_react19 = require("react");
+function usePresence(open, exitMs) {
+  const [mounted, setMounted] = (0, import_react19.useState)(open);
+  const [leaving, setLeaving] = (0, import_react19.useState)(false);
+  const mountedRef = (0, import_react19.useRef)(mounted);
+  mountedRef.current = mounted;
+  (0, import_react19.useEffect)(() => {
     if (open) {
       setMounted(true);
       setLeaving(false);
@@ -2406,19 +2448,19 @@ function usePresence(open, exitMs) {
 }
 
 // src/client/panel/hooks/useRemoteActions.ts
-var import_react19 = require("react");
+var import_react20 = require("react");
 function useRemoteActions(options) {
   const { call, t, refs, repo, perform, setActionFailure, onOpenDialog } = options;
-  const [menuOpen, setMenuOpen] = (0, import_react19.useState)(false);
-  const [remotes, setRemotes] = (0, import_react19.useState)(null);
-  const [remotesLoading, setRemotesLoading] = (0, import_react19.useState)(false);
-  const [remotesFailure, setRemotesFailure] = (0, import_react19.useState)(null);
-  const [dialog, setDialog] = (0, import_react19.useState)(null);
-  const pendingLoad = (0, import_react19.useRef)(null);
-  const lastFailure = (0, import_react19.useRef)(null);
+  const [menuOpen, setMenuOpen] = (0, import_react20.useState)(false);
+  const [remotes, setRemotes] = (0, import_react20.useState)(null);
+  const [remotesLoading, setRemotesLoading] = (0, import_react20.useState)(false);
+  const [remotesFailure, setRemotesFailure] = (0, import_react20.useState)(null);
+  const [dialog, setDialog] = (0, import_react20.useState)(null);
+  const pendingLoad = (0, import_react20.useRef)(null);
+  const lastFailure = (0, import_react20.useRef)(null);
   const canUseBranch = repo !== null && repo.detached !== true && repo.unborn !== true;
   const hasUpstream = repo?.upstream !== null && repo?.upstream !== void 0;
-  const loadRemotes = (0, import_react19.useCallback)(async () => {
+  const loadRemotes = (0, import_react20.useCallback)(async () => {
     const active = pendingLoad.current;
     if (active !== null) return active;
     const task = (async () => {
@@ -2450,7 +2492,7 @@ function useRemoteActions(options) {
     pendingLoad.current = task;
     return task;
   }, [call, refs, t]);
-  (0, import_react19.useEffect)(() => {
+  (0, import_react20.useEffect)(() => {
     if (!menuOpen) return void 0;
     const onPointerDown = (event) => {
       const wrap = refs.remoteWrap.current;
@@ -2653,16 +2695,16 @@ function useRemoteActions(options) {
 }
 
 // src/client/panel/hooks/useRepoStatus.ts
-var import_react20 = require("react");
+var import_react21 = require("react");
 function useRepoStatus(options) {
   const { sessionId, useContextMenu, visible, refs } = options;
   const { call, menuTrigger, panelId } = usePanelMenu({ sessionId, useContextMenu });
-  const [status, setStatus] = (0, import_react20.useState)(null);
-  const [loading, setLoading] = (0, import_react20.useState)(true);
-  const [loadFailure, setLoadFailure] = (0, import_react20.useState)(null);
-  const activeRead = (0, import_react20.useRef)(null);
-  const queuedRead = (0, import_react20.useRef)(null);
-  const drain = (0, import_react20.useCallback)(
+  const [status, setStatus] = (0, import_react21.useState)(null);
+  const [loading, setLoading] = (0, import_react21.useState)(true);
+  const [loadFailure, setLoadFailure] = (0, import_react21.useState)(null);
+  const activeRead = (0, import_react21.useRef)(null);
+  const queuedRead = (0, import_react21.useRef)(null);
+  const drain = (0, import_react21.useCallback)(
     async (firstSilent) => {
       refs.inFlight.current = true;
       let silent = firstSilent;
@@ -2692,7 +2734,7 @@ function useRepoStatus(options) {
     },
     [call, refs]
   );
-  const loadStatus = (0, import_react20.useCallback)(
+  const loadStatus = (0, import_react21.useCallback)(
     (loadOptions = {}) => {
       const silent = loadOptions.silent === true;
       const active = activeRead.current;
@@ -2707,10 +2749,10 @@ function useRepoStatus(options) {
     },
     [drain]
   );
-  (0, import_react20.useEffect)(() => {
+  (0, import_react21.useEffect)(() => {
     void loadStatus();
   }, [loadStatus]);
-  (0, import_react20.useEffect)(() => {
+  (0, import_react21.useEffect)(() => {
     if (!visible) return void 0;
     const timer = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
@@ -2771,11 +2813,11 @@ function adjustSplitRatio(ratio, key) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var import_react22 = require("react");
+var import_react23 = require("react");
 
 // src/client/panel/BranchMenu.ts
-var import_react21 = require("react");
-var h7 = import_react21.createElement;
+var import_react22 = require("react");
+var h7 = import_react22.createElement;
 function BranchMenu(props) {
   const t = props.t;
   const local = props.branches ?? [];
@@ -2853,7 +2895,7 @@ function BranchMenu(props) {
 }
 
 // src/client/panel/views/BranchHeader.ts
-var h8 = import_react22.createElement;
+var h8 = import_react23.createElement;
 function BranchHeader(props) {
   const t = props.t;
   const repo = props.repo;
@@ -2918,18 +2960,27 @@ function BranchHeader(props) {
         onClick: props.onRefresh
       },
       h8(RefreshIcon, { size: 14 })
-    )
+    ),
+    props.progress ? h8(
+      "span",
+      {
+        className: "dshgg-progress",
+        role: "progressbar",
+        "aria-label": t("progress.label")
+      },
+      h8("span", { className: "dshgg-progressBar" })
+    ) : null
   );
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var import_react26 = require("react");
+var import_react27 = require("react");
 
 // src/client/panel/rows.ts
-var import_react24 = require("react");
+var import_react25 = require("react");
 
 // src/client/host-file-icon.ts
-var import_react23 = require("react");
+var import_react24 = require("react");
 function resolveHostIcon() {
   try {
     const hostModule = require("@deepseek-ai/dsh-client-ui-primitives");
@@ -2942,11 +2993,11 @@ function resolveHostIcon() {
 var hostIcon = resolveHostIcon();
 function HostFileIcon(props) {
   const size = props.size ?? 16;
-  return hostIcon === void 0 ? (0, import_react23.createElement)(FileIcon, { size }) : (0, import_react23.createElement)(hostIcon, { path: props.path, size });
+  return hostIcon === void 0 ? (0, import_react24.createElement)(FileIcon, { size }) : (0, import_react24.createElement)(hostIcon, { path: props.path, size });
 }
 
 // src/client/panel/rows.ts
-var h9 = import_react24.createElement;
+var h9 = import_react25.createElement;
 function FileRow(props) {
   const entry = props.entry;
   const letter = props.letter;
@@ -3104,8 +3155,8 @@ function renderFileTree(rows, context) {
 }
 
 // src/client/panel/Section.ts
-var import_react25 = require("react");
-var h10 = import_react25.createElement;
+var import_react26 = require("react");
+var h10 = import_react26.createElement;
 function Section(props) {
   const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
@@ -3147,7 +3198,7 @@ function Section(props) {
 }
 
 // src/client/panel/views/ChangeGroups.ts
-var h11 = import_react26.createElement;
+var h11 = import_react27.createElement;
 function ChangeGroups(props) {
   const t = props.t;
   const sectionActions = {
@@ -3209,7 +3260,7 @@ function ChangeGroups(props) {
   const visible = visibleChangeGroups(props);
   const shows = (mode) => visible.includes(mode);
   return h11(
-    import_react26.Fragment,
+    import_react27.Fragment,
     null,
     shows("merge") ? h11(
       Section,
@@ -3266,7 +3317,7 @@ function ChangeGroups(props) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var import_react28 = require("react");
+var import_react29 = require("react");
 
 // src/client/panel/autosize.ts
 var COMMIT_MESSAGE_MAX_LINES = 10;
@@ -3313,8 +3364,8 @@ function autoGrowTextArea(area) {
 }
 
 // src/client/panel/views/CommitMenu.ts
-var import_react27 = require("react");
-var h12 = import_react27.createElement;
+var import_react28 = require("react");
+var h12 = import_react28.createElement;
 function CommitMenu(props) {
   const t = props.t;
   const item = (action, label, disabled, title) => h12(
@@ -3356,11 +3407,11 @@ function CommitMenu(props) {
 }
 
 // src/client/panel/views/CommitBox.ts
-var h13 = import_react28.createElement;
+var h13 = import_react29.createElement;
 function CommitBox(props) {
   const t = props.t;
-  const messageArea = (0, import_react28.useRef)(null);
-  (0, import_react28.useLayoutEffect)(() => {
+  const messageArea = (0, import_react29.useRef)(null);
+  (0, import_react29.useLayoutEffect)(() => {
     const area = messageArea.current;
     if (area === null) return;
     return autoGrowTextArea(area);
@@ -3432,7 +3483,7 @@ function CommitBox(props) {
 }
 
 // src/client/panel/views/CommitDetails.ts
-var import_react29 = require("react");
+var import_react30 = require("react");
 
 // src/client/git/tree.ts
 var NAME_ORDER = { numeric: true, sensitivity: "base" };
@@ -3506,7 +3557,7 @@ function buildFileTree(entries, options = {}) {
 }
 
 // src/client/panel/views/CommitDetails.ts
-var h14 = import_react29.createElement;
+var h14 = import_react30.createElement;
 function CommitDetails(props) {
   const t = props.t;
   const summary = props.summary;
@@ -3600,11 +3651,11 @@ function CommitDetails(props) {
 }
 
 // src/client/panel/views/CommitMenuDialog.ts
-var import_react30 = require("react");
-var h15 = import_react30.createElement;
+var import_react31 = require("react");
+var h15 = import_react31.createElement;
 function CommitMenuDialog(props) {
   const { dialog, t } = props;
-  const composing = (0, import_react30.useRef)(false);
+  const composing = (0, import_react31.useRef)(false);
   const title = dialog.kind === "createBranch" ? t("menu.createBranch") : dialog.kind === "createTag" ? t("menu.createTag") : t("menu.deleteBranch");
   const description = dialog.kind === "createBranch" ? t("menu.createBranchAt", { hash: dialog.oid.slice(0, 7) }) : dialog.kind === "createTag" ? t("menu.createTagAt", { hash: dialog.oid.slice(0, 7) }) : t("menu.deleteBranchConfirm", { name: dialog.branch });
   const progress = dialog.kind === "createBranch" ? t("menu.creatingBranch") : dialog.kind === "createTag" ? t("menu.creatingTag") : t("menu.deletingBranch");
@@ -3688,12 +3739,12 @@ function CommitMenuDialog(props) {
 }
 
 // src/client/panel/views/GraphRemoteActions.ts
-var import_react31 = require("react");
-var h16 = import_react31.createElement;
+var import_react32 = require("react");
+var h16 = import_react32.createElement;
 function GraphRemoteActions(props) {
   const t = props.t;
   return h16(
-    import_react31.Fragment,
+    import_react32.Fragment,
     null,
     h16(
       IconButton,
@@ -3745,7 +3796,7 @@ function GraphRemoteActions(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var import_react35 = require("react");
+var import_react36 = require("react");
 
 // src/client/git/graph.ts
 var SWIMLANE_HEIGHT = 22;
@@ -4124,8 +4175,8 @@ function refBadges(refs) {
 }
 
 // src/client/panel/views/graph/CommitChangeRows.ts
-var import_react32 = require("react");
-var h17 = import_react32.createElement;
+var import_react33 = require("react");
+var h17 = import_react33.createElement;
 function changeRowItems(expansion) {
   if (expansion.failure !== null) return [{ kind: "failure", failure: expansion.failure }];
   if (expansion.loading) return [{ kind: "loading" }];
@@ -4225,11 +4276,11 @@ function renderCommitChangeRows(props) {
 }
 
 // src/client/panel/views/graph/CommitGraphRow.ts
-var import_react34 = require("react");
+var import_react35 = require("react");
 
 // src/client/panel/views/graph/GraphArtwork.ts
-var import_react33 = require("react");
-var h18 = import_react33.createElement;
+var import_react34 = require("react");
+var h18 = import_react34.createElement;
 function graphColorValue(color) {
   return `var(--dshgg-scm-${color})`;
 }
@@ -4335,7 +4386,7 @@ function GraphCell(props) {
 }
 
 // src/client/panel/views/graph/CommitGraphRow.ts
-var h19 = import_react34.createElement;
+var h19 = import_react35.createElement;
 function badgeIconElement(icon) {
   if (icon === "target") return h19(TargetIcon, { size: 16 });
   if (icon === "cloud") return h19(CloudIcon, { size: 16 });
@@ -4416,12 +4467,12 @@ function GraphRow(props) {
 }
 
 // src/client/panel/views/GraphSection.ts
-var h20 = import_react35.createElement;
+var h20 = import_react36.createElement;
 function GraphSection(props) {
   const t = props.t;
   const commits = Array.isArray(props.commits) ? props.commits : null;
   const references = props.references ?? null;
-  const rowsLayout = (0, import_react35.useMemo)(
+  const rowsLayout = (0, import_react36.useMemo)(
     () => computeGraph(
       bindReferenceTargets(
         (commits ?? []).map((commit) => ({
@@ -4437,21 +4488,21 @@ function GraphSection(props) {
   );
   const graphId = props.graphId ?? "git-graph";
   const expanded = props.expanded ?? null;
-  const inserted = (0, import_react35.useMemo)(
+  const inserted = (0, import_react36.useMemo)(
     () => (commits ?? []).map((commit) => {
       const expansion = expanded?.get(commit.oid);
       return expansion === void 0 ? [] : changeRowItems(expansion);
     }),
     [commits, expanded]
   );
-  const layer = (0, import_react35.useMemo)(
+  const layer = (0, import_react36.useMemo)(
     () => graphLayer(
       rowsLayout,
       inserted.map((items) => items.length)
     ),
     [rowsLayout, inserted]
   );
-  const [hovered, setHovered] = (0, import_react35.useState)(null);
+  const [hovered, setHovered] = (0, import_react36.useState)(null);
   const menu = props.menu;
   const trigger = menu === void 0 ? null : menu.trigger;
   const rows = [];
@@ -4578,12 +4629,12 @@ function GraphSection(props) {
 }
 
 // src/client/panel/views/RemoteDialog.ts
-var import_react36 = require("react");
-var h21 = import_react36.createElement;
+var import_react37 = require("react");
+var h21 = import_react37.createElement;
 function RemoteDialog(props) {
   const { dialog, t } = props;
   const busy = props.busyName !== null;
-  const composing = (0, import_react36.useRef)(false);
+  const composing = (0, import_react37.useRef)(false);
   const compositionHandlers = {
     onCompositionStart: () => {
       composing.current = true;
@@ -4699,11 +4750,11 @@ function RemoteDialog(props) {
 }
 
 // src/client/panel/views/RemoteMenu.ts
-var import_react37 = require("react");
-var h22 = import_react37.createElement;
+var import_react38 = require("react");
+var h22 = import_react38.createElement;
 function RemoteMenu(props) {
   const t = props.t;
-  const [configOpen, setConfigOpen] = (0, import_react37.useState)(false);
+  const [configOpen, setConfigOpen] = (0, import_react38.useState)(false);
   const branchBlocked = props.busy || !props.usable;
   const canRemove = props.failure === null && props.remotes !== null && props.remotes.length > 0;
   const notes = [];
@@ -4789,11 +4840,11 @@ function RemoteMenu(props) {
 }
 
 // src/client/panel/views/SplitView.ts
-var import_react38 = require("react");
-var h23 = import_react38.createElement;
+var import_react39 = require("react");
+var h23 = import_react39.createElement;
 function SplitView(props) {
-  const [dragging, setDragging] = (0, import_react38.useState)(false);
-  const dragStart = (0, import_react38.useRef)(null);
+  const [dragging, setDragging] = (0, import_react39.useState)(false);
+  const dragStart = (0, import_react39.useRef)(null);
   const ratio = clampSplitRatio(props.ratio);
   const sizing = splitSizing({
     ratio,
@@ -4876,7 +4927,7 @@ function SplitView(props) {
 }
 
 // src/client/panel/GitPanel.ts
-var h24 = import_react39.createElement;
+var h24 = import_react40.createElement;
 function GitPanel(props) {
   const t = props.t;
   const tab = props.useTabInfo().tab;
@@ -4892,33 +4943,33 @@ function GitPanel(props) {
   const { call, menuTrigger, panelId, status, loading, loadFailure, setLoadFailure, loadStatus } = statusState;
   const history = useHistory({ call, refs });
   const { graph, references, graphLoading, graphFailure, loadGraph, refreshReferences } = history;
-  const rootPane = (0, import_react39.useRef)(null);
-  const graphPane = (0, import_react39.useRef)(null);
-  const reloadHistory = (0, import_react39.useCallback)(async () => {
+  const rootPane = (0, import_react40.useRef)(null);
+  const graphPane = (0, import_react40.useRef)(null);
+  const reloadHistory = (0, import_react40.useCallback)(async () => {
     await loadGraph();
     if (graphPane.current !== null) graphPane.current.scrollTop = 0;
   }, [loadGraph]);
-  const [openSections, setOpenSections] = (0, import_react39.useState)({
+  const [openSections, setOpenSections] = (0, import_react40.useState)({
     merge: true,
     staged: true,
     changes: true,
     graph: true
   });
-  const [splitRatio, setSplitRatio] = (0, import_react39.useState)(DEFAULT_SPLIT_RATIO);
-  const lastDetails = (0, import_react39.useRef)(null);
-  const lastPrompt = (0, import_react39.useRef)(null);
+  const [splitRatio, setSplitRatio] = (0, import_react40.useState)(DEFAULT_SPLIT_RATIO);
+  const lastDetails = (0, import_react40.useRef)(null);
+  const lastPrompt = (0, import_react40.useRef)(null);
   const repo = status?.repo ?? null;
   const sessionDirectory = status?.cwd ?? status?.repo?.cwd;
   const repoRoot = repo?.root ?? sessionDirectory;
   const files = status?.files ?? [];
-  const groups = (0, import_react39.useMemo)(() => groupChangeEntries(files), [files]);
+  const groups = (0, import_react40.useMemo)(() => groupChangeEntries(files), [files]);
   const { mergeRows, stagedRows, changedRows } = groups;
   const clean = repo !== null && mergeRows.length === 0 && stagedRows.length === 0 && changedRows.length === 0;
-  const changeGroups = (0, import_react39.useMemo)(() => visibleChangeGroups(groups), [groups]);
-  const handleWorktreeChange = (0, import_react39.useCallback)(() => {
+  const changeGroups = (0, import_react40.useMemo)(() => visibleChangeGroups(groups), [groups]);
+  const handleWorktreeChange = (0, import_react40.useCallback)(() => {
     void loadStatus({ silent: true });
   }, [loadStatus]);
-  const handleReferencesChange = (0, import_react39.useCallback)(async () => {
+  const handleReferencesChange = (0, import_react40.useCallback)(async () => {
     const next = await refreshReferences();
     await loadStatus({ silent: true });
     const revision = next?.current?.revision;
@@ -5040,8 +5091,8 @@ function GitPanel(props) {
   };
   const commitState = useCommitDetails({ call, refs });
   const expansion = useCommitExpansion({ call, refs });
-  const retryGenerations = (0, import_react39.useRef)({});
-  const [, setRetryTick] = (0, import_react39.useState)(0);
+  const retryGenerations = (0, import_react40.useRef)({});
+  const [, setRetryTick] = (0, import_react40.useState)(0);
   const retry = (key, run) => {
     retryGenerations.current[key] = (retryGenerations.current[key] ?? 0) + 1;
     setRetryTick((value) => value + 1);
@@ -5087,7 +5138,7 @@ function GitPanel(props) {
     props.notify
   );
   const selectedCommit = commitState.selected;
-  (0, import_react39.useEffect)(() => {
+  (0, import_react40.useEffect)(() => {
     if (!visible || selectedCommit === null) return void 0;
     const closeOnEscape = (event) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -5113,14 +5164,14 @@ function GitPanel(props) {
     remoteActions.dialog,
     commitState.closeCommit
   ]);
-  const commitRows = (0, import_react39.useMemo)(
+  const commitRows = (0, import_react40.useMemo)(
     () => sortChangeEntries(commitState.details?.files ?? []).map((file) => ({
       ...file,
       kind: "commit"
     })),
     [commitState.details]
   );
-  const openDiff = (0, import_react39.useCallback)(
+  const openDiff = (0, import_react40.useCallback)(
     (entry, mode) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -5135,7 +5186,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openFileAtCommit = (0, import_react39.useCallback)(
+  const openFileAtCommit = (0, import_react40.useCallback)(
     (commit, entry) => {
       tab.actions.openTab(DIFF_KIND, {
         params: {
@@ -5150,7 +5201,7 @@ function GitPanel(props) {
     },
     [tab.actions, repoRoot]
   );
-  const openCommitDiff = (0, import_react39.useCallback)(
+  const openCommitDiff = (0, import_react40.useCallback)(
     (entry) => {
       if (selectedCommit !== null) openFileAtCommit(selectedCommit, entry);
     },
@@ -5177,6 +5228,8 @@ function GitPanel(props) {
   const ahead = repo?.ahead ?? 0;
   const behind = repo?.behind ?? 0;
   const canAct = repo !== null && busy === null;
+  const toolbarActivity = loading || graphLoading || history.moreLoading || busy !== null;
+  const toolbarProgress = useMinimumVisible(toolbarActivity, PROGRESS_MIN_VISIBLE_MS);
   const targets = createMenuTargets({
     sessionId: props.sessionId,
     panelId,
@@ -5435,6 +5488,7 @@ function GitPanel(props) {
       ahead,
       behind,
       busy,
+      progress: toolbarProgress,
       branchMenu,
       branches,
       remoteBranches,
@@ -5607,6 +5661,12 @@ var motion_default = `/* -------------------------------------------------------
 
 @media (prefers-reduced-motion: reduce) {
   .dshgg-iconBtn[data-spinning="true"] svg {
+    animation: none;
+  }
+
+  /* The panel is still busy, so the bar stays; it just stops sweeping. */
+  .dshgg-progressBar {
+    width: 100%;
     animation: none;
   }
 
@@ -5952,6 +6012,7 @@ var titles_default = "/* -------------------------------------------------------
 var toolbar_default = `/* --------------------------------------------------------------- toolbar --- */
 
 .dshgg-toolbar {
+  position: relative;
   display: flex;
   flex: none;
   align-items: center;
@@ -5961,6 +6022,38 @@ var toolbar_default = `/* ------------------------------------------------------
   /* Include the hairline: the host's 38px tab strip and 38px header meet at 76px. */
   box-sizing: border-box;
   border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+/* While the panel loads or runs an operation, a short segment sweeps along the
+ * toolbar's bottom edge. The track lies out of flow and clips the segment, so
+ * it neither changes the toolbar's height nor paints outside the panel. */
+.dshgg-progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dshgg-progressBar {
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: var(--dsw-alias-state-business-primary);
+  border-radius: 1px;
+  animation: dshgg-progress-slide 1.1s linear infinite;
+}
+
+@keyframes dshgg-progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(250%);
+  }
 }
 
 .dshgg-branchWrap {
@@ -6121,8 +6214,8 @@ function installStyles(target) {
 }
 
 // src/client/titles.ts
-var import_react40 = require("react");
-var h25 = import_react40.createElement;
+var import_react41 = require("react");
+var h25 = import_react41.createElement;
 function GitTabTitle(props) {
   const tabInfo = props.useTabInfo();
   const title = typeof props.t === "function" ? props.t("title") : tabInfo.tab.title;
@@ -6182,8 +6275,8 @@ function createToastStore() {
 }
 
 // src/client/toast/ToastHost.ts
-var import_react41 = require("react");
-var h26 = import_react41.createElement;
+var import_react42 = require("react");
+var h26 = import_react42.createElement;
 var FAILURE_HOLD_MS = 6e3;
 function resolveHostToast() {
   try {
@@ -6195,8 +6288,8 @@ function resolveHostToast() {
 }
 var hostToast = resolveHostToast();
 function ToastHost(props) {
-  const [notice, setNotice] = (0, import_react41.useState)(() => props.store.getSnapshot());
-  (0, import_react41.useEffect)(() => props.store.subscribe(() => setNotice(props.store.getSnapshot())), [props.store]);
+  const [notice, setNotice] = (0, import_react42.useState)(() => props.store.getSnapshot());
+  (0, import_react42.useEffect)(() => props.store.subscribe(() => setNotice(props.store.getSnapshot())), [props.store]);
   if (hostToast === void 0 || notice === null) return null;
   const dismiss = () => props.store.dismiss();
   const action = notice.action;

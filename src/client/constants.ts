@@ -30,6 +30,12 @@ export const PROMPT_MOTION_MS = 180
  * removed exactly when its animation ends.
  */
 export const DETAILS_MOTION_MS = 200
+/**
+ * How long the toolbar's loading bar stays once it appears, in milliseconds.
+ * Work that finishes sooner holds the bar for this minimum, so a quick read
+ * does not flash it for a single frame.
+ */
+export const PROGRESS_MIN_VISIBLE_MS = 500
 export const MENU_TARGET = 'gitGraphItem'
 export const MENU_CONTRIBUTION_ID = 'git-graph.actions'
 

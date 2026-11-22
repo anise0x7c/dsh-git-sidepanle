@@ -7,7 +7,12 @@
 
 import type React from 'react'
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { DETAILS_MOTION_MS, DIFF_KIND, PROMPT_MOTION_MS } from '../constants.ts'
+import {
+  DETAILS_MOTION_MS,
+  DIFF_KIND,
+  PROGRESS_MIN_VISIBLE_MS,
+  PROMPT_MOTION_MS,
+} from '../constants.ts'
 import { errorText } from '../git/format.ts'
 import { sortChangeEntries } from '../git/list.ts'
 import { AlertIcon, GitBranchIcon } from '../icons.ts'
@@ -30,6 +35,7 @@ import { useFailureToasts } from './hooks/useFailureToasts.ts'
 import { useHistory } from './hooks/useHistory.ts'
 import { useLiveUpdates } from './hooks/useLiveUpdates.ts'
 import { useMenuCommands } from './hooks/useMenuCommands.ts'
+import { useMinimumVisible } from './hooks/useMinimumVisible.ts'
 import { usePresence } from './hooks/usePresence.ts'
 import { useRemoteActions } from './hooks/useRemoteActions.ts'
 import { useRepoStatus } from './hooks/useRepoStatus.ts'
@@ -435,6 +441,12 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   const ahead = repo?.ahead ?? 0
   const behind = repo?.behind ?? 0
   const canAct = repo !== null && busy === null
+  // The toolbar's activity bar covers the visible status load, graph reads and
+  // any operation holding the busy lock. A silent watcher refresh keeps the
+  // bar still, so an external edit does not flash it. The minimum visible time
+  // keeps a fast read from showing the bar for only one frame.
+  const toolbarActivity = loading || graphLoading || history.moreLoading || busy !== null
+  const toolbarProgress = useMinimumVisible(toolbarActivity, PROGRESS_MIN_VISIBLE_MS)
 
   const targets = createMenuTargets({
     sessionId: props.sessionId,
@@ -744,6 +756,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
       ahead,
       behind,
       busy,
+      progress: toolbarProgress,
       branchMenu,
       branches,
       remoteBranches,

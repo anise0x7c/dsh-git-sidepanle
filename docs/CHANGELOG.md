@@ -5,6 +5,15 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+The branch toolbar now shows that the panel is working:
+
+- While the panel loads on open, refreshes, loads earlier commits or runs a Git
+  operation, a thin indeterminate bar sweeps along the toolbar's bottom edge. It
+  shows immediately and stays for at least half a second, so a quick read does
+  not flash it; work that starts during that hold keeps it continuous. It takes
+  no layout height and accepts no pointer input, and with reduced motion it
+  stays still as a static line.
+
 Collapsing a section no longer leaves its pane at full height:
 
 - A pane whose sections are all collapsed keeps only their headers. Collapsing

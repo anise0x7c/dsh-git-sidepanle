@@ -11,8 +11,13 @@ const readSheet = (name: string): string =>
     '',
   )
 
-// The details card's surface lives in its own sheet, so both are searched.
-const css = [readSheet('motion.css'), readSheet('commit-detail.css')].join('\n')
+// The details card's surface and the toolbar's activity bar live in their own
+// sheets, so every sheet that can change their motion is searched.
+const css = [
+  readSheet('motion.css'),
+  readSheet('commit-detail.css'),
+  readSheet('toolbar.css'),
+].join('\n')
 
 /**
  * Read the declarations of one leaf rule.
@@ -118,6 +123,26 @@ test('reduced motion keeps both surfaces still', () => {
     /\.dshgg-promptMotion\[data-phase\][^{]*\.dshgg-floating-panel[^{]*\{[^}]*animation:\s*none\s*;/,
   )
   assert.match(reduced, /\.dshgg-commitMotion\[data-phase\][^{]*\{[^}]*animation:\s*none\s*;/)
+})
+
+test('the toolbar loading bar sweeps its track and stills under reduced motion', () => {
+  const track = declarations('.dshgg-progress')
+  assert.match(track, /\bposition:\s*absolute\s*;/, 'the bar does not take toolbar layout height')
+  assert.match(track, /\bbottom:\s*0\s*;/, 'the bar rides the toolbar edge')
+  assert.match(track, /\boverflow:\s*hidden\s*;/, 'the track clips the moving segment')
+  assert.match(track, /\bpointer-events:\s*none\s*;/, 'the indicator takes no input')
+  const bar = declarations('.dshgg-progressBar')
+  assert.match(bar, /\banimation:\s*dshgg-progress-slide\s+[^;]+\s+infinite\s*;/)
+  assert.match(bar, /\bbackground:\s*var\(--dsw-[^;]+;/, 'the bar uses a host theme token')
+  const sweep = keyframes('dshgg-progress-slide')
+  assert.match(sweep, /translateX\(-100%\)/, 'the segment starts beyond the left edge')
+  assert.match(sweep, /translateX\(\d+%\)/, 'the segment ends beyond the right edge')
+  const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'))
+  assert.match(
+    declarations('.dshgg-progressBar', reduced),
+    /\banimation:\s*none\s*;/,
+    'reduced motion holds the bar still',
+  )
 })
 
 test('motion styles derive from layout, not from fixed colors', () => {

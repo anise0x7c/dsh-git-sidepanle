@@ -3406,6 +3406,70 @@ test('the commit graph header owns fetch, pull, push and the overflow menu', asy
   await mounted.harness.dispose()
 })
 
+test('the toolbar shows an indeterminate progress bar while the panel loads', async (t) => {
+  const gate = deferred()
+  const mounted = await mountGit({ statusGates: [gate.promise] })
+  t.after(async () => {
+    gate.release()
+    await mounted.harness.flush()
+    await mounted.harness.dispose()
+  })
+  const progressBars = (): TestElement[] =>
+    mounted.harness.findAll((element) => element.props.role === 'progressbar')
+  assert.equal(progressBars().length, 1, 'the opening load shows the progress bar')
+  const [bar] = progressBars()
+  assert.ok(bar)
+  assert.ok(hasClass(bar, 'dshgg-progress'), 'the bar is the toolbar track')
+  assert.equal(bar.props['aria-label'], 'progress.label', 'the bar carries a localized label')
+  assert.equal(
+    collectElements(bar, (element) => hasClass(element, 'dshgg-progressBar')).length,
+    1,
+    'the track holds the sweeping segment',
+  )
+  gate.release()
+  await mounted.harness.flush()
+  assert.equal(progressBars().length, 1, 'a brief load holds the bar for its minimum time')
+  mounted.harness.runTimeouts()
+  await mounted.harness.flush()
+  assert.equal(progressBars().length, 0, 'the settled panel shows no progress bar')
+})
+
+test('the toolbar progress bar follows a running operation', async (t) => {
+  let release = (): void => {}
+  const until = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const mounted = await mountGit({ pending: { op: 'stage', until } })
+  t.after(async () => {
+    release()
+    await mounted.harness.flush()
+    await mounted.harness.dispose()
+  })
+  const progressBars = (): TestElement[] =>
+    mounted.harness.findAll((element) => element.props.role === 'progressbar')
+  // The opening load's answer already arrived; let its minimum visible time
+  // pass so the panel is idle before the operation starts.
+  mounted.harness.runTimeouts()
+  await mounted.harness.flush()
+  assert.equal(progressBars().length, 0, 'an idle panel shows no progress bar')
+  const rows = mounted.harness.findAll(
+    (element) =>
+      String(element.props?.className ?? '').includes('dshgg-fileRow') &&
+      element.props?.title === 'src/app.js',
+  )
+  const row = rows[rows.length - 1]
+  assert.ok(row, 'the unstaged file row is missing')
+  mounted.harness.click(buttonInside(row, 'actions.stage'))
+  await mounted.harness.flush()
+  assert.equal(progressBars().length, 1, 'the running stage shows the bar')
+  release()
+  await mounted.harness.flush()
+  assert.equal(progressBars().length, 1, 'a finished operation still holds the minimum time')
+  mounted.harness.runTimeouts()
+  await mounted.harness.flush()
+  assert.equal(progressBars().length, 0, 'the bar leaves when the operation and minimum finish')
+})
+
 test('the overflow menu keeps only actions that are not in the header', async () => {
   const mounted = await mountGit()
   await openRemoteMenu(mounted)

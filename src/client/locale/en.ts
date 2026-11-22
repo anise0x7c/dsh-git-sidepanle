@@ -11,6 +11,7 @@ export const en = {
   guideDescription: 'Review changes, stage files, commit, and follow history',
   refresh: 'Refresh',
   loading: 'Loading source control…',
+  'progress.label': 'Working…',
   retry: 'Retry',
   'shortcut.noSession': 'Open a session to use source control',
   'noRepo.title': 'No Git repository',

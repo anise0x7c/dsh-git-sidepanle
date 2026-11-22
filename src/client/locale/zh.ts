@@ -13,6 +13,7 @@ export const zh: Record<GitGraphLocaleKey, string> = {
   guideDescription: '查看更改、暂存文件、提交并浏览提交历史',
   refresh: '刷新',
   loading: '正在加载源代码管理…',
+  'progress.label': '正在处理…',
   retry: '重试',
   'shortcut.noSession': '请先打开一个会话再使用源代码管理',
   'noRepo.title': '没有 Git 仓库',
