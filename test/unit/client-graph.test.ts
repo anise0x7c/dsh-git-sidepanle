@@ -6,10 +6,8 @@
  * context. Hand-written cases pin the visible behavior (swimlanes, path
  * commands, node shapes, colors, badges); an equivalence test compares the
  * port with a literal transcription of VS Code's algorithm on random
- * histories. The port deliberately deviates from VS Code in two visible ways:
- * the palette is slightly more vivid with each hue held, and a shifting lane's
- * S-turn is a little tighter, so the oracle is rendered with the port's curve
- * radius while every other path command is compared literally.
+ * histories. The port's only visible color deviation is its restyled palette;
+ * every path command is compared literally.
  */
 
 import assert from 'node:assert/strict'
@@ -30,7 +28,6 @@ import {
   ROW_OVERHANG,
   refBadges,
   referenceColors,
-  SWIMLANE_CURVE_RADIUS,
   SWIMLANE_HEIGHT,
   SWIMLANE_WIDTH,
   sortRefs,
@@ -219,7 +216,7 @@ describe('computeGraph swimlanes', () => {
     assert.deepEqual(lanes(row.p?.output ?? []), ['o:lane1', 'q:lane3'])
     assert.deepEqual(paths(row.p), [
       ['M 22 0 A 11 11 0 0 1 11 11 H 11', 'lane2'],
-      ['M 33 0 V 6.5 A 4.5 4.5 0 0 1 28.5 11 H 26.5 A 4.5 4.5 0 0 0 22 15.5 V 22', 'lane3'],
+      ['M 33 0 V 6 A 5 5 0 0 1 28 11 H 27 A 5 5 0 0 0 22 16 V 22', 'lane3'],
       ['M 11 0 V 11', 'lane1'],
       ['M 11 11 V 22', 'lane1'],
     ])
@@ -876,9 +873,7 @@ describe('equivalence with VS Code', () => {
         assert.equal(row.kind, model.kind, where)
         assert.deepEqual(row.input, model.inputSwimlanes, `${where} input`)
         assert.deepEqual(row.output, model.outputSwimlanes, `${where} output`)
-        // The port's tighter S-turn is deliberate; render the oracle with it
-        // so every other path command is still compared literally.
-        const rendered = renderGraph(model, SWIMLANE_CURVE_RADIUS)
+        const rendered = renderGraph(model)
         const geometry = graphRowGeometry(row)
         assert.equal(row.lane, rendered.circleIndex, `${where} lane`)
         assert.equal(row.color, rendered.circleColor, `${where} color`)

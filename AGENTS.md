@@ -19,7 +19,7 @@ right-click menus.
 - Both halves compile to committed JavaScript: `index.js`, `client.js` and
   their maps. A prepared plugin directory needs no compiler at install time.
 - Behavior truth lives in `.litespec/specs/git-sidebar/spec.md`
-  (52 requirements; latest archived change 2026-11-22 differentiate-graph-style). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
+  (52 requirements; latest archived change 2026-11-23 revert-graph-curve-tuning). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
   `docs/DETAIL.zh.md` (Chinese). Architecture: `docs/ARCHITECTURE.md`.
   `docs/REFACTOR-PLAN.md` records the 0.3.0 split that produced the current
   layout and subsequent maintenance rounds — read completed sections for rationale,
@@ -127,10 +127,11 @@ to force a fresh version, and never chase patch releases the day they ship.
    parity for both languages.
 7. **Theme and keyboard.** Style with `--dsw-*` theme tokens only — except the
    commit graph, which follows VS Code's Source Control Graph: its
-   `--dshgg-scm-*` palette (VS Code `scmGraph.*` hues tuned slightly more vivid,
-   dark variants under `body[data-ds-dark-theme]`) and 22px rows are deliberate.
-   The more vivid palette and the slightly tighter S-turn are intentional
-   distinctions from VS Code; do not restore VS Code's exact values. Rows and
+   `--dshgg-scm-*` palette (a restyled, contrast-checked version of VS Code's
+   `scmGraph.*` hue families, dark variants under `body[data-ds-dark-theme]`)
+   and 22px rows are deliberate. The restyled palette is an intentional
+   distinction from VS Code; do not restore VS Code's exact palette values. The
+   curve geometry, including the 5-pixel S-turn, is VS Code's again. Rows and
    triggers keep `tabIndex` / `aria-haspopup="menu"` semantics and the host's
    dismissal behavior.
 

@@ -252,10 +252,10 @@ fetched refs appear.
 - Absolute copy paths use `repo.root`, never the possibly nested Session cwd.
 - All visible copy comes from the bound English/Chinese dictionaries. Styling
   retains the Host theme tokens and keyboard/menu focus semantics. The one
-  exception is the commit graph, which uses a slightly more vivid,
-  hue-preserving version of VS Code's `scmGraph.*` palette as
-  `--dshgg-scm-*` variables (dark variants under `body[data-ds-dark-theme]`),
-  VS Code's 22px graph rows and a slightly tighter lane-shift S-turn.
+  exception is the commit graph, which uses a restyled version of VS Code's
+  `scmGraph.*` palette as `--dshgg-scm-*` variables (same hue families,
+  contrast-checked, dark variants under `body[data-ds-dark-theme]`) and VS
+  Code's 22px graph rows and curve geometry.
 
 ## Build and quality gates
 

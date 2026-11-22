@@ -4,24 +4,26 @@
  * derived from VS Code's `scmGraph.*` color set rather than host tokens: five
  * rotation colors shared by light and dark themes, plus the checked-out
  * (`charts.blue`), upstream (`charts.purple`) and base reference colors. Each
- * value is tuned slightly more vivid than VS Code's while keeping its hue, so
- * the graph reads as the plugin's own rendering instead of a copy. Badge text
+ * value is restyled within its hue family — gold, crimson, copper, emerald and
+ * violet rotations, blue, purple and orange references — and keeps at least a
+ * 2:1 contrast ratio against the panel background in both themes, so the graph
+ * reads as the plugin's own rendering without becoming hard to see. Badge text
  * uses the host's base background, standing in for VS Code's `panel.background`. */
 .dshgg-root {
-  --dshgg-scm-lane1: #ffb300;
-  --dshgg-scm-lane2: #e3007f;
-  --dshgg-scm-lane3: #a85600;
-  --dshgg-scm-lane4: #2cb2a7;
-  --dshgg-scm-lane5: #b266ff;
-  --dshgg-scm-ref: #0a7eff;
-  --dshgg-scm-remote: #672696;
-  --dshgg-scm-base: #f26100;
+  --dshgg-scm-lane1: #d6a700;
+  --dshgg-scm-lane2: #e0065b;
+  --dshgg-scm-lane3: #a66200;
+  --dshgg-scm-lane4: #3ead76;
+  --dshgg-scm-lane5: #9362f4;
+  --dshgg-scm-ref: #0088cd;
+  --dshgg-scm-remote: #81359c;
+  --dshgg-scm-base: #f66140;
   --dshgg-scm-label-foreground: var(--dsw-alias-bg-base);
 }
 
 body[data-ds-dark-theme] .dshgg-root {
-  --dshgg-scm-ref: #2e91ff;
-  --dshgg-scm-remote: #b37ddd;
+  --dshgg-scm-ref: #00a8fb;
+  --dshgg-scm-remote: #c27fdd;
 }
 
 /* The rows and the one layer that draws their lines. The layer is positioned so

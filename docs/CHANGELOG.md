@@ -58,13 +58,15 @@ of a private inline banner:
 
 The commit graph's style is now its own rather than a literal VS Code copy:
 
-- Every graph color — the five rotation colors, the checked-out-branch blue, the
-  upstream purple and the base-branch orange, in both theme variants — is
-  slightly more vivid while keeping its hue, so the rotation order and the
-  reference meaning of each color read the same.
-- A lane shifting left on a row turns with a 4.5-pixel radius instead of VS
-  Code's 5, so its short S-turn is a little tighter. Row height, lane pitch,
-  node shapes, joins and merge launches are unchanged.
+- Every graph color is restyled within its hue family: new lines rotate through
+  gold, crimson, copper, emerald and violet, and the checked-out-branch blue,
+  upstream purple and base-branch orange get their own values. Each color keeps
+  at least a 2:1 contrast ratio against the panel background in both themes, so
+  lines and badge lettering stay readable.
+- The lane-shift S-turn stays VS Code's 5-pixel radius. Tighter variants (4.5
+  and 3 pixels) were tried and dropped because at the graph's 22px rows the
+  difference was not noticeable. Row height, lane pitch, node shapes, joins and
+  merge launches are unchanged.
 
 ## 0.13.1
 
