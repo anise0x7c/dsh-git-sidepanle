@@ -27,9 +27,11 @@ body[data-ds-dark-theme] .dshgg-root {
 }
 
 /* The rows and the one layer that draws their lines. The layer is positioned so
- * it paints over a row's hover surface, and the row's cell keeps the node. */
+ * it paints over a row's hover surface, and the row's cell keeps the node. Its
+ * inset matches the shared row's horizontal padding, so a lane and the node on
+ * its row start on the same content edge. */
 .dshgg-graphBody {
-  --dshgg-graph-inset: 4px;
+  --dshgg-graph-inset: 6px;
   position: relative;
 }
 
@@ -40,29 +42,9 @@ body[data-ds-dark-theme] .dshgg-root {
   pointer-events: none;
 }
 
-/* VS Code `.history-item`: 22px rows, the graph cell, the label, the badges. */
-.dshgg-graphRow {
-  display: flex;
-  flex: none;
-  align-items: center;
-  height: 22px;
-  min-width: 0;
-  padding: 0 6px 0 var(--dshgg-graph-inset);
-  border-radius: var(--dsw-radius-md);
-  cursor: pointer;
-}
-
-@media (hover: hover) {
-  .dshgg-graphRow:hover {
-    background: var(--dsw-alias-interactive-bg-hover);
-  }
-}
-
-.dshgg-graphRow:focus-visible {
-  outline: var(--dsw-focus-ring-width) solid
-    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
-  outline-offset: -2px;
-}
+/* VS Code `.history-item`: the shared compact row carries the height, padding,
+ * hover surface and focus ring; this row adds only the graph cell, the label and
+ * the badges. */
 
 /* The row's cell is as wide as its graph width and as tall as the row; both come
  * from the element's own attributes. */
@@ -192,61 +174,25 @@ body[data-ds-dark-theme] .dshgg-root {
 }
 
 /* VS Code `.history-item-change`: the rows an expanded commit lists below
- * itself. Each is a 22px row whose graph area is as wide as the commit's
- * outgoing lanes; the lanes themselves come from the section's line layer. */
-.dshgg-graphChange {
-  display: flex;
-  flex: none;
-  align-items: center;
-  height: 22px;
-  min-width: 0;
-  padding: 0 6px 0 var(--dshgg-graph-inset);
-  border-radius: var(--dsw-radius-md);
-}
-
+ * itself. The shared row carries their layout; each keeps a graph area as wide
+ * as the commit's outgoing lanes, and the lanes themselves come from the
+ * section's line layer. */
 .dshgg-graphChangeLanes {
   display: block;
   flex: none;
   height: 22px;
 }
 
-/* VS Code's file icon: a 16px icon with 6px before the label. */
-.dshgg-graphChangeIcon {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 22px;
-  margin: 0 6px 0 4px;
-  color: var(--dsw-alias-label-secondary);
+/* A note row takes the shared row's metrics but neither its pointer skin nor
+ * its hover surface: it is a status line, not a target. */
+.dshgg-graphChange[data-note] {
+  cursor: default;
 }
 
-.dshgg-graphChangeLabel {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  font: var(--dsw-font-xs-13);
-  line-height: 22px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.dshgg-graphChangeName {
-  white-space: pre;
-}
-
-/* VS Code `.label-description`: the dimmed directory after the name. */
-.dshgg-graphChangeDir {
-  margin-left: 0.5em;
-  font-size: 0.9em;
-  white-space: pre;
-  opacity: 0.7;
-}
-
-/* VS Code's decoration badge: the status letter at the row's end. */
-.dshgg-graphChangeStatus {
-  margin: 0 3px 0 6px;
+@media (hover: hover) {
+  .dshgg-graphChange[data-note]:hover {
+    background: none;
+  }
 }
 
 .dshgg-graphChangeNote {
@@ -256,7 +202,6 @@ body[data-ds-dark-theme] .dshgg-root {
 .dshgg-graphChangeText {
   flex: 0 1 auto;
   min-width: 0;
-  margin-left: 4px;
   overflow: hidden;
   font: var(--dsw-font-xxs-12);
   white-space: nowrap;

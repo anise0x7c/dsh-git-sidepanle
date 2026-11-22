@@ -130,7 +130,7 @@ export function GraphRow(props: GraphRowProps): React.ReactElement {
   return h(
     'div',
     {
-      className: 'dshgg-graphRow',
+      className: 'dshgg-row dshgg-graphRow',
       'data-current': row.kind === 'HEAD' ? 'true' : undefined,
       'data-expanded': props.expanded === true ? 'true' : undefined,
       title: `${titlePrefix}${commit.shortOid} ${subject} · ${commit.author} · ${ago} · ${t('menu.hint')}`,

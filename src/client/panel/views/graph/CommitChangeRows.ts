@@ -112,24 +112,16 @@ function ChangeFileRow(props: {
   return h(
     'div',
     {
-      className: 'dshgg-graphChange dshgg-fileRow',
+      className: 'dshgg-row dshgg-graphChange',
       'aria-label': `${props.t(statusKey(letter))} ${entry.path}`,
       title: entry.origPath === undefined ? entry.path : `${entry.origPath} → ${entry.path}`,
       ...rowProps,
     },
     graphArea(props.graphWidth),
-    h(
-      'span',
-      { className: 'dshgg-graphChangeIcon' },
-      h(HostFileIcon, { path: entry.path, size: 16 }),
-    ),
-    h(
-      'span',
-      { className: 'dshgg-graphChangeLabel' },
-      h('span', { className: 'dshgg-graphChangeName' }, name),
-      dir === '' ? null : h('span', { className: 'dshgg-graphChangeDir' }, dir),
-    ),
-    h('span', { className: 'dshgg-status dshgg-graphChangeStatus', 'data-status': letter }, letter),
+    h('span', { className: 'dshgg-rowIcon' }, h(HostFileIcon, { path: entry.path, size: 16 })),
+    h('span', { className: 'dshgg-fileName' }, name),
+    dir === '' ? null : h('span', { className: 'dshgg-fileDir' }, dir),
+    h('span', { className: 'dshgg-status', 'data-status': letter }, letter),
   )
 }
 
@@ -165,7 +157,7 @@ export function renderCommitChangeRows(props: CommitChangeRowsProps): React.Reac
       'div',
       {
         key: `change:${props.oid}:${item.kind}`,
-        className: 'dshgg-graphChange dshgg-graphChangeNote',
+        className: 'dshgg-row dshgg-graphChange dshgg-graphChangeNote',
         'data-note': item.kind,
         role: item.kind === 'failure' ? 'alert' : 'status',
       },

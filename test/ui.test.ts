@@ -832,6 +832,18 @@ test('the panel renders branch, change groups, status letters, and the graph', a
   assert.match(text, /\bU\b/)
   assert.match(text, /\bM\b/)
   assert.match(text, /!/)
+  // The change list and the commit graph share one row style, so the panel has
+  // a single compact row rhythm instead of one scale per section.
+  const listedFiles = mounted.harness.findAll((element) => hasClass(element, 'dshgg-fileRow'))
+  assert.ok(listedFiles.length > 0, 'no changed-file rows rendered')
+  for (const row of listedFiles) {
+    assert.ok(hasClass(row, 'dshgg-row'), 'a changed-file row does not use the shared row style')
+  }
+  const commits = mounted.harness.findAll((element) => hasClass(element, 'dshgg-graphRow'))
+  assert.ok(commits.length > 0, 'no commit rows rendered')
+  for (const row of commits) {
+    assert.ok(hasClass(row, 'dshgg-row'), 'a commit row does not use the shared row style')
+  }
   assert.ok(buttonByLabel(mounted.harness, 'refresh'))
   assert.ok(mounted.harness.findAll((element) => element.type === 'textarea').length === 1)
   const initial = mounted.calls.filter((call) => call.op === 'status')
@@ -1064,9 +1076,7 @@ test('scrolling the graph pane to its end appends the next page of commits', asy
   const pages = pagedHistory()
   const mounted = await mountGit({ historyPages: [pages.first, pages.second] })
   const rows = (): TestElement[] =>
-    mounted.harness.findAll(
-      (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
-    )
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-graphRow'))
   const graphPane = (): TestElement => {
     const [element] = mounted.harness.findAll((candidate) =>
       String(candidate.props?.className ?? '').includes('dshgg-paneBottom'),
@@ -1123,9 +1133,7 @@ test('a failed earlier page keeps the loaded rows and can be retried', async () 
     failHistoryPages: [1],
   })
   const rows = (): TestElement[] =>
-    mounted.harness.findAll(
-      (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
-    )
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-graphRow'))
   const graphPane = (): TestElement => {
     const [element] = mounted.harness.findAll((candidate) =>
       String(candidate.props?.className ?? '').includes('dshgg-paneBottom'),
@@ -1155,9 +1163,7 @@ test('refresh returns the graph to the first page', async () => {
   const pages = pagedHistory()
   const mounted = await mountGit({ historyPages: [pages.first, pages.second, pages.first] })
   const rows = (): TestElement[] =>
-    mounted.harness.findAll(
-      (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
-    )
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-graphRow'))
   const graphPane = (): TestElement => {
     const [element] = mounted.harness.findAll((candidate) =>
       String(candidate.props?.className ?? '').includes('dshgg-paneBottom'),
@@ -1248,6 +1254,9 @@ test('commit details render the changed files as a collapsed folder tree', async
   )
   const folderRows = rows.filter((row) => hasClass(row, 'dshgg-folderRow'))
   const fileRows = rows.filter((row) => hasClass(row, 'dshgg-fileRow'))
+  for (const row of rows) {
+    assert.ok(hasClass(row, 'dshgg-row'), 'every details row uses the shared row style')
+  }
   assert.equal(folderRows.length, 3, 'docs, src and the collapsed src/util/deep chain')
   assert.equal(fileRows.length, 4, 'every changed file keeps exactly one row')
   const chain = folderRows.find((row) => row.props.title === 'src/util/deep')
@@ -1622,9 +1631,7 @@ test('the commit graph draws one line layer and a node per row', async () => {
     [['M 11 11 V 22 M 11 21 V 22 M 11 22 V 33', 'var(--dshgg-scm-ref)']],
     'both rows are one path, and the second row also covers the pixel above it',
   )
-  const rows = mounted.harness.findAll(
-    (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
-  )
+  const rows = mounted.harness.findAll((element) => hasClass(element, 'dshgg-graphRow'))
   assert.deepEqual(
     rows.map((row) => row.props['data-current']),
     ['true', undefined],
@@ -1649,9 +1656,7 @@ test('hovering a row closes its node gap in the line layer', async () => {
     [11, 8],
     [33, 6],
   ])
-  const rows = mounted.harness.findAll(
-    (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
-  )
+  const rows = mounted.harness.findAll((element) => hasClass(element, 'dshgg-graphRow'))
   const enter = rows[1]?.props.onMouseEnter as (() => void) | undefined
   assert.equal(typeof enter, 'function', 'the row reports the pointer')
   enter?.()
@@ -1727,9 +1732,7 @@ test('a merge fans out to the right and joins its fork point like VS Code', asyn
     },
   }
   const mounted = await mountGit({ history })
-  const rows = mounted.harness.findAll(
-    (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
-  )
+  const rows = mounted.harness.findAll((element) => hasClass(element, 'dshgg-graphRow'))
   assert.equal(rows.length, 4)
   const cells = rows.map((row) => elementOf(row.children[0]))
   assert.deepEqual(
@@ -3885,6 +3888,9 @@ test('clicking a commit expands its files inline and a file opens the commit dif
   assert.equal(mounted.harness.findAll((element) => element.type === 'textarea').length, 1)
   assert.equal(graphRows(mounted.harness)[0]?.props['aria-expanded'], true)
   const rows = changeRows(mounted.harness)
+  for (const row of rows) {
+    assert.ok(hasClass(row, 'dshgg-row'), 'an expanded file row uses the shared row style')
+  }
   assert.deepEqual(
     rows.map((row) => row.props.title),
     ['docs/gone.md', 'src/added.js', 'src/app.js', 'src/old.js → src/renamed.js'],
@@ -3897,13 +3903,13 @@ test('clicking a commit expands its files inline and a file opens the commit dif
   assert.match(elementText(app), /M/)
   assert.equal(
     collectElements(app, (element) =>
-      String(element.props?.className ?? '').includes('dshgg-graphChangeIcon'),
+      String(element.props?.className ?? '').includes('dshgg-rowIcon'),
     ).length,
     1,
     'every file row carries its file icon',
   )
   const statuses = collectElements(app, (element) =>
-    String(element.props?.className ?? '').includes('dshgg-graphChangeStatus'),
+    String(element.props?.className ?? '').includes('dshgg-status'),
   )
   assert.equal(statuses[0]?.props['data-status'], 'M')
 
@@ -3979,7 +3985,7 @@ test('the expanded file rows draw the host file-type icon for their path', async
 test('the file rows keep the plain icon without a usable host icon', async () => {
   const plain = (mounted: MountedGit): TestElement[] =>
     collectElements(changeRows(mounted.harness), (element) =>
-      String(element.props?.className ?? '').includes('dshgg-graphChangeIcon'),
+      String(element.props?.className ?? '').includes('dshgg-rowIcon'),
     ).flatMap((icon) =>
       collectElements(
         icon,
@@ -5327,9 +5333,7 @@ test('an external branch switch recolors and re-badges loaded rows in place', as
       },
     ],
   })
-  const rowsBefore = mounted.harness.findAll(
-    (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
-  )
+  const rowsBefore = mounted.harness.findAll((element) => hasClass(element, 'dshgg-graphRow'))
   assert.equal(rowsBefore[0]?.props['data-current'], 'true')
   assert.deepEqual(
     badgesIn(rowsBefore[0]).map((badge) => badge.props['data-icon']),
@@ -5344,9 +5348,7 @@ test('an external branch switch recolors and re-badges loaded rows in place', as
   assert.equal(opCount(mounted, 'references'), 1)
   assert.equal(opCount(mounted, 'history'), 1, 'the loaded pages are kept')
   assert.equal(opCount(mounted, 'status'), 2, 'the branch header follows the switch')
-  const rowsAfter = mounted.harness.findAll(
-    (element) => String(element.props?.className ?? '') === 'dshgg-graphRow',
-  )
+  const rowsAfter = mounted.harness.findAll((element) => hasClass(element, 'dshgg-graphRow'))
   assert.equal(rowsAfter[0]?.props['data-current'], undefined)
   assert.equal(rowsAfter[1]?.props['data-current'], 'true')
   assert.deepEqual(

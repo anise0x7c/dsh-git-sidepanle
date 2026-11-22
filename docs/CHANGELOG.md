@@ -5,6 +5,14 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+The change lists and the commit graph now share one row style:
+
+- Changed-file rows, commit-details folder rows, commit rows and the files
+  listed under an expanded commit all use one compact 22-pixel row with the
+  same padding, gap, corner radius, hover surface and focus ring. The change
+  lists no longer use a taller 28-pixel row, so the Changes and Commit Graph
+  sections line up; the graph keeps its cell, badges, colors and lane geometry.
+
 The branch toolbar now shows that the panel is working:
 
 - While the panel loads on open, refreshes, loads earlier commits or runs a Git

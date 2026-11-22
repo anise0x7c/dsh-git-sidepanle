@@ -118,18 +118,25 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /body\[data-ds-dark-theme\] \.dshgg-root\s*\{[^}]*--dshgg-scm-ref: #00a8fb;[^}]*--dshgg-scm-remote: #c27fdd;/,
   )
-  // VS Code row metrics: 22px rows, one ellipsized label, badges that keep their size.
-  assert.match(graphStyles, /\.dshgg-graphRow\s*\{[^}]*height: 22px;/)
+  // One compact row style serves the change groups, the commit graph and the
+  // commit-details tree; a row kind only adds its own content.
+  assert.match(graphStyles, /\.dshgg-row\s*\{[^}]*height: 22px;/)
+  assert.match(graphStyles, /\.dshgg-row:hover/)
+  assert.match(graphStyles, /\.dshgg-row:focus-visible\s*\{/)
+  assert.doesNotMatch(
+    graphStyles,
+    /\.dshgg-(?:graphRow|graphChange|fileRow|folderRow)\s*\{[^}]*height:/,
+    'no row kind redefines the shared row height',
+  )
   assert.match(graphStyles, /\.dshgg-graphLabel\s*\{[^}]*text-overflow: ellipsis;/)
   assert.match(graphStyles, /\.dshgg-graphBadges\s*\{[^}]*flex-shrink: 0;/)
   assert.match(graphStyles, /\.dshgg-graphBadgeName\s*\{[^}]*max-width: 100px;/)
   // The lines of the whole graph share one layer, so a lane that crosses a row
-  // boundary is a single stroke; the layer is positioned against the rows' own
-  // inset and paints over their hover surface without taking their pointer.
-  assert.match(graphStyles, /\.dshgg-graphBody\s*\{[^}]*position: relative;/)
+  // boundary is a single stroke; the layer starts on the shared row's content
+  // edge and paints over the hover surface without taking the row's pointer.
   assert.match(
     graphStyles,
-    /\.dshgg-graphRow\s*\{[^}]*padding: 0 6px 0 var\(--dshgg-graph-inset\);/,
+    /\.dshgg-graphBody\s*\{[^}]*--dshgg-graph-inset: 6px;[^}]*position: relative;/,
   )
   assert.match(
     graphStyles,

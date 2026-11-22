@@ -260,7 +260,7 @@ export function FileFolderRow(props: {
   return h(
     'div',
     {
-      className: 'dshgg-folderRow',
+      className: 'dshgg-row dshgg-folderRow',
       role: 'button',
       tabIndex: 0,
       'aria-expanded': open,

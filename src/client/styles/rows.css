@@ -1,28 +1,29 @@
 /* ----------------------------------------------------------------- rows --- */
 
+/* One compact row style for every list item: the change groups, the commit
+ * graph and the commit-details tree all use this height, padding, gap, radius
+ * and skin, so the panel has a single row rhythm. A row kind adds only its own
+ * content and any graph-specific geometry. */
 .dshgg-row {
   display: flex;
   flex: none;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  height: 28px;
+  height: 22px;
   padding: 0 6px;
   border-radius: var(--dsw-radius-md);
-}
-
-.dshgg-fileRow {
   cursor: pointer;
   user-select: none;
 }
 
 @media (hover: hover) {
-  .dshgg-fileRow:hover {
+  .dshgg-row:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dshgg-fileRow:focus-visible {
+.dshgg-row:focus-visible {
   outline: var(--dsw-focus-ring-width) solid
     var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
@@ -104,33 +105,11 @@
 }
 
 /* Commit-details folder tree: a collapsed chain is one row, and every folder
- * row is a disclosure control. The inline left padding adds the nesting depth
- * while the right padding stays compact. */
+ * row is a disclosure control. The shared row supplies its layout and skin;
+ * this marker only tones its text. */
 .dshgg-folderRow {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: var(--dsw-radius-md);
   color: var(--dsw-alias-label-secondary);
   font: var(--dsw-font-xs-13);
-  cursor: pointer;
-  user-select: none;
-}
-
-@media (hover: hover) {
-  .dshgg-folderRow:hover {
-    background: var(--dsw-alias-interactive-bg-hover);
-  }
-}
-
-.dshgg-folderRow:focus-visible {
-  outline: var(--dsw-focus-ring-width) solid
-    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
-  outline-offset: -2px;
 }
 
 /* The disclosure slot keeps the width of a file row's icon column so folder
@@ -171,6 +150,8 @@
   opacity: 0;
 }
 
+/* File rows are the one row kind with inline hover actions; the shared row
+ * above supplies their height, padding, hover surface and focus ring. */
 @media (hover: hover) {
   .dshgg-fileRow:hover .dshgg-fileActions {
     opacity: 1;
