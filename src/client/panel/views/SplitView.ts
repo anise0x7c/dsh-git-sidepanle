@@ -1,7 +1,9 @@
 /**
  * Two vertically stacked, independently scrolling panes with a draggable
  * divider. The surrounding panel owns the ratio, so opening commit details and
- * returning keeps the user's chosen split.
+ * returning keeps the user's chosen split. A pane whose sections are all
+ * collapsed keeps only their headers: it takes its content height instead of a
+ * share of the split, the other pane takes the rest, and no divider is offered.
  */
 
 import type React from 'react'
@@ -12,6 +14,7 @@ import {
   dragSplitRatio,
   MAX_SPLIT_RATIO,
   MIN_SPLIT_RATIO,
+  splitSizing,
 } from '../split.ts'
 
 const h = createElement
@@ -26,6 +29,10 @@ export interface SplitViewProps {
   readonly label: string
   /** Divider tooltip. */
   readonly hint: string
+  /** Whether every change section is collapsed, so the change pane keeps its headers. */
+  readonly changesCollapsed: boolean
+  /** Whether the commit graph section is collapsed, so its pane keeps its header. */
+  readonly graphCollapsed: boolean
   /** Upper pane: the change groups. */
   readonly changes: React.ReactNode
   /** Lower pane: the commit graph. */
@@ -53,7 +60,13 @@ export function SplitView(props: SplitViewProps): React.ReactElement {
   const [dragging, setDragging] = useState(false)
   const dragStart = useRef<DragStart | null>(null)
   const ratio = clampSplitRatio(props.ratio)
-  const percent = `${Math.round(ratio * 1000) / 10}%`
+  // A pane whose sections are all collapsed keeps only their headers, so the
+  // other pane takes the room and there is no split left to drag.
+  const sizing = splitSizing({
+    ratio,
+    changesCollapsed: props.changesCollapsed === true,
+    graphCollapsed: props.graphCollapsed === true,
+  })
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault()
@@ -92,34 +105,42 @@ export function SplitView(props: SplitViewProps): React.ReactElement {
     { className: 'dshgg-split' },
     h(
       'div',
-      { className: 'dshgg-scroll dshgg-paneTop', style: { flexBasis: percent } },
+      {
+        className: 'dshgg-scroll dshgg-pane dshgg-paneTop',
+        'data-collapsed': props.changesCollapsed === true ? 'true' : undefined,
+        style: sizing.changes,
+      },
       props.changes,
     ),
+    sizing.divider
+      ? h(
+          'div',
+          {
+            className: 'dshgg-splitter',
+            role: 'separator',
+            'aria-orientation': 'horizontal',
+            'aria-label': props.label,
+            'aria-valuemin': Math.round(MIN_SPLIT_RATIO * 100),
+            'aria-valuemax': Math.round(MAX_SPLIT_RATIO * 100),
+            'aria-valuenow': Math.round(ratio * 100),
+            'data-dragging': dragging === true ? 'true' : undefined,
+            tabIndex: 0,
+            title: props.hint,
+            onPointerDown: beginDrag,
+            onPointerMove: moveDrag,
+            onPointerUp: endDrag,
+            onPointerCancel: endDrag,
+            onKeyDown: handleKey,
+          },
+          h('span', { className: 'dshgg-splitterLine' }),
+        )
+      : null,
     h(
       'div',
       {
-        className: 'dshgg-splitter',
-        role: 'separator',
-        'aria-orientation': 'horizontal',
-        'aria-label': props.label,
-        'aria-valuemin': Math.round(MIN_SPLIT_RATIO * 100),
-        'aria-valuemax': Math.round(MAX_SPLIT_RATIO * 100),
-        'aria-valuenow': Math.round(ratio * 100),
-        'data-dragging': dragging === true ? 'true' : undefined,
-        tabIndex: 0,
-        title: props.hint,
-        onPointerDown: beginDrag,
-        onPointerMove: moveDrag,
-        onPointerUp: endDrag,
-        onPointerCancel: endDrag,
-        onKeyDown: handleKey,
-      },
-      h('span', { className: 'dshgg-splitterLine' }),
-    ),
-    h(
-      'div',
-      {
-        className: 'dshgg-scroll dshgg-paneBottom',
+        className: 'dshgg-scroll dshgg-pane dshgg-paneBottom',
+        'data-collapsed': props.graphCollapsed === true ? 'true' : undefined,
+        style: sizing.graph,
         ref: props.graphRef,
         onScroll: props.onGraphScroll,
       },

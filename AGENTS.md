@@ -19,7 +19,7 @@ right-click menus.
 - Both halves compile to committed JavaScript: `index.js`, `client.js` and
   their maps. A prepared plugin directory needs no compiler at install time.
 - Behavior truth lives in `.litespec/specs/git-sidebar/spec.md`
-  (52 requirements; latest archived change 2026-11-20 native-toast-notifications). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
+  (51 requirements; latest archived change 2026-11-22 shrink-collapsed-section-panes). User-facing docs: `README.md`, `docs/DETAIL.md` (English),
   `docs/DETAIL.zh.md` (Chinese). Architecture: `docs/ARCHITECTURE.md`.
   `docs/REFACTOR-PLAN.md` records the 0.3.0 split that produced the current
   layout and subsequent maintenance rounds — read completed sections for rationale,
@@ -137,7 +137,7 @@ to force a fresh version, and never chase patch releases the day they ship.
 ```text
 client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/*, toast/* }
 GitPanel -> panel/hooks/* -> { data/caller, panel/menu, menu/bus, git/* }
-panel/views/* -> { panel/FloatingPanel, panel/Section, panel/BranchMenu, panel/autosize, panel/controls, panel/feedback, panel/rows, panel/split, icons, host-file-icon, menu/trigger, git/*, type-only hooks/types }
+panel/views/* -> { panel/FloatingPanel, panel/Section, panel/BranchMenu, panel/autosize, panel/change-groups, panel/controls, panel/feedback, panel/rows, panel/split, icons, host-file-icon, menu/trigger, git/*, type-only hooks/types }
 pure logic (git/*, menu/actions, constants, locale/*) -> no React, no ctx
 icons -> React only (presentational SVG, no ctx)
 host-file-icon -> { icons, react, one guarded host-module request }

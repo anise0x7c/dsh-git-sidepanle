@@ -50,6 +50,66 @@ export function dragSplitRatio(
   return clampSplitRatio(startRatio + (clientY - startY) / height)
 }
 
+/** Inline flex sizing of one split pane. */
+export interface PaneSizing {
+  /** `flex` shorthand that replaces the pane's stylesheet default. */
+  readonly flex?: string
+  /** Share of the split height, used while both panes are expanded. */
+  readonly flexBasis?: string
+}
+
+/** How the two panes are sized and whether the divider is offered. */
+export interface SplitSizing {
+  /** Inline style of the change pane. */
+  readonly changes: PaneSizing
+  /** Inline style of the graph pane. */
+  readonly graph: PaneSizing
+  /** Whether the divider between the panes is offered. */
+  readonly divider: boolean
+}
+
+/**
+ * Whether every section a pane renders is collapsed.
+ * @param sections - ids of the sections the pane renders, in display order.
+ * @param open - open state per section id.
+ * @returns true when the pane renders at least one section and none is open.
+ */
+export function allSectionsCollapsed(
+  sections: readonly string[],
+  open: Readonly<Record<string, boolean>>,
+): boolean {
+  return sections.length > 0 && sections.every((id) => open[id] !== true)
+}
+
+/**
+ * Size the two panes. A pane whose sections are all collapsed keeps only their
+ * headers instead of its share of the split, so the other pane takes the room
+ * and the divider is not offered; the ratio is untouched and comes back with
+ * the first expanded section.
+ * @param options - split ratio and which panes are collapsed.
+ * @returns inline sizing of both panes and the divider's visibility.
+ */
+export function splitSizing(options: {
+  readonly ratio: number
+  readonly changesCollapsed: boolean
+  readonly graphCollapsed: boolean
+}): SplitSizing {
+  const ratio = clampSplitRatio(options.ratio)
+  const percent = `${Math.round(ratio * 1000) / 10}%`
+  return {
+    // The graph rests last in the split, so when it keeps only its header the
+    // change pane takes every remaining pixel whether or not it is collapsed
+    // itself; that keeps the graph header at the panel's bottom edge either way.
+    changes: options.graphCollapsed
+      ? { flex: '1 1 0' }
+      : options.changesCollapsed
+        ? { flex: '0 0 auto' }
+        : { flexBasis: percent },
+    graph: options.graphCollapsed ? { flex: '0 0 auto' } : {},
+    divider: !options.changesCollapsed && !options.graphCollapsed,
+  }
+}
+
 /**
  * Apply a keyboard gesture to the split ratio.
  * @param ratio - current share of the change pane.

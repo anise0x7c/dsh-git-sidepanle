@@ -920,6 +920,92 @@ test('change groups and graph are independent scroll panes with a resizable divi
   await mounted.harness.dispose()
 })
 
+test('a collapsed section shrinks its pane to its header row', async () => {
+  const mounted = await mountGit()
+  const pane = (name: string): TestElement => {
+    const [element] = mounted.harness.findAll((candidate) =>
+      String(candidate.props?.className ?? '').includes(name),
+    )
+    assert.ok(element, `no ${name} pane rendered`)
+    return element
+  }
+  const changesPane = (): TestElement => pane('dshgg-paneTop')
+  const graphPane = (): TestElement => pane('dshgg-paneBottom')
+  const divider = (): TestElement | undefined =>
+    mounted.harness.findAll((candidate) => candidate.props.role === 'separator')[0]
+  const sectionToggle = (id: string): TestElement => {
+    const [section] = mounted.harness.findAll(
+      (candidate) => candidate.type === 'section' && candidate.props['data-section'] === id,
+    )
+    assert.ok(section, `no ${id} section rendered`)
+    const [toggle] = collectElements(
+      section,
+      (candidate) => candidate.type === 'button' && hasClass(candidate, 'dshgg-sectionToggle'),
+    )
+    assert.ok(toggle, `no ${id} section toggle rendered`)
+    return toggle
+  }
+
+  // Collapsing the graph leaves one header row at the bottom edge and gives
+  // the change list every other pixel, so no divider is left to move.
+  mounted.harness.click(sectionToggle('graph'))
+  await mounted.harness.flush()
+  assert.deepEqual(graphPane().props.style, { flex: '0 0 auto' })
+  assert.equal(graphPane().props['data-collapsed'], 'true')
+  assert.deepEqual(changesPane().props.style, { flex: '1 1 0' })
+  assert.equal(changesPane().props['data-collapsed'], undefined)
+  assert.equal(divider(), undefined, 'a collapsed pane offers no divider')
+
+  // Expanding it brings back the ratio that was in effect.
+  mounted.harness.click(sectionToggle('graph'))
+  await mounted.harness.flush()
+  assert.deepEqual(changesPane().props.style, { flexBasis: '50%' })
+  assert.deepEqual(graphPane().props.style, {})
+  assert.equal(graphPane().props['data-collapsed'], undefined)
+  assert.equal(divider()?.props['aria-valuenow'], 50)
+
+  // Collapsing every change group hands the room to the graph instead.
+  for (const id of ['merge', 'staged', 'changes']) {
+    mounted.harness.click(sectionToggle(id))
+    await mounted.harness.flush()
+  }
+  assert.deepEqual(changesPane().props.style, { flex: '0 0 auto' })
+  assert.equal(changesPane().props['data-collapsed'], 'true')
+  assert.deepEqual(graphPane().props.style, {})
+  assert.equal(divider(), undefined)
+
+  // One expanded group brings the change pane's share back.
+  mounted.harness.click(sectionToggle('staged'))
+  await mounted.harness.flush()
+  assert.deepEqual(changesPane().props.style, { flexBasis: '50%' })
+  assert.equal(divider()?.props['aria-valuenow'], 50)
+  await mounted.harness.dispose()
+})
+
+test('a clean workspace keeps the change pane share of the split', async () => {
+  const mounted = await mountGit({ status: createStatus({ files: [] }) })
+  const [changesPane] = mounted.harness.findAll((candidate) =>
+    String(candidate.props?.className ?? '').includes('dshgg-paneTop'),
+  )
+  assert.ok(changesPane, 'no change pane rendered')
+  assert.deepEqual(
+    changesPane.props.style,
+    { flexBasis: '50%' },
+    'a pane that renders no section keeps its share',
+  )
+  assert.equal(
+    changesPane.props['data-collapsed'],
+    undefined,
+    'no section means nothing is collapsed',
+  )
+  assert.equal(
+    mounted.harness.findAll((candidate) => candidate.props.role === 'separator').length,
+    1,
+    'the divider is still offered',
+  )
+  await mounted.harness.dispose()
+})
+
 test('each section header belongs to its own section so only one can stick', async () => {
   const mounted = await mountGit()
   const sections = mounted.harness.findAll((element) => element.props['data-section'] !== undefined)

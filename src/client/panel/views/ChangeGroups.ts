@@ -15,6 +15,8 @@ import type {
 } from '../../menu/trigger.ts'
 import type { ChangeEntry, ChangeRow } from '../../types/domain.ts'
 import type { LocaleBinder } from '../../types/dsh.ts'
+import type { ChangeGroupMode } from '../change-groups.ts'
+import { visibleChangeGroups } from '../change-groups.ts'
 import { IconButton } from '../controls.ts'
 import { renderFileRows } from '../rows.ts'
 import { Section } from '../Section.ts'
@@ -138,12 +140,13 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
       menuTrigger: props.menuTrigger,
       menuTarget: (entry) => props.rowTarget('file', { section: mode, path: entry.path }),
     })
+  const visible = visibleChangeGroups(props)
+  const shows = (mode: ChangeGroupMode): boolean => visible.includes(mode)
   return h(
     Fragment,
     null,
-    props.mergeRows.length === 0
-      ? null
-      : h(
+    shows('merge')
+      ? h(
           Section,
           {
             id: 'merge',
@@ -157,10 +160,10 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
             menuTarget: props.sectionTarget('merge'),
           },
           rowsFor('merge', props.mergeRows),
-        ),
-    props.stagedRows.length === 0
-      ? null
-      : h(
+        )
+      : null,
+    shows('staged')
+      ? h(
           Section,
           {
             id: 'staged',
@@ -174,10 +177,10 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
             menuTarget: props.sectionTarget('staged'),
           },
           rowsFor('staged', props.stagedRows),
-        ),
-    props.changedRows.length === 0
-      ? null
-      : h(
+        )
+      : null,
+    shows('changes')
+      ? h(
           Section,
           {
             id: 'changes',
@@ -191,7 +194,8 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
             menuTarget: props.sectionTarget('changes'),
           },
           rowsFor('changes', props.changedRows),
-        ),
+        )
+      : null,
     props.clean
       ? h(
           'div',

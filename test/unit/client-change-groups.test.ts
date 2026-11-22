@@ -13,6 +13,7 @@ import {
   changeRow,
   changeRowLetter,
   groupChangeEntries,
+  visibleChangeGroups,
 } from '../../src/client/panel/change-groups.ts'
 import type { ChangeEntry } from '../../src/client/types/domain.ts'
 
@@ -118,6 +119,35 @@ describe('groupChangeEntries', () => {
       Object.hasOwn(input[0] as object, 'letter'),
       false,
       'the input rows stay untouched',
+    )
+  })
+})
+
+describe('visibleChangeGroups', () => {
+  test('lists the groups that have rows, in display order', () => {
+    assert.deepEqual(visibleChangeGroups(groupChangeEntries([])), [])
+    assert.deepEqual(visibleChangeGroups(groupChangeEntries([entry({ path: 'a.js', y: 'M' })])), [
+      'changes',
+    ])
+    assert.deepEqual(
+      visibleChangeGroups(
+        groupChangeEntries([
+          entry({ path: 'conflict.txt', x: 'U', y: 'U', conflict: true }),
+          entry({ path: 'staged.js', x: 'M', y: '.' }),
+          entry({ path: 'changed.js', y: 'M' }),
+        ]),
+      ),
+      ['merge', 'staged', 'changes'],
+    )
+    assert.deepEqual(
+      visibleChangeGroups(
+        groupChangeEntries([
+          entry({ path: 'staged.js', x: 'M', y: '.' }),
+          entry({ path: 'changed.js', y: 'M' }),
+        ]),
+      ),
+      ['staged', 'changes'],
+      'an empty group takes no section',
     )
   })
 })

@@ -64,3 +64,17 @@ export function groupChangeEntries(files: readonly ChangeEntry[]): ChangeGroups 
     changedRows: sortChangeEntries(changedFiles).map((entry) => changeRow(entry, 'changes')),
   }
 }
+
+/**
+ * Ids of the change groups a pane actually renders, in display order.
+ * @param groups - the three sorted groups.
+ * @returns the ids of the groups that have rows, so an empty group takes no
+ * section and no header.
+ */
+export function visibleChangeGroups(groups: ChangeGroups): ChangeGroupMode[] {
+  const visible: ChangeGroupMode[] = []
+  if (groups.mergeRows.length > 0) visible.push('merge')
+  if (groups.stagedRows.length > 0) visible.push('staged')
+  if (groups.changedRows.length > 0) visible.push('changes')
+  return visible
+}

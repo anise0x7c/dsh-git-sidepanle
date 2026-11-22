@@ -5,6 +5,16 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+Collapsing a section no longer leaves its pane at full height:
+
+- A pane whose sections are all collapsed keeps only their headers. Collapsing
+  the commit graph leaves its header resting at the bottom edge of the panel
+  and gives the room to the change list; collapsing every change group gives
+  the room to the graph. A clean workspace renders no group, so its pane keeps
+  its share.
+- The divider is hidden while a pane is collapsed, and expanding one section
+  restores the previous ratio and the scroll positions.
+
 Remote branch actions now live with the commit graph, following VS Code's
 Source Control Graph:
 

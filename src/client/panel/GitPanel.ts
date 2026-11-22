@@ -14,7 +14,7 @@ import { AlertIcon, GitBranchIcon } from '../icons.ts'
 import type { Notify } from '../toast/notify.ts'
 import type { ChangeEntry, CommitFileRow, CommitSummary } from '../types/domain.ts'
 import type { LocaleBinder, TabInfoHook, UseContextMenu } from '../types/dsh.ts'
-import { changeRowLetter, groupChangeEntries } from './change-groups.ts'
+import { changeRowLetter, groupChangeEntries, visibleChangeGroups } from './change-groups.ts'
 import type { CommitMode } from './commit-mode.ts'
 import type { ConfirmState } from './confirm.ts'
 import { confirmActionLabel, confirmDescription, confirmTitle } from './confirm.ts'
@@ -35,7 +35,7 @@ import { useRemoteActions } from './hooks/useRemoteActions.ts'
 import { useRepoStatus } from './hooks/useRepoStatus.ts'
 import { createMenuTargets, usePanelRefs } from './menu.ts'
 import { isNearEnd } from './scroll.ts'
-import { DEFAULT_SPLIT_RATIO } from './split.ts'
+import { allSectionsCollapsed, DEFAULT_SPLIT_RATIO } from './split.ts'
 import { BranchHeader } from './views/BranchHeader.ts'
 import { ChangeGroups } from './views/ChangeGroups.ts'
 import { CommitBox } from './views/CommitBox.ts'
@@ -118,6 +118,9 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   const { mergeRows, stagedRows, changedRows } = groups
   const clean =
     repo !== null && mergeRows.length === 0 && stagedRows.length === 0 && changedRows.length === 0
+  // The change pane keeps only its headers once every group it renders is
+  // collapsed; a clean workspace renders no group, so its pane keeps its share.
+  const changeGroups = useMemo(() => visibleChangeGroups(groups), [groups])
 
   // Watched repository updates are scoped: a working-tree or index change only
   // needs the status, while a reference move re-reads the fixed-color
@@ -608,6 +611,8 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           onRatioChange: setSplitRatio,
           label: t('split.label'),
           hint: t('split.hint'),
+          changesCollapsed: allSectionsCollapsed(changeGroups, openSections),
+          graphCollapsed: openSections.graph !== true,
           onGraphScroll: handleGraphScroll,
           graphRef: graphPane,
           changes: h(ChangeGroups, {

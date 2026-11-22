@@ -15,6 +15,13 @@
   flex: 1 1 0;
 }
 
+/* A pane whose sections are all collapsed takes its content height instead of
+ * a share of the split. Its own bottom padding would leave a gap under the
+ * last header, so the collapsed pane drops it and the header closes the pane. */
+.dshgg-pane[data-collapsed="true"] {
+  padding-bottom: 0;
+}
+
 .dshgg-splitter {
   display: flex;
   flex: none;
