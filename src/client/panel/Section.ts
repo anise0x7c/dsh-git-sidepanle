@@ -3,7 +3,8 @@
  */
 
 import type React from 'react'
-import { createElement } from 'react'
+import { createElement, useEffect, useState } from 'react'
+import { SPLIT_MOTION_MS } from '../constants.ts'
 import { ChevronRightIcon } from '../icons.ts'
 import type { MenuTarget, MenuTriggerFactory } from '../menu/trigger.ts'
 
@@ -17,6 +18,13 @@ export interface SectionProps {
   readonly title: string
   /** Whether the body is expanded. */
   readonly open: boolean
+  /**
+   * Keep the body mounted for the pane's fold animation when the section
+   * closes. A pane that folds away keeps its rows until the shrinking pane has
+   * clipped them; a section closing inside a pane that keeps its height does
+   * not need them.
+   */
+  readonly retainBody?: boolean
   /** Optional count chip. */
   readonly count?: number | null
   /** Optional header actions. */
@@ -43,6 +51,23 @@ export interface SectionProps {
 export function Section(props: SectionProps): React.ReactElement {
   const actions = props.actions === undefined || props.actions === null ? null : props.actions
   const menuTrigger = typeof props.menuTrigger === 'function' ? props.menuTrigger : null
+  // A closing body outlives its section's open state only while its pane is
+  // folding away; the stylesheet's pane transition has the same duration.
+  const [bodyMounted, setBodyMounted] = useState(props.open === true)
+  useEffect(() => {
+    if (props.open === true) {
+      if (!bodyMounted) setBodyMounted(true)
+      return undefined
+    }
+    if (!bodyMounted) return undefined
+    if (props.retainBody !== true) {
+      setBodyMounted(false)
+      return undefined
+    }
+    const timer = setTimeout(() => setBodyMounted(false), SPLIT_MOTION_MS)
+    return () => clearTimeout(timer)
+  }, [props.open, props.retainBody, bodyMounted])
+  const bodyVisible = props.open === true || (bodyMounted && props.retainBody === true)
   const menuProps =
     menuTrigger === null || props.menuTarget === undefined
       ? null
@@ -81,6 +106,19 @@ export function Section(props: SectionProps): React.ReactElement {
       ),
       actions === null ? null : h('div', { className: 'dshgg-sectionActions' }, actions),
     ),
-    props.open === true ? h('div', { className: 'dshgg-sectionBody' }, props.children) : null,
+    bodyVisible
+      ? h(
+          'div',
+          {
+            className: 'dshgg-sectionBody',
+            // A folded body stays visible while the pane clips it, but its
+            // rows must not take focus or be announced as available content.
+            ...(props.open === true
+              ? {}
+              : ({ 'aria-hidden': 'true', inert: '' } as React.HTMLAttributes<HTMLDivElement>)),
+          },
+          props.children,
+        )
+      : null,
   )
 }

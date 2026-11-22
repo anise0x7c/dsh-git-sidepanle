@@ -37,6 +37,8 @@ export interface ChangeGroupsProps {
   readonly changedRows: readonly ChangeRow[]
   /** Open state per section id. */
   readonly openSections: Readonly<Record<string, boolean>>
+  /** Whether the change pane folds away when its last open group closes. */
+  readonly foldBodies: boolean
   /** An action is running. */
   readonly busy: boolean
   /** The repository exists and no action is running. */
@@ -153,6 +155,7 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
             title: t('sections.merge'),
             count: props.mergeRows.length,
             open: props.openSections.merge === true,
+            retainBody: props.foldBodies,
             onToggle: () => props.onToggleSection('merge'),
             actions: sectionActions.merge,
             menuTrigger: props.menuTrigger,
@@ -170,6 +173,7 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
             title: t('sections.staged'),
             count: props.stagedRows.length,
             open: props.openSections.staged === true,
+            retainBody: props.foldBodies,
             onToggle: () => props.onToggleSection('staged'),
             actions: sectionActions.staged,
             menuTrigger: props.menuTrigger,
@@ -187,6 +191,7 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
             title: t('sections.changes'),
             count: props.changedRows.length,
             open: props.openSections.changes === true,
+            retainBody: props.foldBodies,
             onToggle: () => props.onToggleSection('changes'),
             actions: sectionActions.changes,
             menuTrigger: props.menuTrigger,

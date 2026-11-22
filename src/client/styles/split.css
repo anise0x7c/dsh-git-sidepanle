@@ -15,11 +15,29 @@
   flex: 1 1 0;
 }
 
+/* Folding a pane and stepping the ratio with the keyboard animate; a pointer
+ * drag clears the transition so its movement stays one-to-one with the
+ * pointer. The duration matches SPLIT_MOTION_MS, which keeps a closing
+ * section's body mounted until the fold has hidden it. */
+.dshgg-pane {
+  transition:
+    flex-grow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    flex-shrink 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    flex-basis 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dshgg-split[data-resizing="true"] .dshgg-pane {
+  transition: none;
+}
+
 /* A pane whose sections are all collapsed takes its content height instead of
  * a share of the split. Its own bottom padding would leave a gap under the
- * last header, so the collapsed pane drops it and the header closes the pane. */
+ * last header, so the collapsed pane drops it and the header closes the pane;
+ * hidden overflow keeps the rows a section holds during the fold from making
+ * the header-only pane scrollable. */
 .dshgg-pane[data-collapsed="true"] {
   padding-bottom: 0;
+  overflow-y: hidden;
 }
 
 .dshgg-splitter {
@@ -38,13 +56,19 @@
   background: var(--dsw-alias-border-l3);
 }
 
+/* A collapsed pane leaves no split to move, so the divider keeps its hairline
+ * as the boundary between the panes but takes no hover, drag or focus. */
+.dshgg-splitter[data-disabled="true"] {
+  cursor: default;
+}
+
 @media (hover: hover) {
-  .dshgg-splitter:hover {
+  .dshgg-splitter:not([data-disabled="true"]):hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dshgg-splitter[data-dragging="true"],
-.dshgg-splitter:focus-visible {
+.dshgg-splitter:not([data-disabled="true"])[data-dragging="true"],
+.dshgg-splitter:not([data-disabled="true"]):focus-visible {
   background: var(--dsw-alias-interactive-bg-hover);
 }

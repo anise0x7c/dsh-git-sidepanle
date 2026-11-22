@@ -1,6 +1,7 @@
 /**
  * Pure rules for the resizable change/history split: the allowed ratio range,
- * pointer-to-ratio mapping and keyboard steps. No React and no DOM.
+ * pointer-to-ratio mapping, keyboard steps and collapsed-pane geometry. No
+ * React and no DOM.
  */
 
 /** Default share of the split height given to the change pane. */
@@ -14,6 +15,12 @@ export const MAX_SPLIT_RATIO = 0.8
 
 /** Ratio change for one arrow-key press. */
 export const SPLIT_STEP = 0.05
+
+/** Height of one section header; must match the section stylesheet. */
+export const SECTION_HEADER_HEIGHT = 30
+
+/** Gap between stacked sections; must match the pane stylesheet. */
+export const SECTION_GAP = 2
 
 /**
  * Clamp one ratio to the usable range.
@@ -52,20 +59,18 @@ export function dragSplitRatio(
 
 /** Inline flex sizing of one split pane. */
 export interface PaneSizing {
-  /** `flex` shorthand that replaces the pane's stylesheet default. */
-  readonly flex?: string
-  /** Share of the split height, used while both panes are expanded. */
-  readonly flexBasis?: string
+  /** `flex` shorthand that sizes the pane in the split. */
+  readonly flex: string
 }
 
-/** How the two panes are sized and whether the divider is offered. */
+/** How the two panes are sized and whether the divider can move the split. */
 export interface SplitSizing {
   /** Inline style of the change pane. */
   readonly changes: PaneSizing
   /** Inline style of the graph pane. */
   readonly graph: PaneSizing
-  /** Whether the divider between the panes is offered. */
-  readonly divider: boolean
+  /** Whether the divider is operable; it is always rendered. */
+  readonly dividerEnabled: boolean
 }
 
 /**
@@ -82,31 +87,56 @@ export function allSectionsCollapsed(
 }
 
 /**
+ * Height a pane needs for a stack of collapsed section headers.
+ * @param sections - number of headers the pane shows.
+ * @returns the combined header height, including the gaps between headers.
+ */
+export function collapsedSectionHeight(sections: number): number {
+  if (!Number.isFinite(sections) || sections <= 0) return 0
+  const count = Math.floor(sections)
+  return count * SECTION_HEADER_HEIGHT + (count - 1) * SECTION_GAP
+}
+
+/**
  * Size the two panes. A pane whose sections are all collapsed keeps only their
  * headers instead of its share of the split, so the other pane takes the room
- * and the divider is not offered; the ratio is untouched and comes back with
- * the first expanded section.
- * @param options - split ratio and which panes are collapsed.
- * @returns inline sizing of both panes and the divider's visibility.
+ * and the divider is inert. Both sizes stay expressible as animatable flex
+ * longhands: an expanding pane keeps the ratio as its basis and gives up its
+ * grow factor, so the stylesheet can transition the fold instead of jumping.
+ * @param options - split ratio, which panes are collapsed and how many change
+ *   headers the change pane shows.
+ * @returns inline sizing of both panes and whether the divider is operable.
  */
 export function splitSizing(options: {
   readonly ratio: number
   readonly changesCollapsed: boolean
   readonly graphCollapsed: boolean
+  readonly changeSections: number
 }): SplitSizing {
   const ratio = clampSplitRatio(options.ratio)
   const percent = `${Math.round(ratio * 1000) / 10}%`
-  return {
+  if (options.graphCollapsed) {
     // The graph rests last in the split, so when it keeps only its header the
     // change pane takes every remaining pixel whether or not it is collapsed
-    // itself; that keeps the graph header at the panel's bottom edge either way.
-    changes: options.graphCollapsed
-      ? { flex: '1 1 0' }
-      : options.changesCollapsed
-        ? { flex: '0 0 auto' }
-        : { flexBasis: percent },
-    graph: options.graphCollapsed ? { flex: '0 0 auto' } : {},
-    divider: !options.changesCollapsed && !options.graphCollapsed,
+    // itself; that keeps the graph header at the panel's bottom edge either
+    // way. The basis stays the ratio so expanding animates from the same split.
+    return {
+      changes: { flex: `1 1 ${percent}` },
+      graph: { flex: `0 0 ${SECTION_HEADER_HEIGHT}px` },
+      dividerEnabled: false,
+    }
+  }
+  if (options.changesCollapsed) {
+    return {
+      changes: { flex: `0 0 ${collapsedSectionHeight(options.changeSections)}px` },
+      graph: { flex: '1 1 0px' },
+      dividerEnabled: false,
+    }
+  }
+  return {
+    changes: { flex: `0 0 ${percent}` },
+    graph: { flex: '1 1 0px' },
+    dividerEnabled: true,
   }
 }
 

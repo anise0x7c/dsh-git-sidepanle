@@ -112,6 +112,11 @@
     transition: none;
   }
 
+  /* A folding pane keeps the divider state, but takes its new height at once. */
+  .dshgg-pane {
+    transition: none;
+  }
+
   /* Both surfaces appear and leave at their final position instead. */
   .dshgg-root .dshgg-promptMotion[data-phase] .dshgg-floating-panel,
   .dshgg-root .dshgg-commitMotion[data-phase] {

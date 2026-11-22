@@ -254,6 +254,9 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
       id: 'graph',
       title: t('sections.graph'),
       open: props.open,
+      // The graph is the only section of its pane, so closing it always folds
+      // the pane away; its rows stay mounted until that fold is over.
+      retainBody: true,
       onToggle: props.onToggle,
       actions: props.actions,
       hover: 'controls',

@@ -870,7 +870,7 @@ test('change groups and graph are independent scroll panes with a resizable divi
     )
   assert.deepEqual(sectionsIn(changesPane), ['merge', 'staged', 'changes'])
   assert.deepEqual(sectionsIn(graphPane), ['graph'])
-  assert.equal(changesPane.props.style?.flexBasis, '50%')
+  assert.deepEqual(changesPane.props.style, { flex: '0 0 50%' })
   const divider = (): TestElement => {
     const [element] = mounted.harness.findAll((candidate) => candidate.props.role === 'separator')
     assert.ok(element, 'no split divider rendered')
@@ -889,7 +889,7 @@ test('change groups and graph are independent scroll panes with a resizable divi
     mounted.harness.findAll((element) =>
       String(element.props?.className ?? '').includes('dshgg-paneTop'),
     )[0]
-  assert.equal(paneTop()?.props.style?.flexBasis, '55%')
+  assert.deepEqual(paneTop()?.props.style, { flex: '0 0 55%' })
 
   const rect = { left: 0, top: 100, width: 320, height: 400, bottom: 500 }
   const target: TestEventTarget = {
@@ -914,7 +914,7 @@ test('change groups and graph are independent scroll panes with a resizable divi
   })
   await mounted.harness.flush()
   assert.equal(divider().props['aria-valuenow'], 65, 'a 40px drag over 400px moves 10%')
-  assert.equal(paneTop()?.props.style?.flexBasis, '65%')
+  assert.deepEqual(paneTop()?.props.style, { flex: '0 0 65%' })
   mounted.harness.pointer(divider(), 'move', {
     pointerId: 7,
     clientY: 900,
@@ -932,7 +932,7 @@ test('change groups and graph are independent scroll panes with a resizable divi
   await mounted.harness.dispose()
 })
 
-test('a collapsed section shrinks its pane to its header row', async () => {
+test('a collapsed section folds its pane to the header row and leaves the divider inert', async () => {
   const mounted = await mountGit()
   const pane = (name: string): TestElement => {
     const [element] = mounted.harness.findAll((candidate) =>
@@ -957,40 +957,70 @@ test('a collapsed section shrinks its pane to its header row', async () => {
     assert.ok(toggle, `no ${id} section toggle rendered`)
     return toggle
   }
+  const sectionBody = (id: string): TestElement | undefined => {
+    const [section] = mounted.harness.findAll(
+      (candidate) => candidate.type === 'section' && candidate.props['data-section'] === id,
+    )
+    assert.ok(section, `no ${id} section rendered`)
+    return collectElements(section, (candidate) => hasClass(candidate, 'dshgg-sectionBody'))[0]
+  }
 
-  // Collapsing the graph leaves one header row at the bottom edge and gives
-  // the change list every other pixel, so no divider is left to move.
+  // Collapsing the graph folds the pane down to one header at the bottom edge,
+  // keeps its rows mounted until the shrink has clipped them, and leaves the
+  // divider visible but inert because there is no split left to move.
   mounted.harness.click(sectionToggle('graph'))
   await mounted.harness.flush()
-  assert.deepEqual(graphPane().props.style, { flex: '0 0 auto' })
+  assert.deepEqual(graphPane().props.style, { flex: '0 0 30px' })
   assert.equal(graphPane().props['data-collapsed'], 'true')
-  assert.deepEqual(changesPane().props.style, { flex: '1 1 0' })
+  assert.deepEqual(changesPane().props.style, { flex: '1 1 50%' })
   assert.equal(changesPane().props['data-collapsed'], undefined)
-  assert.equal(divider(), undefined, 'a collapsed pane offers no divider')
+  const foldedBody = sectionBody('graph')
+  assert.ok(foldedBody, 'the graph rows stay mounted while the pane folds')
+  assert.equal(foldedBody.props['aria-hidden'], 'true')
+  assert.equal(foldedBody.props.inert, '')
+  const inertDivider = divider()
+  assert.ok(inertDivider, 'the divider stays visible while the pane is collapsed')
+  assert.equal(inertDivider.props['aria-disabled'], 'true')
+  assert.equal(inertDivider.props['data-disabled'], 'true')
+  assert.equal(inertDivider.props.tabIndex, -1)
+  assert.equal(inertDivider.props.onKeyDown, undefined, 'a collapsed divider takes no keys')
+  assert.equal(inertDivider.props.onPointerDown, undefined, 'a collapsed divider takes no drag')
+  assert.equal(inertDivider.props.onPointerMove, undefined)
+  assert.equal(inertDivider.props.onPointerUp, undefined)
+  assert.equal(inertDivider.props['data-dragging'], undefined)
+  assert.equal(inertDivider.props['aria-valuenow'], 50, 'a collapsed divider moves no split')
+  mounted.harness.runTimeouts()
+  await mounted.harness.flush()
+  assert.equal(sectionBody('graph'), undefined, 'the folded rows unmount when the fold is over')
 
-  // Expanding it brings back the ratio that was in effect.
+  // Expanding it brings back the ratio that was in effect and a live divider.
   mounted.harness.click(sectionToggle('graph'))
   await mounted.harness.flush()
-  assert.deepEqual(changesPane().props.style, { flexBasis: '50%' })
-  assert.deepEqual(graphPane().props.style, {})
+  assert.deepEqual(changesPane().props.style, { flex: '0 0 50%' })
+  assert.deepEqual(graphPane().props.style, { flex: '1 1 0px' })
   assert.equal(graphPane().props['data-collapsed'], undefined)
   assert.equal(divider()?.props['aria-valuenow'], 50)
+  assert.equal(divider()?.props.tabIndex, 0)
+  assert.equal(divider()?.props['data-disabled'], undefined)
 
-  // Collapsing every change group hands the room to the graph instead.
+  // Collapsing every change group folds the change pane to its three headers
+  // and hands the room to the graph, again with an inert divider.
   for (const id of ['merge', 'staged', 'changes']) {
     mounted.harness.click(sectionToggle(id))
     await mounted.harness.flush()
   }
-  assert.deepEqual(changesPane().props.style, { flex: '0 0 auto' })
+  assert.deepEqual(changesPane().props.style, { flex: '0 0 94px' })
   assert.equal(changesPane().props['data-collapsed'], 'true')
-  assert.deepEqual(graphPane().props.style, {})
-  assert.equal(divider(), undefined)
+  assert.deepEqual(graphPane().props.style, { flex: '1 1 0px' })
+  assert.equal(divider()?.props['data-disabled'], 'true')
+  assert.equal(divider()?.props.tabIndex, -1)
 
   // One expanded group brings the change pane's share back.
   mounted.harness.click(sectionToggle('staged'))
   await mounted.harness.flush()
-  assert.deepEqual(changesPane().props.style, { flexBasis: '50%' })
+  assert.deepEqual(changesPane().props.style, { flex: '0 0 50%' })
   assert.equal(divider()?.props['aria-valuenow'], 50)
+  assert.equal(divider()?.props.tabIndex, 0)
   await mounted.harness.dispose()
 })
 
@@ -1002,7 +1032,7 @@ test('a clean workspace keeps the change pane share of the split', async () => {
   assert.ok(changesPane, 'no change pane rendered')
   assert.deepEqual(
     changesPane.props.style,
-    { flexBasis: '50%' },
+    { flex: '0 0 50%' },
     'a pane that renders no section keeps its share',
   )
   assert.equal(

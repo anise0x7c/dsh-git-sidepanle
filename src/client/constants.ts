@@ -31,6 +31,12 @@ export const PROMPT_MOTION_MS = 180
  */
 export const DETAILS_MOTION_MS = 200
 /**
+ * How long a split pane takes to fold to or from its collapsed height, in
+ * milliseconds. The split stylesheet's transition uses the same duration, and
+ * a section keeps its body mounted for it while the pane folds.
+ */
+export const SPLIT_MOTION_MS = 200
+/**
  * How long the toolbar's loading bar stays once it appears, in milliseconds.
  * Work that finishes sooner holds the bar for this minimum, so a quick read
  * does not flash it for a single frame.

@@ -29,8 +29,14 @@ Collapsing a section no longer leaves its pane at full height:
   and gives the room to the change list; collapsing every change group gives
   the room to the graph. A clean workspace renders no group, so its pane keeps
   its share.
-- The divider is hidden while a pane is collapsed, and expanding one section
-  restores the previous ratio and the scroll positions.
+- A folding pane animates to and from its header height instead of jumping, and
+  its section body stays mounted until the shrinking pane has clipped it, so
+  the graph slides down to the bottom edge rather than blinking out.
+- The divider stays visible while a pane is collapsed but is inert: it keeps
+  its hairline, shows no hover highlight, accepts no drag, takes no keyboard
+  focus and changes no ratio. Expanding a section animates the previous ratio
+  back and makes the divider operable again. Reduced motion takes the new
+  height at once.
 
 Remote branch actions now live with the commit graph, following VS Code's
 Source Control Graph:

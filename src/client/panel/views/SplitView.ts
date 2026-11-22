@@ -2,8 +2,9 @@
  * Two vertically stacked, independently scrolling panes with a draggable
  * divider. The surrounding panel owns the ratio, so opening commit details and
  * returning keeps the user's chosen split. A pane whose sections are all
- * collapsed keeps only their headers: it takes its content height instead of a
- * share of the split, the other pane takes the rest, and no divider is offered.
+ * collapsed keeps only their headers: it folds to the height of that stack
+ * instead of a share of the split, the other pane takes the rest, and the
+ * divider stays visible but inert because there is no split left to move.
  */
 
 import type React from 'react'
@@ -29,6 +30,8 @@ export interface SplitViewProps {
   readonly label: string
   /** Divider tooltip. */
   readonly hint: string
+  /** Number of change-group headers the change pane renders. */
+  readonly changeSections: number
   /** Whether every change section is collapsed, so the change pane keeps its headers. */
   readonly changesCollapsed: boolean
   /** Whether the commit graph section is collapsed, so its pane keeps its header. */
@@ -61,14 +64,18 @@ export function SplitView(props: SplitViewProps): React.ReactElement {
   const dragStart = useRef<DragStart | null>(null)
   const ratio = clampSplitRatio(props.ratio)
   // A pane whose sections are all collapsed keeps only their headers, so the
-  // other pane takes the room and there is no split left to drag.
+  // other pane takes the room and there is no split left to drag. The divider
+  // still renders so the panes keep their frame.
   const sizing = splitSizing({
     ratio,
     changesCollapsed: props.changesCollapsed === true,
     graphCollapsed: props.graphCollapsed === true,
+    changeSections: props.changeSections,
   })
+  const dividerEnabled = sizing.dividerEnabled
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (!dividerEnabled) return
     event.preventDefault()
     event.currentTarget.focus()
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -94,6 +101,7 @@ export function SplitView(props: SplitViewProps): React.ReactElement {
   }
 
   const handleKey = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (!dividerEnabled) return
     const next = adjustSplitRatio(ratio, event.key)
     if (next === null) return
     event.preventDefault()
@@ -102,7 +110,10 @@ export function SplitView(props: SplitViewProps): React.ReactElement {
 
   return h(
     'div',
-    { className: 'dshgg-split' },
+    {
+      className: 'dshgg-split',
+      'data-resizing': dragging === true ? 'true' : undefined,
+    },
     h(
       'div',
       {
@@ -112,29 +123,35 @@ export function SplitView(props: SplitViewProps): React.ReactElement {
       },
       props.changes,
     ),
-    sizing.divider
-      ? h(
-          'div',
-          {
-            className: 'dshgg-splitter',
-            role: 'separator',
-            'aria-orientation': 'horizontal',
-            'aria-label': props.label,
-            'aria-valuemin': Math.round(MIN_SPLIT_RATIO * 100),
-            'aria-valuemax': Math.round(MAX_SPLIT_RATIO * 100),
-            'aria-valuenow': Math.round(ratio * 100),
-            'data-dragging': dragging === true ? 'true' : undefined,
-            tabIndex: 0,
-            title: props.hint,
-            onPointerDown: beginDrag,
-            onPointerMove: moveDrag,
-            onPointerUp: endDrag,
-            onPointerCancel: endDrag,
-            onKeyDown: handleKey,
-          },
-          h('span', { className: 'dshgg-splitterLine' }),
-        )
-      : null,
+    h(
+      'div',
+      {
+        className: 'dshgg-splitter',
+        role: 'separator',
+        'aria-orientation': 'horizontal',
+        'aria-label': props.label,
+        'aria-valuemin': Math.round(MIN_SPLIT_RATIO * 100),
+        'aria-valuemax': Math.round(MAX_SPLIT_RATIO * 100),
+        'aria-valuenow': Math.round(ratio * 100),
+        ...(dividerEnabled
+          ? {
+              'data-dragging': dragging === true ? 'true' : undefined,
+              tabIndex: 0,
+              title: props.hint,
+              onPointerDown: beginDrag,
+              onPointerMove: moveDrag,
+              onPointerUp: endDrag,
+              onPointerCancel: endDrag,
+              onKeyDown: handleKey,
+            }
+          : {
+              'aria-disabled': 'true',
+              'data-disabled': 'true',
+              tabIndex: -1,
+            }),
+      },
+      h('span', { className: 'dshgg-splitterLine' }),
+    ),
     h(
       'div',
       {

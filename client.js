@@ -46,6 +46,7 @@ var LIVE_POLL_INTERVAL_MS = 700;
 var MAX_RENDERED_DIFF_LINES = 4e3;
 var PROMPT_MOTION_MS = 180;
 var DETAILS_MOTION_MS = 200;
+var SPLIT_MOTION_MS = 200;
 var PROGRESS_MIN_VISIBLE_MS = 500;
 var MENU_TARGET = "gitGraphItem";
 var MENU_CONTRIBUTION_ID = "git-graph.actions";
@@ -2777,6 +2778,8 @@ var DEFAULT_SPLIT_RATIO = 0.5;
 var MIN_SPLIT_RATIO = 0.2;
 var MAX_SPLIT_RATIO = 0.8;
 var SPLIT_STEP = 0.05;
+var SECTION_HEADER_HEIGHT = 30;
+var SECTION_GAP = 2;
 function clampSplitRatio(ratio) {
   if (!Number.isFinite(ratio)) return DEFAULT_SPLIT_RATIO;
   return Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, ratio));
@@ -2790,16 +2793,32 @@ function dragSplitRatio(startRatio, startY, clientY, height) {
 function allSectionsCollapsed(sections, open) {
   return sections.length > 0 && sections.every((id) => open[id] !== true);
 }
+function collapsedSectionHeight(sections) {
+  if (!Number.isFinite(sections) || sections <= 0) return 0;
+  const count = Math.floor(sections);
+  return count * SECTION_HEADER_HEIGHT + (count - 1) * SECTION_GAP;
+}
 function splitSizing(options) {
   const ratio = clampSplitRatio(options.ratio);
   const percent = `${Math.round(ratio * 1e3) / 10}%`;
+  if (options.graphCollapsed) {
+    return {
+      changes: { flex: `1 1 ${percent}` },
+      graph: { flex: `0 0 ${SECTION_HEADER_HEIGHT}px` },
+      dividerEnabled: false
+    };
+  }
+  if (options.changesCollapsed) {
+    return {
+      changes: { flex: `0 0 ${collapsedSectionHeight(options.changeSections)}px` },
+      graph: { flex: "1 1 0px" },
+      dividerEnabled: false
+    };
+  }
   return {
-    // The graph rests last in the split, so when it keeps only its header the
-    // change pane takes every remaining pixel whether or not it is collapsed
-    // itself; that keeps the graph header at the panel's bottom edge either way.
-    changes: options.graphCollapsed ? { flex: "1 1 0" } : options.changesCollapsed ? { flex: "0 0 auto" } : { flexBasis: percent },
-    graph: options.graphCollapsed ? { flex: "0 0 auto" } : {},
-    divider: !options.changesCollapsed && !options.graphCollapsed
+    changes: { flex: `0 0 ${percent}` },
+    graph: { flex: "1 1 0px" },
+    dividerEnabled: true
   };
 }
 function adjustSplitRatio(ratio, key) {
@@ -3160,6 +3179,21 @@ var h10 = import_react26.createElement;
 function Section(props) {
   const actions = props.actions === void 0 || props.actions === null ? null : props.actions;
   const menuTrigger = typeof props.menuTrigger === "function" ? props.menuTrigger : null;
+  const [bodyMounted, setBodyMounted] = (0, import_react26.useState)(props.open === true);
+  (0, import_react26.useEffect)(() => {
+    if (props.open === true) {
+      if (!bodyMounted) setBodyMounted(true);
+      return void 0;
+    }
+    if (!bodyMounted) return void 0;
+    if (props.retainBody !== true) {
+      setBodyMounted(false);
+      return void 0;
+    }
+    const timer = setTimeout(() => setBodyMounted(false), SPLIT_MOTION_MS);
+    return () => clearTimeout(timer);
+  }, [props.open, props.retainBody, bodyMounted]);
+  const bodyVisible = props.open === true || bodyMounted && props.retainBody === true;
   const menuProps = menuTrigger === null || props.menuTarget === void 0 ? null : menuTrigger(props.menuTarget, {
     tabIndex: -1,
     "aria-haspopup": "menu",
@@ -3193,7 +3227,16 @@ function Section(props) {
       ),
       actions === null ? null : h10("div", { className: "dshgg-sectionActions" }, actions)
     ),
-    props.open === true ? h10("div", { className: "dshgg-sectionBody" }, props.children) : null
+    bodyVisible ? h10(
+      "div",
+      {
+        className: "dshgg-sectionBody",
+        // A folded body stays visible while the pane clips it, but its
+        // rows must not take focus or be announced as available content.
+        ...props.open === true ? {} : { "aria-hidden": "true", inert: "" }
+      },
+      props.children
+    ) : null
   );
 }
 
@@ -3269,6 +3312,7 @@ function ChangeGroups(props) {
         title: t("sections.merge"),
         count: props.mergeRows.length,
         open: props.openSections.merge === true,
+        retainBody: props.foldBodies,
         onToggle: () => props.onToggleSection("merge"),
         actions: sectionActions.merge,
         menuTrigger: props.menuTrigger,
@@ -3284,6 +3328,7 @@ function ChangeGroups(props) {
         title: t("sections.staged"),
         count: props.stagedRows.length,
         open: props.openSections.staged === true,
+        retainBody: props.foldBodies,
         onToggle: () => props.onToggleSection("staged"),
         actions: sectionActions.staged,
         menuTrigger: props.menuTrigger,
@@ -3299,6 +3344,7 @@ function ChangeGroups(props) {
         title: t("sections.changes"),
         count: props.changedRows.length,
         open: props.openSections.changes === true,
+        retainBody: props.foldBodies,
         onToggle: () => props.onToggleSection("changes"),
         actions: sectionActions.changes,
         menuTrigger: props.menuTrigger,
@@ -4609,6 +4655,9 @@ function GraphSection(props) {
       id: "graph",
       title: t("sections.graph"),
       open: props.open,
+      // The graph is the only section of its pane, so closing it always folds
+      // the pane away; its rows stay mounted until that fold is over.
+      retainBody: true,
       onToggle: props.onToggle,
       actions: props.actions,
       hover: "controls",
@@ -4841,9 +4890,12 @@ function SplitView(props) {
   const sizing = splitSizing({
     ratio,
     changesCollapsed: props.changesCollapsed === true,
-    graphCollapsed: props.graphCollapsed === true
+    graphCollapsed: props.graphCollapsed === true,
+    changeSections: props.changeSections
   });
+  const dividerEnabled = sizing.dividerEnabled;
   const beginDrag = (event) => {
+    if (!dividerEnabled) return;
     event.preventDefault();
     event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -4866,6 +4918,7 @@ function SplitView(props) {
     setDragging(false);
   };
   const handleKey = (event) => {
+    if (!dividerEnabled) return;
     const next = adjustSplitRatio(ratio, event.key);
     if (next === null) return;
     event.preventDefault();
@@ -4873,7 +4926,10 @@ function SplitView(props) {
   };
   return h23(
     "div",
-    { className: "dshgg-split" },
+    {
+      className: "dshgg-split",
+      "data-resizing": dragging === true ? "true" : void 0
+    },
     h23(
       "div",
       {
@@ -4883,7 +4939,7 @@ function SplitView(props) {
       },
       props.changes
     ),
-    sizing.divider ? h23(
+    h23(
       "div",
       {
         className: "dshgg-splitter",
@@ -4893,17 +4949,23 @@ function SplitView(props) {
         "aria-valuemin": Math.round(MIN_SPLIT_RATIO * 100),
         "aria-valuemax": Math.round(MAX_SPLIT_RATIO * 100),
         "aria-valuenow": Math.round(ratio * 100),
-        "data-dragging": dragging === true ? "true" : void 0,
-        tabIndex: 0,
-        title: props.hint,
-        onPointerDown: beginDrag,
-        onPointerMove: moveDrag,
-        onPointerUp: endDrag,
-        onPointerCancel: endDrag,
-        onKeyDown: handleKey
+        ...dividerEnabled ? {
+          "data-dragging": dragging === true ? "true" : void 0,
+          tabIndex: 0,
+          title: props.hint,
+          onPointerDown: beginDrag,
+          onPointerMove: moveDrag,
+          onPointerUp: endDrag,
+          onPointerCancel: endDrag,
+          onKeyDown: handleKey
+        } : {
+          "aria-disabled": "true",
+          "data-disabled": "true",
+          tabIndex: -1
+        }
       },
       h23("span", { className: "dshgg-splitterLine" })
-    ) : null,
+    ),
     h23(
       "div",
       {
@@ -5370,14 +5432,17 @@ function GitPanel(props) {
     wrapRef: refs.remoteWrap,
     onToggleMenu: toggleRemoteMenu
   });
+  const changesCollapsed = allSectionsCollapsed(changeGroups, openSections);
+  const graphCollapsed = openSections.graph !== true;
   const singlePane = renderState();
   const body = singlePane !== null ? h24("div", { className: "dshgg-scroll" }, singlePane) : h24(SplitView, {
     ratio: splitRatio,
     onRatioChange: setSplitRatio,
     label: t("split.label"),
     hint: t("split.hint"),
-    changesCollapsed: allSectionsCollapsed(changeGroups, openSections),
-    graphCollapsed: openSections.graph !== true,
+    changeSections: changeGroups.length,
+    changesCollapsed,
+    graphCollapsed,
     onGraphScroll: handleGraphScroll,
     graphRef: graphPane,
     changes: h24(ChangeGroups, {
@@ -5387,6 +5452,7 @@ function GitPanel(props) {
       stagedRows,
       changedRows,
       openSections,
+      foldBodies: changesCollapsed && !graphCollapsed,
       busy: busy !== null,
       canAct,
       onToggleSection: toggleSection,
@@ -5663,6 +5729,11 @@ var motion_default = `/* -------------------------------------------------------
   }
 
   .dshgg-chevron {
+    transition: none;
+  }
+
+  /* A folding pane keeps the divider state, but takes its new height at once. */
+  .dshgg-pane {
     transition: none;
   }
 
@@ -5976,7 +6047,81 @@ var section_default = `/* ------------------------------------------------------
 `;
 
 // src/client/styles/split.css
-var split_default = '/* ---------------------------------------------------------------- split --- */\n\n.dshgg-split {\n  display: flex;\n  flex: 1 1 auto;\n  flex-direction: column;\n  min-height: 0;\n}\n\n.dshgg-paneTop {\n  flex: 0 0 auto;\n}\n\n.dshgg-paneBottom {\n  flex: 1 1 0;\n}\n\n/* A pane whose sections are all collapsed takes its content height instead of\n * a share of the split. Its own bottom padding would leave a gap under the\n * last header, so the collapsed pane drops it and the header closes the pane. */\n.dshgg-pane[data-collapsed="true"] {\n  padding-bottom: 0;\n}\n\n.dshgg-splitter {\n  display: flex;\n  flex: none;\n  align-items: center;\n  height: 9px;\n  cursor: row-resize;\n  touch-action: none;\n}\n\n.dshgg-splitterLine {\n  display: block;\n  width: 100%;\n  height: 0.5px;\n  background: var(--dsw-alias-border-l3);\n}\n\n@media (hover: hover) {\n  .dshgg-splitter:hover {\n    background: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-splitter[data-dragging="true"],\n.dshgg-splitter:focus-visible {\n  background: var(--dsw-alias-interactive-bg-hover);\n}\n';
+var split_default = `/* ---------------------------------------------------------------- split --- */
+
+.dshgg-split {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dshgg-paneTop {
+  flex: 0 0 auto;
+}
+
+.dshgg-paneBottom {
+  flex: 1 1 0;
+}
+
+/* Folding a pane and stepping the ratio with the keyboard animate; a pointer
+ * drag clears the transition so its movement stays one-to-one with the
+ * pointer. The duration matches SPLIT_MOTION_MS, which keeps a closing
+ * section's body mounted until the fold has hidden it. */
+.dshgg-pane {
+  transition:
+    flex-grow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    flex-shrink 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    flex-basis 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dshgg-split[data-resizing="true"] .dshgg-pane {
+  transition: none;
+}
+
+/* A pane whose sections are all collapsed takes its content height instead of
+ * a share of the split. Its own bottom padding would leave a gap under the
+ * last header, so the collapsed pane drops it and the header closes the pane;
+ * hidden overflow keeps the rows a section holds during the fold from making
+ * the header-only pane scrollable. */
+.dshgg-pane[data-collapsed="true"] {
+  padding-bottom: 0;
+  overflow-y: hidden;
+}
+
+.dshgg-splitter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 9px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.dshgg-splitterLine {
+  display: block;
+  width: 100%;
+  height: 0.5px;
+  background: var(--dsw-alias-border-l3);
+}
+
+/* A collapsed pane leaves no split to move, so the divider keeps its hairline
+ * as the boundary between the panes but takes no hover, drag or focus. */
+.dshgg-splitter[data-disabled="true"] {
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .dshgg-splitter:not([data-disabled="true"]):hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dshgg-splitter:not([data-disabled="true"])[data-dragging="true"],
+.dshgg-splitter:not([data-disabled="true"]):focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+`;
 
 // src/client/styles/titles.css
 var titles_default = "/* --------------------------------------------------------------- titles --- */\n\n.dshgg-title {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n}\n\n.dshgg-titleText {\n  overflow: hidden;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n}\n";

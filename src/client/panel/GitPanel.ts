@@ -614,6 +614,10 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
     onToggleMenu: toggleRemoteMenu,
   })
 
+  // A pane folds away only when it keeps its headers and the other pane is not
+  // already holding the split; only then do its closing rows outlive its bodies.
+  const changesCollapsed = allSectionsCollapsed(changeGroups, openSections)
+  const graphCollapsed = openSections.graph !== true
   const singlePane = renderState()
   const body =
     singlePane !== null
@@ -623,8 +627,9 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           onRatioChange: setSplitRatio,
           label: t('split.label'),
           hint: t('split.hint'),
-          changesCollapsed: allSectionsCollapsed(changeGroups, openSections),
-          graphCollapsed: openSections.graph !== true,
+          changeSections: changeGroups.length,
+          changesCollapsed,
+          graphCollapsed,
           onGraphScroll: handleGraphScroll,
           graphRef: graphPane,
           changes: h(ChangeGroups, {
@@ -634,6 +639,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
             stagedRows,
             changedRows,
             openSections,
+            foldBodies: changesCollapsed && !graphCollapsed,
             busy: busy !== null,
             canAct,
             onToggleSection: toggleSection,

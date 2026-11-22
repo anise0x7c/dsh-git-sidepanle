@@ -951,22 +951,28 @@ be reported and SHALL leave the current branch in effect.
 
 The panel SHALL present the change groups above the commit graph in two
 vertically stacked panes that scroll independently, separated by a divider
-while both panes show expanded content. The user SHALL be able to move the
-divider by dragging it, and both panes SHALL keep a usable minimum height.
-Scrolling one pane SHALL NOT move the other or change its scroll position. The
-divider SHALL be reachable by keyboard and SHALL change the split with the
-arrow keys. Opening a commit's details SHALL overlay the split with a card
-without resizing or unmounting either pane, and returning SHALL reveal the same
-split with the ratio and scroll positions the user left.
+while the split is shown. The user SHALL be able to move the divider by
+dragging it while both panes show expanded content, and both panes SHALL keep a
+usable minimum height. Scrolling one pane SHALL NOT move the other or change
+its scroll position. The divider SHALL be reachable by keyboard and SHALL
+change the split with the arrow keys. Opening a commit's details SHALL overlay
+the split with a card without resizing or unmounting either pane, and returning
+SHALL reveal the same split with the ratio and scroll positions the user left.
 
 A pane whose sections are all collapsed SHALL take only the height of their
 headers instead of its share of the split. The change pane SHALL keep its
 collapsed headers at the top of the split and the graph pane SHALL keep its
-collapsed header at the bottom edge of the panel; the other pane SHALL take the
-remaining height, and no divider SHALL be offered while a pane is collapsed.
-Expanding one section SHALL restore the split with the ratio and scroll
-positions in effect before the collapse. A pane that renders no section at all
-SHALL be treated as expanded and keep its share of the split.
+collapsed header at the bottom edge of the panel, while the other pane takes
+the remaining height. The height change SHALL be animated over the panel's
+short motion duration instead of jumping, and the section body SHALL stay
+mounted while the pane folds so its rows are clipped by the shrinking pane
+rather than vanishing first. The divider SHALL remain visible while a pane is
+collapsed and SHALL be inert in that state: it SHALL show no hover highlight,
+accept no pointer drag, take no keyboard focus and change no ratio. Expanding
+one section SHALL animate the pane back to the split ratio in effect before the
+collapse and SHALL make the divider operable again. A pane that renders no
+section at all SHALL be treated as expanded and keep its share of the split.
+With a reduced-motion preference the pane SHALL take its new height at once.
 
 #### Scenario: Change list scrolls on its own
 
@@ -975,6 +981,7 @@ SHALL be treated as expanded and keep its share of the split.
 
 #### Scenario: Dragging the divider
 
+- **GIVEN** both panes show expanded content
 - **WHEN** the user drags the divider upward
 - **THEN** the change pane becomes shorter and the graph pane becomes taller
 
@@ -1001,40 +1008,58 @@ SHALL be treated as expanded and keep its share of the split.
 - **THEN** the change list and graph are revealed with the ratio and scroll
   positions they had before
 
-#### Scenario: Collapsing the graph shrinks it to its header
+#### Scenario: Collapsing the graph folds it to its header
 
 - **GIVEN** the change list and the commit graph are visible at a user-selected
   ratio
 - **WHEN** the user collapses the commit graph section
-- **THEN** the graph pane keeps only its section header at the bottom edge of the
-  panel, the change pane takes the rest of the height, and no divider is shown
+- **THEN** the graph pane folds down to its section header at the bottom edge of
+  the panel instead of jumping there, its rows are clipped by the shrinking
+  pane, the change pane takes the rest of the height, and the divider stays
+  visible between the panes without responding to input
 
 #### Scenario: Expanding the graph restores the split
 
 - **GIVEN** the user collapsed the commit graph section
 - **WHEN** the user expands it again
-- **THEN** the graph has the ratio and scroll position it had before the
-  collapse, and the divider is shown again
+- **THEN** the graph pane grows back to the ratio it had before the collapse,
+  and the divider accepts drags and keyboard steps again
 
 #### Scenario: Collapsing every change group gives the room to the graph
 
 - **GIVEN** the change pane renders change groups and none of them is collapsed
 - **WHEN** the user collapses every change group
-- **THEN** the change pane keeps only their headers at the top of the split, the
-  graph pane takes the rest of the height, and no divider is shown
+- **THEN** the change pane folds to only their headers at the top of the split,
+  the graph pane takes the rest of the height, and the divider stays visible
+  without responding to input
 
 #### Scenario: One expanded change group restores the pane
 
 - **GIVEN** every change group in the change pane is collapsed
 - **WHEN** the user expands one change group
-- **THEN** the change pane takes its share of the split at the ratio it had, and
-  the divider is shown again
+- **THEN** the change pane grows back to its share of the split at the ratio it
+  had, and the divider accepts drags and keyboard steps again
+
+#### Scenario: A collapsed divider ignores input
+
+- **GIVEN** a pane is collapsed so the divider is inert
+- **WHEN** the user hovers it, drags it or presses an arrow key while it is
+  targeted
+- **THEN** it shows no hover highlight, takes no focus and the split does not
+  move
+
+#### Scenario: Reduced motion skips the fold animation
+
+- **GIVEN** the user prefers reduced motion
+- **WHEN** the user collapses a section whose pane folds away
+- **THEN** the pane takes its header height at once and the divider is inert
 
 #### Scenario: A clean workspace keeps its pane
 
 - **GIVEN** the working tree is clean so the change pane renders no change group
 - **WHEN** the panel shows the clean-workspace text
-- **THEN** the change pane keeps its share of the split
+- **THEN** the change pane keeps its share of the split and the divider still
+  responds to input
 
 ### Requirement: Clean workspace state
 
