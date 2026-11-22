@@ -99,22 +99,23 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   assert.ok(styleTag)
   assert.equal(styleTag.getAttribute('data-plugin'), '@local/dsh-git-graph')
   const graphStyles = styleTag.textContent
-  // VS Code's Source Control Graph palette, with its light and dark variants.
+  // The graph's palette: VS Code's Source Control Graph colors tuned slightly
+  // more vivid with each hue held, plus light and dark reference variants.
   for (const [name, value] of [
-    ['lane1', '#ffb000'],
-    ['lane2', '#dc267f'],
-    ['lane3', '#994f00'],
-    ['lane4', '#40b0a6'],
-    ['lane5', '#b66dff'],
-    ['ref', '#1a85ff'],
-    ['remote', '#652d90'],
-    ['base', '#ea5c00'],
+    ['lane1', '#ffb300'],
+    ['lane2', '#e3007f'],
+    ['lane3', '#a85600'],
+    ['lane4', '#2cb2a7'],
+    ['lane5', '#b266ff'],
+    ['ref', '#0a7eff'],
+    ['remote', '#672696'],
+    ['base', '#f26100'],
   ]) {
     assert.match(graphStyles, new RegExp(`--dshgg-scm-${name}: ${value};`))
   }
   assert.match(
     graphStyles,
-    /body\[data-ds-dark-theme\] \.dshgg-root\s*\{[^}]*--dshgg-scm-ref: #3794ff;[^}]*--dshgg-scm-remote: #b180d7;/,
+    /body\[data-ds-dark-theme\] \.dshgg-root\s*\{[^}]*--dshgg-scm-ref: #2e91ff;[^}]*--dshgg-scm-remote: #b37ddd;/,
   )
   // VS Code row metrics: 22px rows, one ellipsized label, badges that keep their size.
   assert.match(graphStyles, /\.dshgg-graphRow\s*\{[^}]*height: 22px;/)

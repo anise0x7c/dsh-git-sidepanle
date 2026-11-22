@@ -1840,7 +1840,7 @@ test('a merge fans out to the right and joins its fork point like VS Code', asyn
   await mounted.harness.dispose()
 })
 
-test('lanes right of a joined lane shift left with VS Code curves', async () => {
+test('lanes right of a joined lane shift left with the tuned S-turn curves', async () => {
   const now = Math.floor(Date.now() / 1000)
   const oid = (char: string): string => char.repeat(40)
   const entry = (id: string, parents: string[], refs = '') => ({
@@ -1891,7 +1891,7 @@ test('lanes right of a joined lane shift left with VS Code curves', async () => 
   )
   assert.match(
     String(layerPaths[2]?.props.d),
-    /M 33 66 V 72 A 5 5 0 0 1 28 77 H 27 A 5 5 0 0 0 22 82 V 88/,
+    /M 33 66 V 72\.5 A 4\.5 4\.5 0 0 1 28\.5 77 H 26\.5 A 4\.5 4\.5 0 0 0 22 81\.5 V 88/,
     'the lane right of the ended one turns into its new position on the join row',
   )
   assert.match(

@@ -14,6 +14,11 @@
  * divergence in the port shows up as a test failure instead of being copied.
  * SVG elements are replaced by `{ d, color }` records in the order VS Code
  * appends them; incoming/outgoing change rows are not modeled.
+ *
+ * The one parameter is the curve radius of a shifting lane. VS Code uses 5
+ * pixels, and that stays the default; the equivalence test passes the port's
+ * deliberately tighter radius so the rest of the algorithm is still compared
+ * literally.
  */
 
 /** VS Code `SWIMLANE_HEIGHT`. */
@@ -270,9 +275,13 @@ function findLastIndex(nodes: OracleNode[], id: string): number {
 /**
  * VS Code `renderSCMHistoryItemGraph`, recording paths instead of SVG nodes.
  * @param historyItemViewModel - view model.
+ * @param curveRadius - radius of a shifting lane's turns; VS Code's 5 by default.
  * @returns rendered paths and node data.
  */
-export function renderGraph(historyItemViewModel: OracleViewModel): OracleRender {
+export function renderGraph(
+  historyItemViewModel: OracleViewModel,
+  curveRadius: number = SWIMLANE_CURVE_RADIUS,
+): OracleRender {
   const paths: { d: string; color: string }[] = []
   const historyItem = historyItemViewModel.historyItem
   const inputSwimlanes = historyItemViewModel.inputSwimlanes
@@ -332,19 +341,19 @@ export function renderGraph(historyItemViewModel: OracleViewModel): OracleRender
 
           // Draw |
           d.push(`M ${SWIMLANE_WIDTH * (index + 1)} 0`)
-          d.push('V 6')
+          d.push(`V ${SWIMLANE_HEIGHT / 2 - curveRadius}`)
 
           // Draw /
           d.push(
-            `A ${SWIMLANE_CURVE_RADIUS} ${SWIMLANE_CURVE_RADIUS} 0 0 1 ${SWIMLANE_WIDTH * (index + 1) - SWIMLANE_CURVE_RADIUS} ${SWIMLANE_HEIGHT / 2}`,
+            `A ${curveRadius} ${curveRadius} 0 0 1 ${SWIMLANE_WIDTH * (index + 1) - curveRadius} ${SWIMLANE_HEIGHT / 2}`,
           )
 
           // Draw -
-          d.push(`H ${SWIMLANE_WIDTH * (outputSwimlaneIndex + 1) + SWIMLANE_CURVE_RADIUS}`)
+          d.push(`H ${SWIMLANE_WIDTH * (outputSwimlaneIndex + 1) + curveRadius}`)
 
           // Draw /
           d.push(
-            `A ${SWIMLANE_CURVE_RADIUS} ${SWIMLANE_CURVE_RADIUS} 0 0 0 ${SWIMLANE_WIDTH * (outputSwimlaneIndex + 1)} ${SWIMLANE_HEIGHT / 2 + SWIMLANE_CURVE_RADIUS}`,
+            `A ${curveRadius} ${curveRadius} 0 0 0 ${SWIMLANE_WIDTH * (outputSwimlaneIndex + 1)} ${SWIMLANE_HEIGHT / 2 + curveRadius}`,
           )
 
           // Draw |

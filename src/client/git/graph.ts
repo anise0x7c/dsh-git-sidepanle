@@ -12,13 +12,14 @@
  * parent continues in that position, further lanes heading for the commit join
  * the node and end, every additional merge parent opens a lane at the right
  * end, and lanes right of an ended lane shift left. The constants, color
- * rotation, SVG path commands and badge grouping match VS Code; see the
+ * rotation, SVG path commands and badge grouping follow VS Code; see the
  * change's design notes for the deliberate deviations (root commits keep other
  * lanes; node gaps are a mask rather than background-colored strokes; the lines
  * of the whole graph are one layer, so a lane crossing a row boundary is one
  * stroke instead of two; an expanded commit widens its own node lane, so VS
  * Code's wide change-row stroke starts at the row's top edge instead of its
- * bottom edge).
+ * bottom edge; the palette is slightly more vivid with each hue held, and a
+ * shifting lane's S-turn is a little tighter).
  *
  * Pure data in and out: no React, no DOM, no plugin context, so the layout is
  * directly unit-testable.
@@ -36,8 +37,12 @@ export const SWIMLANE_WIDTH = 11
  * `highlightIndex` stroke of VS Code `renderSCMHistoryGraphPlaceholder`).
  */
 export const HIGHLIGHT_STROKE_WIDTH = 3
-/** Radius of the turns of a shifting lane (VS Code `SWIMLANE_CURVE_RADIUS`). */
-export const SWIMLANE_CURVE_RADIUS = 5
+/**
+ * Radius of the turns of a shifting lane (VS Code `SWIMLANE_CURVE_RADIUS` is 5).
+ * Slightly tighter by design: the two quarter-turns keep their shape, but the
+ * bend is sharper than VS Code's.
+ */
+export const SWIMLANE_CURVE_RADIUS = 4.5
 /** Base node radius (VS Code `CIRCLE_RADIUS`). */
 export const CIRCLE_RADIUS = 4
 /** Stroke of VS Code's node circles (VS Code `CIRCLE_STROKE_WIDTH`). */
@@ -51,7 +56,7 @@ export const CIRCLE_STROKE_WIDTH = 2
  */
 export const ROW_OVERHANG = 1
 
-/** VS Code's `scmGraph.foreground1`..`5`, in rotation order. */
+/** The five rotation colors, in rotation order: VS Code's `scmGraph.foreground1`..`5` hues, tuned slightly more vivid. */
 export const LANE_COLORS = ['lane1', 'lane2', 'lane3', 'lane4', 'lane5'] as const
 
 /** One rotation color. */
@@ -562,7 +567,7 @@ export function graphRowGeometry(row: GraphRow, offset = 0, expanded = false): G
       paths.push({
         d: [
           `M ${laneX(index)} ${y(0)}`,
-          `V ${y(6)}`,
+          `V ${y(H / 2 - SWIMLANE_CURVE_RADIUS)}`,
           `A ${SWIMLANE_CURVE_RADIUS} ${SWIMLANE_CURVE_RADIUS} 0 0 1 ${laneX(index) - SWIMLANE_CURVE_RADIUS} ${y(H / 2)}`,
           `H ${laneX(outputIndex) + SWIMLANE_CURVE_RADIUS}`,
           `A ${SWIMLANE_CURVE_RADIUS} ${SWIMLANE_CURVE_RADIUS} 0 0 0 ${laneX(outputIndex)} ${y(H / 2 + SWIMLANE_CURVE_RADIUS)}`,

@@ -1,25 +1,27 @@
 /* ---------------------------------------------------------------- graph --- */
 
-/* The commit graph reproduces VS Code's Source Control Graph, so its palette
- * is VS Code's `scmGraph.*` color set rather than host tokens: five rotation
- * colors shared by light and dark themes, plus the checked-out (`charts.blue`),
- * upstream (`charts.purple`) and base reference colors. Badge text uses the
- * host's base background, standing in for VS Code's `panel.background`. */
+/* The commit graph follows VS Code's Source Control Graph, so its palette is
+ * derived from VS Code's `scmGraph.*` color set rather than host tokens: five
+ * rotation colors shared by light and dark themes, plus the checked-out
+ * (`charts.blue`), upstream (`charts.purple`) and base reference colors. Each
+ * value is tuned slightly more vivid than VS Code's while keeping its hue, so
+ * the graph reads as the plugin's own rendering instead of a copy. Badge text
+ * uses the host's base background, standing in for VS Code's `panel.background`. */
 .dshgg-root {
-  --dshgg-scm-lane1: #ffb000;
-  --dshgg-scm-lane2: #dc267f;
-  --dshgg-scm-lane3: #994f00;
-  --dshgg-scm-lane4: #40b0a6;
-  --dshgg-scm-lane5: #b66dff;
-  --dshgg-scm-ref: #1a85ff;
-  --dshgg-scm-remote: #652d90;
-  --dshgg-scm-base: #ea5c00;
+  --dshgg-scm-lane1: #ffb300;
+  --dshgg-scm-lane2: #e3007f;
+  --dshgg-scm-lane3: #a85600;
+  --dshgg-scm-lane4: #2cb2a7;
+  --dshgg-scm-lane5: #b266ff;
+  --dshgg-scm-ref: #0a7eff;
+  --dshgg-scm-remote: #672696;
+  --dshgg-scm-base: #f26100;
   --dshgg-scm-label-foreground: var(--dsw-alias-bg-base);
 }
 
 body[data-ds-dark-theme] .dshgg-root {
-  --dshgg-scm-ref: #3794ff;
-  --dshgg-scm-remote: #b180d7;
+  --dshgg-scm-ref: #2e91ff;
+  --dshgg-scm-remote: #b37ddd;
 }
 
 /* The rows and the one layer that draws their lines. The layer is positioned so

@@ -56,6 +56,16 @@ of a private inline banner:
   Toast component is unavailable the plugin falls back to the shared
   `contextMenus.notify` service without an icon.
 
+The commit graph's style is now its own rather than a literal VS Code copy:
+
+- Every graph color — the five rotation colors, the checked-out-branch blue, the
+  upstream purple and the base-branch orange, in both theme variants — is
+  slightly more vivid while keeping its hue, so the rotation order and the
+  reference meaning of each color read the same.
+- A lane shifting left on a row turns with a 4.5-pixel radius instead of VS
+  Code's 5, so its short S-turn is a little tighter. Row height, lane pitch,
+  node shapes, joins and merge launches are unchanged.
+
 ## 0.13.1
 
 Commit details now show in file tree which can be collapsed
