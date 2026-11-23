@@ -100,6 +100,7 @@ describe('locale dictionaries', () => {
       'branch.upstream': ['name'],
       'commit.placeholder': ['branch'],
       'commit.done': ['hash'],
+      'commit.syncCount': ['count'],
       'noRepo.desc': ['path'],
       'confirm.discardTitle': ['name'],
       'confirm.discardAllTitle': ['n'],
@@ -113,7 +114,7 @@ describe('locale dictionaries', () => {
     const allNames = [
       ...new Set(ENGLISH_KEYS.flatMap((key) => placeholders(dictionaryEntry(ENGLISH, key, 'en')))),
     ].sort()
-    assert.deepEqual(allNames, ['branch', 'hash', 'n', 'name', 'path'])
+    assert.deepEqual(allNames, ['branch', 'count', 'hash', 'n', 'name', 'path'])
   })
 
   test('keys referenced by the pure modules exist in both dictionaries', () => {

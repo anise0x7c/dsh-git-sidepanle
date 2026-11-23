@@ -2339,6 +2339,119 @@ test('the combined commit entries need an upstream', async () => {
   await mounted.harness.dispose()
 })
 
+test('a clean workspace ahead of its upstream turns the commit action into Sync', async () => {
+  const mounted = await mountGit({
+    status: createStatus({ repo: createRepo({ ahead: 3 }), files: [] }),
+  })
+  const main = mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitMain'))[0]
+  assert.ok(main, 'the commit box renders its primary action')
+  assert.equal(
+    elementText(main),
+    'commit.syncCount',
+    'the primary action names the local commits to sync',
+  )
+  assert.equal(main.props.disabled, false, 'syncing needs no commit message')
+  assert.equal(main.props.title, 'commit.syncHint')
+  assert.ok(
+    collectElements(main, (element) => element.type === 'svg').length > 0,
+    'the sync action carries its icon',
+  )
+  const [wrapper] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitActions'))
+  assert.equal(wrapper?.props['data-sync'], 'true', 'the strip marks its sync state')
+  assert.equal(
+    mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitExpand')).length,
+    0,
+    'the commit modes stay out of reach',
+  )
+  assert.equal(
+    mounted.harness.findAll((element) => element.props['aria-label'] === 'commit.menu').length,
+    0,
+    'the sync action has no action menu',
+  )
+  await mounted.harness.dispose()
+})
+
+test('the sync action runs Sync without a message and without committing', async () => {
+  const mounted = await mountGit({
+    status: createStatus({ repo: createRepo({ ahead: 3 }), files: [] }),
+  })
+  mounted.harness.click(buttonByText(mounted.harness, 'commit.syncCount'))
+  await mounted.harness.flush()
+  assert.deepEqual(
+    mounted.calls.filter((call) => ['commit', 'sync'].includes(call.op)).map((call) => call.op),
+    ['sync'],
+    'the primary action syncs and creates no commit',
+  )
+  assert.ok(
+    mounted.components.notifications.some(
+      (notification) => notification.text === 'remote.syncDone' && notification.success,
+    ),
+    'the finished sync is reported',
+  )
+  assert.equal(
+    mounted.harness.findAll((element) => element.type === 'textarea')[0]?.props.value,
+    '',
+    'syncing leaves no commit message behind',
+  )
+  await mounted.harness.dispose()
+})
+
+test('a running sync shows its state and locks the commit box', async (t) => {
+  let release = (): void => {}
+  const until = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const mounted = await mountGit({
+    status: createStatus({ repo: createRepo({ ahead: 1 }), files: [] }),
+    pending: { op: 'sync', until },
+  })
+  t.after(async () => {
+    release()
+    await mounted.harness.flush()
+    await mounted.harness.dispose()
+  })
+  mounted.harness.click(buttonByText(mounted.harness, 'commit.syncCount'))
+  await mounted.harness.flush()
+  assert.match(mounted.harness.text(), /commit\.syncing/, 'the action names its running state')
+  const [wrapper] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitActions'))
+  assert.equal(wrapper?.props['data-disabled'], 'true', 'a running sync dims the control')
+  const [main] = mounted.harness.findAll((element) => hasClass(element, 'dshgg-commitMain'))
+  assert.equal(main?.props.disabled, true, 'a second sync waits for the first')
+})
+
+test('changes or a missing upstream keep the commit action', async () => {
+  const changed = await mountGit({
+    status: createStatus({ repo: createRepo({ ahead: 2 }), files: STATUS.files }),
+  })
+  assert.equal(
+    buttonByText(changed.harness, 'commit.action').props.disabled,
+    true,
+    'a change to commit keeps the commit action, which still needs a message',
+  )
+  assert.equal(
+    changed.harness.findAll((element) => hasClass(element, 'dshgg-commitActions'))[0]?.props[
+      'data-sync'
+    ],
+    undefined,
+    'the strip keeps its commit state',
+  )
+  assert.ok(buttonByLabel(changed.harness, 'commit.menu'), 'the commit modes stay reachable')
+  await changed.harness.dispose()
+  const unpublished = await mountGit({
+    status: createStatus({ repo: createRepo({ upstream: null, ahead: 2 }), files: [] }),
+  })
+  assert.equal(
+    buttonByText(unpublished.harness, 'commit.action').props.disabled,
+    true,
+    'a branch without an upstream never shows the sync action',
+  )
+  assert.equal(
+    unpublished.harness.findAll((element) => hasClass(element, 'dshgg-commitMain'))[0]?.props.title,
+    'commit.hintNone',
+  )
+  await unpublished.harness.dispose()
+})
+
 test('Commit and Sync stages everything first when nothing is staged', async () => {
   const stagedStatus = createStatus({
     files: [
@@ -2375,7 +2488,11 @@ test('Commit and Sync stages everything first when nothing is staged', async () 
 })
 
 test('Commit and Push with no changes reports that there is nothing to commit', async () => {
-  const mounted = await mountGit({ status: createStatus({ files: [] }) })
+  // A clean branch that is not ahead keeps the commit modes: an ahead branch
+  // would offer Sync instead, so this refusal needs the in-step fixture.
+  const mounted = await mountGit({
+    status: createStatus({ repo: createRepo({ ahead: 0 }), files: [] }),
+  })
   mounted.harness.change(
     mounted.harness.findAll((element) => element.type === 'textarea')[0],
     'feat: nothing',

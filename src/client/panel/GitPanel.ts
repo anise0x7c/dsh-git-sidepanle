@@ -680,6 +680,10 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
         })
 
   const commitHint = stagedRows.length > 0 ? t('commit.hint') : t('commit.hintNone')
+  // A clean workspace whose branch is ahead of a tracked upstream has nothing
+  // to commit and everything to sync, so the primary action becomes that sync
+  // and names the commits waiting to leave.
+  const syncCount = clean && ahead > 0 && remoteActions.hasUpstream ? ahead : 0
   const placeholder =
     repo === null
       ? t('commit.placeholder', { branch: '' })
@@ -794,6 +798,8 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
               menuWrapRef: actionMenu.wrap,
               onToggleMenu: toggleCommitActionMenu,
               onChoose: requestCommit,
+              syncCount,
+              onSync: remoteActions.sync,
               canPush: remoteActions.hasUpstream,
               onChange: setMessage,
             }),

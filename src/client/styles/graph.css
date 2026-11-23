@@ -103,7 +103,9 @@ body[data-ds-dark-theme] .dshgg-root {
   font-weight: 600;
 }
 
-/* VS Code `.label-container` and `.label`. */
+/* VS Code `.label-container` and `.label`. The host's superellipse corner
+ * shape would turn the clamped corner radius into a rounded square, so a badge
+ * opts back into circular corner arcs and keeps the capsule silhouette. */
 .dshgg-graphBadges {
   display: flex;
   flex-shrink: 0;
@@ -116,7 +118,8 @@ body[data-ds-dark-theme] .dshgg-root {
   align-items: center;
   color: var(--dshgg-scm-label-foreground);
   line-height: 18px;
-  border-radius: 10px;
+  border-radius: 999px;
+  corner-shape: round;
 }
 
 .dshgg-graphBadgeCount {

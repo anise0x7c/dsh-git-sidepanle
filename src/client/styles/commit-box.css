@@ -67,6 +67,12 @@
   border-radius: var(--dsw-radius-sm) 0 0 var(--dsw-radius-sm);
 }
 
+/* Syncing a clean workspace is one undivided control: the commit modes have
+   nothing to commit, so the main button keeps every corner rounded. */
+.dshgg-commitActions[data-sync="true"] > .dshgg-commitMain {
+  border-radius: var(--dsw-radius-sm);
+}
+
 .dshgg-commitExpand {
   flex: none;
   width: 30px;

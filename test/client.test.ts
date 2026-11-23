@@ -130,6 +130,12 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   )
   assert.match(graphStyles, /\.dshgg-graphLabel\s*\{[^}]*text-overflow: ellipsis;/)
   assert.match(graphStyles, /\.dshgg-graphBadges\s*\{[^}]*flex-shrink: 0;/)
+  // A reference badge is a capsule: fully rounded ends instead of the host's
+  // superellipse corner shape, which would turn it into a rounded square.
+  assert.match(
+    graphStyles,
+    /\.dshgg-graphBadge\s*\{[^}]*border-radius: 999px;[^}]*corner-shape: round;/,
+  )
   assert.match(graphStyles, /\.dshgg-graphBadgeName\s*\{[^}]*max-width: 100px;/)
   // The lines of the whole graph share one layer, so a lane that crosses a row
   // boundary is a single stroke; the layer starts on the shared row's content

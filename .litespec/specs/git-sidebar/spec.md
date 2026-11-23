@@ -127,7 +127,22 @@ Before discarding, the panel SHALL ask for explicit confirmation. Confirming SHA
 
 ### Requirement: Commit workflow
 
-The panel SHALL accept a multi-line commit message and SHALL commit staged changes only. It SHALL refuse to run any commit action when the message is empty or only whitespace. When nothing is staged, Commit, Commit and Push, and Commit and Sync SHALL each first ask whether to stage every change and commit them together, while Commit (Amend) SHALL NOT stage anything on its own. After a successful commit the panel SHALL clear the message and refresh the change groups and history. A failed commit SHALL keep the message and the staged changes, and SHALL show Git's error.
+The panel SHALL accept a multi-line commit message and SHALL commit staged
+changes only. It SHALL refuse to run any commit action when the message is
+empty or only whitespace. When nothing is staged, Commit, Commit and Push, and
+Commit and Sync SHALL each first ask whether to stage every change and commit
+them together, while Commit (Amend) SHALL NOT stage anything on its own. After
+a successful commit the panel SHALL clear the message and refresh the change
+groups and history. A failed commit SHALL keep the message and the staged
+changes, and SHALL show Git's error. When the working tree has no changes, the
+checked-out branch tracks an upstream, and the branch is ahead of that upstream
+by at least one commit, the panel SHALL replace the primary commit action with
+a sync action that names the number of local commits ahead. That sync action
+SHALL run Sync — pull by merging, then push — without a message, SHALL NOT
+offer the commit modes beside it, and SHALL show its running state while it
+runs. After it completes the panel SHALL refresh the change groups and the
+history, and the action SHALL return to Commit as soon as the workspace has a
+change again.
 
 #### Scenario: Commit staged changes
 
@@ -153,6 +168,33 @@ The panel SHALL accept a multi-line commit message and SHALL commit staged chang
 
 - **WHEN** a commit fails, for example because a hook or author identity rejects it
 - **THEN** the panel shows the failure, keeps the message text, and keeps the staged files staged
+
+#### Scenario: A clean workspace with unpushed commits shows the sync action
+
+- **GIVEN** the working tree has no changes and the checked-out branch tracks
+  an upstream and is ahead of it by three commits
+- **WHEN** the panel shows the commit box
+- **THEN** its primary action names three local commits to sync, is available
+  with an empty message, and offers no commit modes
+
+#### Scenario: Syncing a clean workspace
+
+- **WHEN** the user activates the sync action from the commit box
+- **THEN** the panel runs Sync without committing anything, reports that the
+  branch was synced, and refreshes the change groups and the history
+
+#### Scenario: The commit action returns with the first change
+
+- **WHEN** the workspace gains a change while the branch is still ahead of its
+  upstream
+- **THEN** the primary action is Commit again and needs a message
+
+#### Scenario: A branch without an upstream keeps the commit action
+
+- **GIVEN** the working tree has no changes and the checked-out branch tracks
+  no upstream
+- **WHEN** the panel shows the commit box
+- **THEN** its primary action stays Commit
 
 ### Requirement: File diff
 
@@ -888,7 +930,9 @@ references are ordered by the checked-out branch, its upstream, its base
 branch, then local branches, remote branches and tags by name; the first
 reference is a badge with its icon and its name, truncated beyond 100 pixels;
 the remaining references are grouped by color and then by kind into icon
-badges that show a count when they stand for more than one reference. A badge
+badges that show a count when they stand for more than one reference. Every
+badge SHALL be a capsule whose leading and trailing ends are half circles as
+tall as the badge, instead of a rounded rectangle. A badge
 SHALL use the reference's color as its background and the panel background as
 its text color, where the checked-out branch, its upstream and its base branch
 keep their own colors and every other reference takes its node's color. The
@@ -904,6 +948,13 @@ relative time.
   upstream remote branch
 - **THEN** the row shows a blue badge with a target icon and the branch name,
   followed by a purple cloud badge without a name
+
+#### Scenario: Badge ends are capsules
+
+- **WHEN** a commit row shows its reference badges
+- **THEN** each badge's leading and trailing ends are half circles as tall as
+  the badge, so a badge reads as a capsule rather than a rounded square on
+  both themes
 
 #### Scenario: Branch and its remote on another line
 
@@ -923,13 +974,6 @@ relative time.
 - **WHEN** the row is too narrow for the subject, author and badges
 - **THEN** the subject and author are truncated with an ellipsis while the
   badges keep their size
-
-#### Scenario: Details remain in the tooltip
-
-- **WHEN** the user hovers a commit row
-- **THEN** the tooltip shows every reference, the short identifier, subject,
-  author and relative time, and activating the row still toggles the commit's
-  inline file list
 
 ### Requirement: Branch switching
 
