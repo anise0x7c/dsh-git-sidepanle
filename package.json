@@ -17,6 +17,8 @@
     "client.js",
     "client.js.map",
     "cordis.patch.yml",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md",
     "src",
     "locale/*.json",
     "docs",

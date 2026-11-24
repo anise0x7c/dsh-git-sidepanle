@@ -101,6 +101,16 @@ the project keeps its records in one place:
   refactor and maintenance records are removed; their durable rules live in the
   guides and the development-workflow specification.
 
+The repository now states its licensing and third-party provenance in one
+place:
+
+- `THIRD-PARTY-NOTICES.md` records the Code OSS (MIT) material the commit graph
+  ports, the test-only oracle transcription, the codicon designs the inline
+  icons follow (no upstream font or assets are shipped), and what is not
+  distributed: React, the host UI primitives and the build dependencies.
+- The derived source files keep Microsoft's copyright line and point at the
+  notice, which now ships with the plugin's file set together with `LICENSE`.
+
 ## 0.13.1
 
 Commit details now show in file tree which can be collapsed

@@ -7,7 +7,8 @@
  * `renderSCMHistoryItemGraph`, `renderSCMHistoryGraphPlaceholder`,
  * `compareHistoryItemRefs`) and `scmHistoryViewPane.ts`
  * (`HistoryItemChangeRenderer._renderGraphPlaceholder`).
- * Copyright (c) Microsoft Corporation. Licensed under the MIT License.
+ * Copyright (c) Microsoft Corporation. Licensed under the MIT License; see
+ * THIRD-PARTY-NOTICES.md for the full upstream license text.
  *
  * Kept deliberately close to the original statement by statement, including
  * the parentless-commit behavior the plugin's port intentionally changes, so a

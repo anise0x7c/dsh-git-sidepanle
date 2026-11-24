@@ -94,3 +94,7 @@ use the linked docs for behavior and implementation details.
   or bump versions unless explicitly asked. When requested, use Conventional
   Commits with an imperative subject, and use SemVer for version bumps. Update
   the changelog in the same change as the version bump.
+- Keep [LICENSE](LICENSE) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+  current. A file derived from another project keeps that project's copyright
+  line and is named there with its license and holder; a newly distributed
+  dependency or asset updates the notice in the same change.

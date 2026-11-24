@@ -87,4 +87,5 @@ the served artifact rather than starting another server.
 
 ## License
 
-MIT — see [LICENSE](<LICENSE>).
+MIT — see [LICENSE](<LICENSE>). Third-party components and their licenses are
+listed in [THIRD-PARTY-NOTICES.md](<THIRD-PARTY-NOTICES.md>).

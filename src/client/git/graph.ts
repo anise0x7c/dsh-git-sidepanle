@@ -1,10 +1,11 @@
 /**
  * Commit-graph layout and drawing, ported from Code OSS's Source Control Graph:
- * microsoft/vscode `src/vs/workbench/contrib/scm/browser/scmHistory.ts`
+ * microsoft/vscode(code-oss) `src/vs/workbench/contrib/scm/browser/scmHistory.ts`
  * (`toISCMHistoryItemViewModelArray`, `renderSCMHistoryItemGraph`,
  * `renderSCMHistoryGraphPlaceholder`) and `scmHistoryViewPane.ts`
  * (`HistoryItemRenderer._renderBadges`, `HistoryItemChangeRenderer`).
- * Copyright (c) Microsoft Corporation. Licensed under the MIT License.
+ * Copyright (c) Microsoft Corporation. Licensed under the MIT License; see
+ * THIRD-PARTY-NOTICES.md for the full upstream license text.
  *
  * Every row carries the ordered swimlanes entering it from above (`input`) and
  * leaving it below (`output`); each swimlane is a line heading for one commit.
@@ -16,8 +17,8 @@
  * change's design notes for the deliberate deviations (root commits keep other
  * lanes; node gaps are a mask rather than background-colored strokes; the lines
  * of the whole graph are one layer, so a lane crossing a row boundary is one
- * stroke instead of two; an expanded commit widens its own node lane, so VS
- * Code's wide change-row stroke starts at the row's top edge instead of its
+ * stroke instead of two; an expanded commit widens its own node lane, so the
+ * wide change-row stroke starts at the row's top edge rather than Code OSS's
  * bottom edge; the palette is restyled within its hue families).
  *
  * Pure data in and out: no React, no DOM, no plugin context, so the layout is
