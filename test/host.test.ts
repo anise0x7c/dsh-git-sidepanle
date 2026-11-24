@@ -638,7 +638,7 @@ test('history lists branches topologically and reports the graph references', as
       base: { id: 'refs/remotes/origin/master', name: 'origin/master', revision: root },
     })
 
-    // A configured VS Code merge base wins over the default branch.
+    // A configured Code OSS merge base wins over the default branch.
     await git(graphRepo, 'config', 'branch.main.vscode-merge-base', 'origin/release')
     history = (await callAt(baseUrl, 'history')).body.value
     assert.deepEqual(history.references.base, {

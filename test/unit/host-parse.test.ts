@@ -723,7 +723,7 @@ describe('graph references', () => {
     )
   })
 
-  test('prefers a configured VS Code merge base that names a remote branch', () => {
+  test('prefers a configured Code OSS merge base that names a remote branch', () => {
     const resolved = resolveGraphReferences({
       records,
       remotes: ['origin'],

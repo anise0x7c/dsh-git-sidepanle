@@ -1,6 +1,6 @@
 /**
  * The commit-history section: its loading note, retryable failure note, empty note and
- * the commit rows, drawn like VS Code's Source Control Graph — the swimlane
+ * the commit rows, drawn like Code OSS's Source Control Graph — the swimlane
  * lines of the whole graph in one layer, each row's node, the subject with its
  * dimmed author, and the colored reference badges — plus the rows an expanded
  * commit lists below itself and the copy-menu targets. The section header also

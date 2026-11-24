@@ -147,7 +147,7 @@ export interface GraphReference {
 }
 
 /**
- * The references VS Code's Source Control Graph colors specially: the
+ * The references Code OSS's Source Control Graph colors specially: the
  * checked-out branch (blue), its upstream (purple) and its base branch
  * (orange). Each is null when the repository has none.
  */

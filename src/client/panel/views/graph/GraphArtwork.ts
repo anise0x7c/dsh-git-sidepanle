@@ -103,7 +103,7 @@ export function GraphBody(props: GraphBodyProps): React.ReactElement {
 }
 
 /**
- * The row's cell (VS Code `renderSCMHistoryItemGraph`): the node on top of the
+ * The row's cell (Code OSS `renderSCMHistoryItemGraph`): the node on top of the
  * section's line layer, sized to the row's graph width so the text starts right
  * after it. The node circles carry their hover radii as custom properties for
  * the stylesheet.

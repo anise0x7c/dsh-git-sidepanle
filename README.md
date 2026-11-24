@@ -2,7 +2,7 @@
 
 [![AI-DECLARATION: copilot](https://img.shields.io/badge/䷼%20AI--DECLARATION-copilot-fee2e2?labelColor=fee2e2)](https://ai-declaration.md)
 
-A VS Code-style Git source-control sidebar for the DeepSeek Harness Web GUI.
+A Code OSS-style Git source-control sidebar for the DeepSeek Harness Web GUI.
 It adds a **Source control** tab to the right Sidebar: staged/unstaged/merge
 changes as flat, path-sorted lists, a commit box, unified diff tabs, a commit graph
 whose commits expand inline to list the files they changed (with a details view
@@ -42,12 +42,14 @@ On Linux under DSH's `workspace-write` sandbox the install is rejected with
 `$XDG_RUNTIME_DIR`, outside the workspace. Run it as
 
 ```bash
-mkdir -p .cache/runtime
-XDG_RUNTIME_DIR="$PWD/.cache/runtime" pnpm install --frozen-lockfile
+mkdir -p .temp/cache/runtime
+XDG_RUNTIME_DIR="$PWD/.temp/cache/runtime" pnpm install --frozen-lockfile
 ```
 
 instead; pnpm then keeps its store under `node_modules/`. This workaround is
-Linux-only — a normal terminal, or macOS/Windows, needs the plain command.
+Linux-only — a normal terminal, or macOS/Windows, needs the plain command. All
+project scratch output (caches, logs, screenshots, probe HTML) lives under the
+ignored `.temp/` folder.
 
 `pnpm check` deliberately does **not** build first: stale committed artifacts
 must fail rather than silently repair themselves. CI runs the same gate on Node
@@ -63,11 +65,10 @@ committed. Never hand-edit them. Installing a prepared directory needs no build,
 TypeScript loader or development dependencies. Development dependencies do not
 run install scripts; platform binary packages provide esbuild and Biome directly.
 
-See [Architecture](<docs/ARCHITECTURE.md>) for module boundaries and loader
-contracts, [Refactor record](<docs/REFACTOR-PLAN.md>) for migration decisions,
-[Maintenance audit](<docs/MAINTENANCE-AUDIT.md>) for findings and remaining trust boundaries,
-[Usage](<docs/DETAIL.md>) / [中文说明](<docs/DETAIL.zh.md>) for features and limitations,
-and [Changelog](<CHANGELOG.md>) for released changes.
+See [Architecture](<docs/ARCHITECTURE.md>) for module boundaries, loader
+contracts and the build and quality gates, [Usage](<docs/DETAIL.md>) /
+[中文说明](<docs/DETAIL.zh.md>) for features and limitations, and
+[Changelog](<CHANGELOG.md>) for released changes.
 
 ## Install and open
 

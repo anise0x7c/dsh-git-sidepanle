@@ -44,7 +44,7 @@ missed one leaves stale colors.
 
 The recursive root watcher also creates OS watches below `.git`; the plugin
 filters those events but cannot exclude the directories from the recursive
-watch API. This mirrors VS Code's recursive repository watcher and is bounded by
+watch API. This mirrors Code OSS's recursive repository watcher and is bounded by
 one watcher set per open repository.
 
 ## Lifecycle

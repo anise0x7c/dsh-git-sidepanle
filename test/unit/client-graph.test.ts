@@ -1,11 +1,11 @@
 /**
  * Direct unit tests for the browser half's pure commit-graph layout, a port of
- * VS Code's Source Control Graph.
+ * Code OSS's Source Control Graph.
  *
  * These import `src/client/git/graph.ts` directly — no React, no DOM, no plugin
  * context. Hand-written cases pin the visible behavior (swimlanes, path
  * commands, node shapes, colors, badges); an equivalence test compares the
- * port with a literal transcription of VS Code's algorithm on random
+ * port with a literal transcription of Code OSS's algorithm on random
  * histories. The port's only visible color deviation is its restyled palette;
  * every path command is compared literally.
  */
@@ -33,13 +33,13 @@ import {
   sortRefs,
 } from '../../src/client/git/graph.ts'
 import type { GraphReferences } from '../../src/client/types/domain.ts'
-import type { OracleItem } from '../support/vscode-scm-history.ts'
+import type { OracleItem } from '../support/code-oss-scm-history.ts'
 import {
   placeholderHighlightIndex,
   renderGraph,
   renderGraphPlaceholder,
   toViewModels,
-} from '../support/vscode-scm-history.ts'
+} from '../support/code-oss-scm-history.ts'
 
 /**
  * Build one history commit record.
@@ -86,7 +86,7 @@ const REFERENCES: GraphReferences = {
   base: { id: 'refs/remotes/origin/master', name: 'origin/master', revision: 'base' },
 }
 
-describe('VS Code constants', () => {
+describe('Code OSS constants', () => {
   test('uses the Source Control Graph row height, lane pitch and palette', () => {
     assert.equal(SWIMLANE_HEIGHT, 22)
     assert.equal(SWIMLANE_WIDTH, 11)
@@ -261,7 +261,7 @@ describe('computeGraph swimlanes', () => {
       [0, 0, 0],
     )
     assert.deepEqual(paths(rows[0]), [])
-    assert.equal(rows[0]?.color, 'ref', 'a lone root takes the reference color like VS Code')
+    assert.equal(rows[0]?.color, 'ref', 'a lone root takes the reference color like Code OSS')
   })
 })
 
@@ -587,7 +587,7 @@ describe('graphRowGeometry overhang', () => {
     ])
   })
 
-  test('leaves the row paths themselves VS Code-exact', () => {
+  test('leaves the row paths themselves Code OSS-exact', () => {
     const rows = computeGraph([
       commit('tip', ['main', 'side']),
       commit('main', ['base']),
@@ -834,8 +834,8 @@ function randomHistory(seed: number, size: number): GraphCommit[] {
   })
 }
 
-describe('equivalence with VS Code', () => {
-  test('matches VS Code swimlanes, paths, node colors and badge colors on random histories', () => {
+describe('equivalence with Code OSS', () => {
+  test('matches Code OSS swimlanes, paths, node colors and badge colors on random histories', () => {
     const references: GraphReferences = {
       current: { id: 'refs/heads/main', name: 'main', revision: 'c0' },
       remote: { id: 'refs/remotes/origin/main', name: 'origin/main', revision: 'x' },

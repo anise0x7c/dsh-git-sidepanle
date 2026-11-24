@@ -4,13 +4,13 @@
 
 ### Requirement: Commit graph drawing
 
-The graph SHALL follow VS Code's Source Control Graph geometry: rows 22 pixels
+The graph SHALL follow Code OSS's Source Control Graph geometry: rows 22 pixels
 high, line positions 11 pixels apart with the first position 11 pixels from the
 graph's left edge, nodes centered vertically in their row, and lines drawn one
 pixel wide with round caps. A continuing line SHALL be vertical. A line that
 moves left on a row SHALL descend briefly, turn with a 4.5-pixel radius into a
 horizontal run at the row's middle, and turn with the same radius down into its
-new position; this tighter radius, rather than VS Code's 5 pixels, is deliberate.
+new position; this tighter radius, rather than Code OSS's 5 pixels, is deliberate.
 A line joining a node from the right SHALL turn with an 11-pixel quarter curve
 from its position into the row's middle and run horizontally into the node. A
 merge's additional parent line SHALL leave the node horizontally and turn with
@@ -57,7 +57,7 @@ between device pixels.
 
 ### Requirement: Commit graph colors
 
-Graph lines SHALL take a palette that is slightly more vivid than VS Code's
+Graph lines SHALL take a palette that is slightly more vivid than Code OSS's
 Source Control Graph colors while keeping each color's hue: a new line SHALL take
 the next color of the five-color rotation `#FFB300`, `#E3007F`, `#A85600`,
 `#2CB2A7`, `#B266FF`, in the order lines are created from the top of the graph
@@ -70,9 +70,9 @@ instead of a rotation color. The blue SHALL be `#0A7EFF` in the light theme and
 `#2E91FF` in the dark theme, the purple `#672696` in the light theme and
 `#B37DDD` in the dark theme, and the orange `#F26100` in both. The blue and
 purple SHALL switch between their light and dark variants with the host theme.
-Each color SHALL keep the hue of the VS Code value it replaces within two
+Each color SHALL keep the hue of the Code OSS value it replaces within two
 degrees and SHALL not become less vivid. The base branch SHALL be the remote
-branch configured as the branch's VS Code merge base, otherwise the default
+branch configured as the branch's Code OSS merge base, otherwise the default
 branch of the default remote, and SHALL only apply when it differs from the
 upstream. A node SHALL take the color of the line its first parent continues,
 or of its incoming line when it has no parents, and a joining line SHALL keep
@@ -108,5 +108,5 @@ its own color until it reaches the node.
 #### Scenario: The tuned palette stays in the same hue families
 
 - **WHEN** the graph draws a rotation or reference color
-- **THEN** the color is a slightly more vivid version of the VS Code hue it
+- **THEN** the color is a slightly more vivid version of the Code OSS hue it
   replaces, within two degrees of that hue

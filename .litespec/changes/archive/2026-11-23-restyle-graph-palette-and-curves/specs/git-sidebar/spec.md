@@ -4,13 +4,13 @@
 
 ### Requirement: Commit graph drawing
 
-The graph SHALL follow VS Code's Source Control Graph geometry: rows 22 pixels
+The graph SHALL follow Code OSS's Source Control Graph geometry: rows 22 pixels
 high, line positions 11 pixels apart with the first position 11 pixels from the
 graph's left edge, nodes centered vertically in their row, and lines drawn one
 pixel wide with round caps. A continuing line SHALL be vertical. A line that
 moves left on a row SHALL descend briefly, turn with a 3-pixel radius into a
 horizontal run at the row's middle, and turn with the same radius down into its
-new position; this tighter radius, rather than VS Code's 5 pixels, is deliberate.
+new position; this tighter radius, rather than Code OSS's 5 pixels, is deliberate.
 A line joining a node from the right SHALL turn with an 11-pixel quarter curve
 from its position into the row's middle and run horizontally into the node. A
 merge's additional parent line SHALL leave the node horizontally and turn with
@@ -57,7 +57,7 @@ between device pixels.
 
 ### Requirement: Commit graph colors
 
-Graph lines SHALL use a restyled palette that is clearly distinct from VS Code's
+Graph lines SHALL use a restyled palette that is clearly distinct from Code OSS's
 Source Control Graph while keeping the same hue families and readable contrast: a
 new line SHALL take the next color of the five-color rotation `#D6A700` (gold),
 `#E0065B` (crimson), `#A66200` (copper), `#3EAD76` (emerald), `#9362F4`
@@ -73,7 +73,7 @@ instead of a rotation color. The blue SHALL be `#0088CD` in the light theme and
 purple SHALL switch between their light and dark variants with the host theme.
 Every color SHALL keep at least a 2:1 contrast ratio against the panel
 background in both themes. The base branch SHALL be the remote branch configured
-as the branch's VS Code merge base, otherwise the default branch of the default
+as the branch's Code OSS merge base, otherwise the default branch of the default
 remote, and SHALL only apply when it differs from the upstream. A node SHALL
 take the color of the line its first parent continues, or of its incoming line
 when it has no parents, and a joining line SHALL keep its own color until it

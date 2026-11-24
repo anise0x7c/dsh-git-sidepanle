@@ -10,7 +10,7 @@ the change list, ahead/behind counts, and the graph's checked-out reference
 stale until the user refreshes - while the panel is visible and supposed to be
 trustworthy.
 
-VS Code does not work this way. Its Git extension watches the repository's
+Code OSS does not work this way. Its Git extension watches the repository's
 working tree with the platform file watcher and the `.git` directory (HEAD,
 index and packed references) with a second watcher, coalesces events with a
 one-second debounce, skips status while another operation runs, and runs
@@ -44,7 +44,7 @@ repository and run Git.
 
 - No change to staging, committing, discarding, diffing, checkout, paging or
   graph drawing rules; this change only decides when existing reads run.
-- No new detached-HEAD color rule. The graph already follows VS Code when its
+- No new detached-HEAD color rule. The graph already follows Code OSS when its
   references are current; this change only makes sure an external checkout,
   attached or detached, is read promptly.
 - No Git hooks, no shell, and no changes to the guarded route paths or the

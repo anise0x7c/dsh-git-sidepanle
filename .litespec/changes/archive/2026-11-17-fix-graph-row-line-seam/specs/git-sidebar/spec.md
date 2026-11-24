@@ -4,7 +4,7 @@
 
 ### Requirement: Commit graph drawing
 
-The graph SHALL reproduce VS Code's Source Control Graph geometry: rows 22
+The graph SHALL reproduce Code OSS's Source Control Graph geometry: rows 22
 pixels high, line positions 11 pixels apart with the first position 11 pixels
 from the graph's left edge, nodes centered vertically in their row, and lines
 drawn one pixel wide with round caps. A continuing line SHALL be vertical. A

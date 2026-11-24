@@ -2,7 +2,7 @@
   "name": "@local/dsh-git-graph",
   "version": "0.13.1",
   "private": true,
-  "description": "A VS Code-style Git source-control sidebar for the DeepSeek Harness Web GUI",
+  "description": "A Code OSS-style Git source-control sidebar for the DeepSeek Harness Web GUI",
   "type": "module",
   "icon": "icon.svg",
   "exports": {

@@ -6,7 +6,7 @@
 
 Activating a commit row in the graph, by pointer or by Enter or Space while
 the row has keyboard focus, SHALL toggle a list of the files that commit
-changed relative to its first parent directly below the row, as VS Code's
+changed relative to its first parent directly below the row, as Code OSS's
 Source Control Graph expands a history item. The row SHALL expose whether it is
 expanded to assistive technology. Several commits SHALL be able to stay
 expanded at the same time, and activating an expanded row SHALL collapse its list. Each listed file
@@ -72,8 +72,7 @@ SHALL NOT replace the change list or the graph.
 
 ### Requirement: Expanded commit drawing
 
-The rows listed under an expanded commit SHALL continue the commit graph as VS
-Code draws an expanded history item's changes: every line that leaves the
+The rows listed under an expanded commit SHALL continue the commit graph as Code OSS draws an expanded history item's changes: every line that leaves the
 commit's row at its bottom edge SHALL continue vertically in its own position
 and color through each listed row, the line in the commit node's position SHALL
 be drawn three pixels wide and the others one pixel wide, and the next commit
@@ -188,7 +187,7 @@ A commit row SHALL present actions in this order: View Details, a separator, a c
 Each commit row SHALL show, on one line beside its graph cell, the commit's
 subject followed by its dimmed author, truncated together with an ellipsis,
 and then the commit's reference badges, which keep their size. The checked-out
-commit's subject and author SHALL be bold. Badges SHALL follow VS Code's rules:
+commit's subject and author SHALL be bold. Badges SHALL follow Code OSS's rules:
 references are ordered by the checked-out branch, its upstream, its base
 branch, then local branches, remote branches and tags by name; the first
 reference is a badge with its icon and its name, truncated beyond 100 pixels;

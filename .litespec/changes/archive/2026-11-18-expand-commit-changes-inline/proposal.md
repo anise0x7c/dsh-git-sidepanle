@@ -2,7 +2,7 @@
 
 ## Why
 
-VS Code's Source Control Graph lets a commit row expand in place to list the
+Code OSS's Source Control Graph lets a commit row expand in place to list the
 files that commit changed, with the graph lanes running on through the expanded
 rows, so a quick look never leaves the graph. This panel instead replaces the
 change list and the graph with a separate details view on every click, which is
@@ -11,7 +11,7 @@ heavy for a glance and loses the user's place in the history.
 ## What Changes
 
 - Activating a commit row (click, Enter or Space) toggles an inline list of the
-  commit's changed files directly under the row, reproducing VS Code's
+  commit's changed files directly under the row, reproducing Code OSS's
   expanded history item: 22-pixel rows, every line that leaves the commit
   continuing vertically through them with the commit's own line drawn
   three pixels wide, a file icon, the file name with its dimmed directory, and
@@ -30,7 +30,7 @@ heavy for a glance and loses the user's place in the history.
 ## Non-goals
 
 - A tree view mode, folder rows or per-file inline action buttons in the
-  expanded list, and VS Code's file-icon themes (a single generic file icon
+  expanded list, and Code OSS's file-icon themes (a single generic file icon
   stands in).
 - A multi-file diff editor or an inline "view changes" button on the commit row.
 - Host, RPC or wire changes: the expanded list reuses the existing commit

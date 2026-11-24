@@ -6,7 +6,7 @@
 
 Activating a commit row in the graph, by pointer or by Enter or Space while
 the row has keyboard focus, SHALL toggle a list of the files that commit
-changed relative to its first parent directly below the row, as VS Code's
+changed relative to its first parent directly below the row, as Code OSS's
 Source Control Graph expands a history item. The row SHALL expose whether it is
 expanded to assistive technology. Several commits SHALL be able to stay
 expanded at the same time, and activating an expanded row SHALL collapse its list. Each listed file

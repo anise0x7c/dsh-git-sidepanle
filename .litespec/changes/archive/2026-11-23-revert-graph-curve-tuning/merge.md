@@ -5,7 +5,7 @@
 
 ## Notes
 
-Curve tuning dropped: SWIMLANE_CURVE_RADIUS back to VS Code's 5, the oracle is literal again, and the unit/UI path assertions pin VS Code's 5-pixel paths. The restyled palette and its 2:1 contrast floor stay.
+Curve tuning dropped: SWIMLANE_CURVE_RADIUS back to Code OSS's 5, the oracle is literal again, and the unit/UI path assertions pin Code OSS's 5-pixel paths. The restyled palette and its 2:1 contrast floor stay.
 
 ## Capabilities
 

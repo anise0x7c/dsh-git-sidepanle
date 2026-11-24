@@ -1,5 +1,5 @@
 /**
- * A literal, DOM-free transcription of VS Code's Source Control Graph model and
+ * A literal, DOM-free transcription of Code OSS's Source Control Graph model and
  * renderer, used only as an oracle by the equivalence tests.
  *
  * Source: microsoft/vscode `src/vs/workbench/contrib/scm/browser/scmHistory.ts`
@@ -12,47 +12,47 @@
  * Kept deliberately close to the original statement by statement, including
  * the parentless-commit behavior the plugin's port intentionally changes, so a
  * divergence in the port shows up as a test failure instead of being copied.
- * SVG elements are replaced by `{ d, color }` records in the order VS Code
+ * SVG elements are replaced by `{ d, color }` records in the order Code OSS
  * appends them; incoming/outgoing change rows are not modeled.
  */
 
-/** VS Code `SWIMLANE_HEIGHT`. */
+/** Code OSS `SWIMLANE_HEIGHT`. */
 const SWIMLANE_HEIGHT = 22
-/** VS Code `SWIMLANE_WIDTH`. */
+/** Code OSS `SWIMLANE_WIDTH`. */
 const SWIMLANE_WIDTH = 11
-/** VS Code `SWIMLANE_CURVE_RADIUS`. */
+/** Code OSS `SWIMLANE_CURVE_RADIUS`. */
 const SWIMLANE_CURVE_RADIUS = 5
 
-/** VS Code `colorRegistry`, as the plugin's identifiers. */
+/** Code OSS `colorRegistry`, as the plugin's identifiers. */
 const colorRegistry = ['lane1', 'lane2', 'lane3', 'lane4', 'lane5']
-/** VS Code `historyItemRefColor`. */
+/** Code OSS `historyItemRefColor`. */
 const historyItemRefColor = 'ref'
 
-/** VS Code `ISCMHistoryItemRef`, reduced. */
+/** Code OSS `ISCMHistoryItemRef`, reduced. */
 export interface OracleRef {
   id: string
   name: string
   /**
-   * VS Code models this field as `string | undefined`. It stays optional so
+   * Code OSS models this field as `string | undefined`. It stays optional so
    * inputs may omit it, while an explicit `undefined` survives the copy.
    */
   color?: string | undefined
 }
 
-/** VS Code `ISCMHistoryItem`, reduced. */
+/** Code OSS `ISCMHistoryItem`, reduced. */
 export interface OracleItem {
   id: string
   parentIds: string[]
   references?: OracleRef[]
 }
 
-/** VS Code `ISCMHistoryItemGraphNode`. */
+/** Code OSS `ISCMHistoryItemGraphNode`. */
 export interface OracleNode {
   id: string
   color: string
 }
 
-/** VS Code `ISCMHistoryItemViewModel`, reduced. */
+/** Code OSS `ISCMHistoryItemViewModel`, reduced. */
 export interface OracleViewModel {
   historyItem: OracleItem
   kind: 'HEAD' | 'node'
@@ -69,7 +69,7 @@ export interface OracleRender {
 }
 
 /**
- * VS Code `rot`.
+ * Code OSS `rot`.
  * @param index - index.
  * @param modulo - modulo.
  * @returns rotated index.
@@ -79,7 +79,7 @@ function rot(index: number, modulo: number): number {
 }
 
 /**
- * VS Code `getLabelColorIdentifier`, without the incoming/outgoing branches.
+ * Code OSS `getLabelColorIdentifier`, without the incoming/outgoing branches.
  * @param historyItem - history item.
  * @param colorMap - color map.
  * @returns color, or undefined.
@@ -98,7 +98,7 @@ function getLabelColorIdentifier(
 }
 
 /**
- * VS Code `toISCMHistoryItemViewModelArray`, without incoming/outgoing rows.
+ * Code OSS `toISCMHistoryItemViewModelArray`, without incoming/outgoing rows.
  * @param historyItems - history items.
  * @param colorMap - color map.
  * @param currentHistoryItemRef - current reference.
@@ -215,7 +215,7 @@ export function toViewModels(
 }
 
 /**
- * VS Code `compareHistoryItemRefs`.
+ * Code OSS `compareHistoryItemRefs`.
  * @param ref1 - left.
  * @param ref2 - right.
  * @param currentHistoryItemRef - current.
@@ -252,7 +252,7 @@ function compareHistoryItemRefs(
 }
 
 /**
- * VS Code `findLastIndex`.
+ * Code OSS `findLastIndex`.
  * @param nodes - nodes.
  * @param id - id.
  * @returns index.
@@ -268,7 +268,7 @@ function findLastIndex(nodes: OracleNode[], id: string): number {
 }
 
 /**
- * VS Code `renderSCMHistoryItemGraph`, recording paths instead of SVG nodes.
+ * Code OSS `renderSCMHistoryItemGraph`, recording paths instead of SVG nodes.
  * @param historyItemViewModel - view model.
  * @returns rendered paths and node data.
  */
@@ -405,7 +405,7 @@ export function renderGraph(historyItemViewModel: OracleViewModel): OracleRender
   }
 }
 
-/** One rendered placeholder line, with VS Code's stroke width. */
+/** One rendered placeholder line, with Code OSS's stroke width. */
 export interface OraclePlaceholderPath {
   d: string
   color: string
@@ -413,7 +413,7 @@ export interface OraclePlaceholderPath {
 }
 
 /**
- * VS Code `renderSCMHistoryGraphPlaceholder(columns, highlightIndex)`: the
+ * Code OSS `renderSCMHistoryGraphPlaceholder(columns, highlightIndex)`: the
  * graph area of one row under an expanded history item.
  * @param columns - the history item's output swimlanes.
  * @param highlightIndex - the column drawn wider, if any.

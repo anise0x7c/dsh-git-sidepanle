@@ -1,20 +1,20 @@
-# Design: VS Code commit graph
+# Design: Code OSS commit graph
 
 ## Reference
-The layout, drawing and badge rules are ported from VS Code's
+The layout, drawing and badge rules are ported from Code OSS's
 `src/vs/workbench/contrib/scm/browser/scmHistory.ts`
 (`toISCMHistoryItemViewModelArray`, `renderSCMHistoryItemGraph`),
 `scmHistoryViewPane.ts` (`HistoryItemRenderer._renderBadges`), `media/scm.css`
 and the Git extension's `historyProvider.ts` (reference icons and order) —
-Copyright (c) Microsoft Corporation, MIT License. The port keeps VS Code's
+Copyright (c) Microsoft Corporation, MIT License. The port keeps Code OSS's
 constants (`SWIMLANE_HEIGHT = 22`, `SWIMLANE_WIDTH = 11`,
 `SWIMLANE_CURVE_RADIUS = 5`, `CIRCLE_RADIUS = 4`, `CIRCLE_STROKE_WIDTH = 2`),
-emits the same SVG path commands, and keeps VS Code's color identifiers as
+emits the same SVG path commands, and keeps Code OSS's color identifiers as
 plugin-scoped CSS variables.
 
 ## Data flow
 - Host `history` runs `git log --branches --tags --remotes --topo-order
-  --decorate=full` (VS Code's "All" filter uses `--topo-order` and full
+  --decorate=full` (Code OSS's "All" filter uses `--topo-order` and full
   decorations) and, in parallel, reads the graph references: one
   `for-each-ref` over `refs/heads` and `refs/remotes` (current branch marker,
   upstream, remote `HEAD` symrefs), `git remote`, the optional
@@ -22,8 +22,8 @@ plugin-scoped CSS variables.
   only when HEAD is detached. Nothing is written.
 - The value is `{ commits, references: { current, remote, base } }`; each
   reference is `{ id, name, revision }` with a full ref name as `id` (a commit
-  id for a detached HEAD, as VS Code does).
-- The browser builds VS Code's color map: current → `ref`, upstream →
+  id for a detached HEAD, as Code OSS does).
+- The browser builds Code OSS's color map: current → `ref`, upstream →
   `remote`, base → `base`; every other reference maps to "no fixed color", so
   its badge takes the node's color, exactly like the "All" filter.
 
@@ -37,19 +37,19 @@ plugin-scoped CSS variables.
 - Colors are the identifiers `lane1`..`lane5`, `ref`, `remote`, `base`; the view
   maps them to `var(--dshgg-scm-…)`.
 
-## Deliberate deviations from VS Code
-- VS Code drops every outgoing line at a parentless commit (its first-parent
+## Deliberate deviations from Code OSS
+- Code OSS drops every outgoing line at a parentless commit (its first-parent
   loop only runs when the commit has parents), which cuts unrelated branches
   when a root commit is listed mid-graph. The port keeps the other lines and
   only ends the root commit's own lines; the node color rule is unchanged.
-- VS Code paints the node gap with `stroke: var(--vscode-sideBar-background)`.
+- Code OSS paints the node gap with `stroke: var(--vscode-sideBar-background)`.
   DSH's sidebar surfaces can be translucent, so the port cuts the lines with a
   per-row SVG mask instead: the masked radius is the node's outer stroke edge
   (6, 7 or 8 pixels) and shrinks to the node's visible edge (4, 5 or 6 pixels)
-  on row hover, matching VS Code's `stroke: transparent` hover rule. The node
+  on row hover, matching Code OSS's `stroke: transparent` hover rule. The node
   shapes are drawn as fill and stroke circles with the same visible radii.
-- The base branch uses only the configured VS Code merge base and the default
-  remote's `HEAD`; the reflog heuristic is skipped because VS Code persists its
+- The base branch uses only the configured Code OSS merge base and the default
+  remote's `HEAD`; the reflog heuristic is skipped because Code OSS persists its
   result into the repository configuration and the panel never writes it.
 - Badge text uses the host base background (`--dsw-alias-bg-base`) in place of
   `panel.background`.

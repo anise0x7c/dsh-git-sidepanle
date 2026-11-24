@@ -31,11 +31,10 @@ coverage is clamped to one, so overlapping or abutting subpaths inside it merge
 into one continuous outline: the row edges are no longer boundaries at all. The
 same layer holds the node gaps as circles in its mask.
 
-- `graphRowGeometry(row, offset)` keeps VS Code's per-row path commands and adds
+- `graphRowGeometry(row, offset)` keeps Code OSS's per-row path commands and adds
   the row's offset, so the layer can place a row's pieces in the graph's
-  coordinates. With the offset at zero the commands are byte-identical to VS
-  Code's, which the equivalence test against
-  `test/support/vscode-scm-history.ts` still checks.
+  coordinates. With the offset at zero the commands are byte-identical to Code OSS's, which the equivalence test against
+  `test/support/code-oss-scm-history.ts` still checks.
 - `graphLayer(rows)` collects `paths` and `bridge` per color, the node gaps in
   layer coordinates, and the layer's size.
 - The row keeps a cell that holds its node and is as wide as its graph width,

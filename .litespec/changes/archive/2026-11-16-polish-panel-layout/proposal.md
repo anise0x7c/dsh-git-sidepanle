@@ -28,6 +28,6 @@ sidebar headers. The user asked for four specific refinements.
 - No horizontal split, pane persistence across closing and reopening the tab,
   or independent pane widths.
 - No change to staging, committing, diffs, menus, branch switching, the commit
-  graph's VS Code geometry or palette, or the RPC/Host contracts.
+  graph's Code OSS geometry or palette, or the RPC/Host contracts.
 - The diff tab and the single-scroll loading, empty, error and commit-detail
   states keep their current layout.

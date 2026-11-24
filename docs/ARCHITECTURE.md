@@ -8,15 +8,14 @@ One DSH bundle, two runtime halves, and shared **type-only** wire contracts:
 - **Wire types**: `src/shared/git.ts`. Type-only imports disappear from both
   builds: the browser never imports Host execution code.
 
-The maintenance audit and its remaining trust boundaries are recorded in
-`docs/MAINTENANCE-AUDIT.md`. The current refactor intentionally leaves the pure
-VS Code graph algorithm intact; section state, artwork and row presentation have
-separate owners instead.
+The current refactor intentionally leaves the pure Code OSS graph algorithm
+intact; section state, artwork and row presentation have separate owners
+instead. Module boundaries, the build and quality gates, and the remaining
+trust boundaries are described in this guide and the user guides.
 
 Both distribution entries and their source maps are committed. Installation
 needs neither a compiler nor development dependencies. The Git Sidebar behavior
-specification remains the source of truth; migration decisions are recorded in
-`docs/REFACTOR-PLAN.md` and the development-workflow LiteSpec change.
+specification remains the source of truth.
 
 ## Directory map
 
@@ -61,7 +60,7 @@ src/
     host-file-icon.ts         the host's file-type glyph, resolved softly with the plugin icon as fallback
     toast/                    the single-notice store and the native Toast host with a shared-service fallback
     data/caller.ts            the only fetch layer
-    git/{format,list,graph,tree}.ts pure formatting, list ordering, commit-file tree, VS Code graph port
+    git/{format,list,graph,tree}.ts pure formatting, list ordering, commit-file tree, Code OSS graph port
     menu/                     targets, triggers, clipboard, actions, command bus
     panel/
       controls.ts, rows.ts    controls and rows for the flat change lists and the commit-details folder tree
@@ -91,7 +90,7 @@ test/
   types/rpc.type-test.ts      compile-only RPC request/response assertions
   support/architecture.ts     TypeScript-AST import graph checks over virtual source trees
   unit/*.test.ts              pure modules, no Git process or DOM
-  support/*.ts                fixtures, minimal React, fake context/menu, VS Code graph oracle
+  support/*.ts                fixtures, minimal React, fake context/menu, Code OSS graph oracle
 ```
 
 ## Dependency direction
@@ -152,10 +151,10 @@ every public export or semantic branch has a consumer.
    in `--topo-order` with full decorations, an `offset` for earlier pages, a
    `hasMore` flag, and the checked-out, upstream and base references; reaching
    the end of the graph pane (`panel/scroll.ts`) asks the history hook to append
-   the next page. `git/graph.ts` turns the loaded commits into VS Code swimlane
-   view models, SVG paths, node shapes and reference badges (a port of VS Code's
+   the next page. `git/graph.ts` turns the loaded commits into Code OSS swimlane
+   view models, SVG paths, node shapes and reference badges (a port of Code OSS's
    `scmHistory.ts`, checked against a literal transcription in
-   `test/support/vscode-scm-history.ts`). The lines of the whole list are one
+   `test/support/code-oss-scm-history.ts`). The lines of the whole list are one
    layer with one path per color, so a lane that crosses a row boundary is
    rasterized as one stroke; each row's cell keeps only its node and its graph
    width, and the node gaps are circles in the layer's mask that the section
@@ -169,7 +168,7 @@ every public export or semantic branch has a consumer.
    reads each expanded commit's files
    with its own request token; `GraphSection` derives one list of inserted rows
    per commit and hands its lengths to `graphLayer`, which offsets the commit
-   rows below and draws VS Code's graph-placeholder lanes through the inserted
+   rows below and draws Code OSS's graph-placeholder lanes through the inserted
    rows (the node lane in a separate three-pixel element).
 6. Change actions share a busy lock, failure handling, confirmation and refresh
    path. Commit/checkout also refresh history. The commit box sizes itself to its
@@ -252,10 +251,9 @@ fetched refs appear.
 - Absolute copy paths use `repo.root`, never the possibly nested Session cwd.
 - All visible copy comes from the bound English/Chinese dictionaries. Styling
   retains the Host theme tokens and keyboard/menu focus semantics. The one
-  exception is the commit graph, which uses a restyled version of VS Code's
+  exception is the commit graph, which uses a restyled version of Code OSS's
   `scmGraph.*` palette as `--dshgg-scm-*` variables (same hue families,
-  contrast-checked, dark variants under `body[data-ds-dark-theme]`) and VS
-  Code's 22px graph rows and curve geometry.
+  contrast-checked, dark variants under `body[data-ds-dark-theme]`) and Code OSS's 22px graph rows and curve geometry.
 
 ## Build and quality gates
 
@@ -289,7 +287,7 @@ installed-DSH contract check remains an explicit local integration gate.
 
 - Put new pure rules beside the matching formatter/parser/menu module and add a
   unit test; keep graph topology changes separate from maintenance refactors.
-  Graph changes must keep the VS Code equivalence test green or document the
+  Graph changes must keep the Code OSS equivalence test green or document the
   deviation in the oracle's header and the change's design notes.
 - Put new state/request logic in a hook and new presentation in a view.
 - Extend shared DTOs and validate Host inputs before adding an RPC operation.

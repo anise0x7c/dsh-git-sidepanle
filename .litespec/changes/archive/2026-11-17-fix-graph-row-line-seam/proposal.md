@@ -20,8 +20,7 @@ row edges on half pixels).
   rows cover a whole device pixel, so the boundary pixel shows the full line
   color at any zoom and device pixel ratio.
 - Nothing else about the drawing changes: lane positions, row height, curve
-  geometry, node shapes, node gaps, colors and the per-row cell width stay VS
-  Code's.
+  geometry, node shapes, node gaps, colors and the per-row cell width stay Code OSS's.
 - A hovered row still shows one unbroken lane, and its own hover surface does
   not cut the lane where it meets the row above.
 - The first row's cell keeps the graph's top edge: the sticky section header

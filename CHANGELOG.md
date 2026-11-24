@@ -38,7 +38,7 @@ Collapsing a section no longer leaves its pane at full height:
   back and makes the divider operable again. Reduced motion takes the new
   height at once.
 
-Remote branch actions now live with the commit graph, following VS Code's
+Remote branch actions now live with the commit graph, following Code OSS's
 Source Control Graph:
 
 - Fetch, Pull and Push appear as icon controls in the commit graph's section
@@ -70,17 +70,36 @@ of a private inline banner:
   Toast component is unavailable the plugin falls back to the shared
   `contextMenus.notify` service without an icon.
 
-The commit graph's style is now its own rather than a literal VS Code copy:
+The commit graph's style is now its own rather than a literal Code OSS copy:
 
 - Every graph color is restyled within its hue family: new lines rotate through
   gold, crimson, copper, emerald and violet, and the checked-out-branch blue,
   upstream purple and base-branch orange get their own values. Each color keeps
   at least a 2:1 contrast ratio against the panel background in both themes, so
   lines and badge lettering stay readable.
-- The lane-shift S-turn stays VS Code's 5-pixel radius. Tighter variants (4.5
+- The lane-shift S-turn stays Code OSS's 5-pixel radius. Tighter variants (4.5
   and 3 pixels) were tried and dropped because at the graph's 22px rows the
   difference was not noticeable. Row height, lane pitch, node shapes, joins and
   merge launches are unchanged.
+
+Repository housekeeping puts every project temporary folder in one ignored root:
+
+- `.cache/` and `.preview/` moved to `.temp/cache/` and `.temp/preview/`;
+  `.gitignore` now ignores `.temp/` and no longer carries the obsolete
+  `.tmp-test*/` rule. `node_modules/` stays where the package manager puts it.
+- The sandboxed-install command points `XDG_RUNTIME_DIR` at
+  `.temp/cache/runtime`; new scratch output always goes under `.temp/`.
+
+Documentation now calls the upstream editor Code OSS rather than VS Code, and
+the project keeps its records in one place:
+
+- Source comments, the guides, the architecture notes and the behavior
+  specification use Code OSS; identifiers that Git or the upstream project
+  define, such as `vscode-merge-base`, `microsoft/vscode` and `.vscode/`, stay
+  unchanged.
+- The changelog lives at the repository root again. The historical Chinese
+  refactor and maintenance records are removed; their durable rules live in the
+  guides and the development-workflow specification.
 
 ## 0.13.1
 
@@ -90,10 +109,10 @@ Commit details now show in file tree which can be collapsed
 
 Commits now expand inline to list the files they changed, a new commit-details
 card shows a commit above the still-mounted panel, and every file list matches
-the host explorer's file-type icons and VS Code's right-aligned status letters:
+the host explorer's file-type icons and Code OSS's right-aligned status letters:
 
 - Activating a commit row in the graph now expands the commit's changed files
-  inline below it, as VS Code's Source Control Graph does: 22px file rows with
+  inline below it, as Code OSS's Source Control Graph does: 22px file rows with
   an icon, the name, the dimmed directory and the status letter, the commit's
   outgoing lanes running through them (its own lane three pixels wide from the
   commit's node down), several
@@ -183,7 +202,7 @@ the panel's own strip and shrinking forms:
 
 ## 0.11.0
 
-The context menus now follow VS Code's action structure and continue to use
+The context menus now follow Code OSS's action structure and continue to use
 DSH's native shared menu presentation, including nested branch submenus:
 
 - Working-change files can be added to the repository-root `.gitignore` with an
@@ -259,8 +278,7 @@ Commit graph lines no longer break where two rows meet:
   gap belongs to the layer now, so the section tracks the hovered row and passes
   it to the layer's mask.
 - Lane positions, row height, curve geometry, node shapes, node gaps, colors and
-  the per-row cell width are unchanged, and each row's paths still match VS
-  Code's geometry exactly.
+  the per-row cell width are unchanged, and each row's paths still match Code OSS's geometry exactly.
 - Tests: 293 (was 282), covering the layer's per-color paths and offsets, the
   node gaps in layer coordinates, the row cells holding only their node, and the
   hovered row closing its gap.
@@ -382,8 +400,8 @@ Development toolchain:
   TypeScript (7) were checked but left out of this change.
 - No runtime dependencies; no Host restart is needed.
 
-VS Code commit graph (breaking change to the graph's look and the `history`
-wire value). The commit graph is now a port of VS Code's Source Control Graph:
+Code OSS commit graph (breaking change to the graph's look and the `history`
+wire value). The commit graph is now a port of Code OSS's Source Control Graph:
 
 - History is listed in `--topo-order` with full decorations
   (`refs/heads/…`, `refs/remotes/…`, `tag: refs/tags/…`), and `history`
@@ -391,22 +409,22 @@ wire value). The commit graph is now a port of VS Code's Source Control Graph:
   commit), its upstream, and its base branch (configured
   `branch.<name>.vscode-merge-base`, otherwise the default remote's `HEAD`).
   Nothing is written to the repository configuration.
-- Layout follows VS Code's swimlanes: a node takes the leftmost line heading for
+- Layout follows Code OSS's swimlanes: a node takes the leftmost line heading for
   it, further lines join it on its row, every extra merge parent opens a line at
   the right end, and lines right of an ended line shift left. The previous
   vacancy-preserving lane allocator and conflict-avoiding coloring are gone.
   One deliberate fix: a root commit no longer cuts the other lines.
-- Drawing uses VS Code's geometry and path commands (22px rows, 11px lanes,
-  1px round-capped strokes, 11px quarter turns, 5px S-shifts), VS Code's node
+- Drawing uses Code OSS's geometry and path commands (22px rows, 11px lanes,
+  1px round-capped strokes, 11px quarter turns, 5px S-shifts), Code OSS's node
   shapes (dot, merge ring, checked-out ring) with masked gaps that close on
-  hover, and VS Code's palette: `#FFB000`, `#DC267F`, `#994F00`, `#40B0A6`,
+  hover, and Code OSS's palette: `#FFB000`, `#DC267F`, `#994F00`, `#40B0A6`,
   `#B66DFF` in rotation, blue/purple/orange for checked-out/upstream/base.
 - Rows show the subject (bold on the checked-out commit) and dimmed author,
-  then VS Code's colored reference badges with target/branch/cloud/tag icons
+  then Code OSS's colored reference badges with target/branch/cloud/tag icons
   grouped by color and kind. Short ID, relative time and every reference moved
   into the tooltip; the narrow-row container queries are gone.
 - Tests: an equivalence test compares the port with a literal transcription of
-  VS Code's algorithm on 200 random histories; new Host parser and end-to-end
+  Code OSS's algorithm on 200 random histories; new Host parser and end-to-end
   tests cover topological order and the reference resolution.
 - The Host must be restarted to serve the new `history` value; until then the
   browser falls back to rotation colors and short decorations.

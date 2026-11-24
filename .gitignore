@@ -1,8 +1,8 @@
 node_modules/
-.tmp-test*/
 *~
-.preview/
-.cache/
+
+# Every project scratch/temporary folder lives under .temp/ (never at the root)
+.temp/
 
 # Local tooling and OS clutter
 .DS_Store

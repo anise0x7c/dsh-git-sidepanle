@@ -1,4 +1,4 @@
-# Git source-control sidebar with VS Code parity
+# Git source-control sidebar with Code OSS parity
 
 ## Why
 DSH has no way to inspect or act on a workspace's Git state from the Web GUI. Users must switch to another tool to review changes, stage files, or commit, which breaks the agent-assisted edit/review loop. The right Sidebar already hosts workspace tools (files, previews, terminals), so Git belongs there next to them.

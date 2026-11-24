@@ -1,5 +1,5 @@
 /**
- * Commit-graph layout and drawing, ported from VS Code's Source Control Graph:
+ * Commit-graph layout and drawing, ported from Code OSS's Source Control Graph:
  * microsoft/vscode `src/vs/workbench/contrib/scm/browser/scmHistory.ts`
  * (`toISCMHistoryItemViewModelArray`, `renderSCMHistoryItemGraph`,
  * `renderSCMHistoryGraphPlaceholder`) and `scmHistoryViewPane.ts`
@@ -12,7 +12,7 @@
  * parent continues in that position, further lanes heading for the commit join
  * the node and end, every additional merge parent opens a lane at the right
  * end, and lanes right of an ended lane shift left. The constants, color
- * rotation, SVG path commands and badge grouping follow VS Code; see the
+ * rotation, SVG path commands and badge grouping follow Code OSS; see the
  * change's design notes for the deliberate deviations (root commits keep other
  * lanes; node gaps are a mask rather than background-colored strokes; the lines
  * of the whole graph are one layer, so a lane crossing a row boundary is one
@@ -27,20 +27,20 @@
 import type { GraphReference, GraphReferences } from '../types/domain.ts'
 import type { ParsedRef, RefKind } from './format.ts'
 
-/** Row height (VS Code `SWIMLANE_HEIGHT`). */
+/** Row height (Code OSS `SWIMLANE_HEIGHT`). */
 export const SWIMLANE_HEIGHT = 22
-/** Lane pitch; lane `i` is centered at `SWIMLANE_WIDTH * (i + 1)` (VS Code `SWIMLANE_WIDTH`). */
+/** Lane pitch; lane `i` is centered at `SWIMLANE_WIDTH * (i + 1)` (Code OSS `SWIMLANE_WIDTH`). */
 export const SWIMLANE_WIDTH = 11
 /**
  * Stroke of the node's own lane through an expanded commit's change rows (the
- * `highlightIndex` stroke of VS Code `renderSCMHistoryGraphPlaceholder`).
+ * `highlightIndex` stroke of Code OSS `renderSCMHistoryGraphPlaceholder`).
  */
 export const HIGHLIGHT_STROKE_WIDTH = 3
-/** Radius of the turns of a shifting lane (VS Code `SWIMLANE_CURVE_RADIUS`). */
+/** Radius of the turns of a shifting lane (Code OSS `SWIMLANE_CURVE_RADIUS`). */
 export const SWIMLANE_CURVE_RADIUS = 5
-/** Base node radius (VS Code `CIRCLE_RADIUS`). */
+/** Base node radius (Code OSS `CIRCLE_RADIUS`). */
 export const CIRCLE_RADIUS = 4
-/** Stroke of VS Code's node circles (VS Code `CIRCLE_STROKE_WIDTH`). */
+/** Stroke of Code OSS's node circles (Code OSS `CIRCLE_STROKE_WIDTH`). */
 export const CIRCLE_STROKE_WIDTH = 2
 /**
  * How far above its own top edge, in pixels, a row also draws the lanes it takes
@@ -51,7 +51,7 @@ export const CIRCLE_STROKE_WIDTH = 2
  */
 export const ROW_OVERHANG = 1
 
-/** The five rotation colors, in rotation order: gold, crimson, copper, emerald and violet, restyled from VS Code's `scmGraph.foreground1`..`5`. */
+/** The five rotation colors, in rotation order: gold, crimson, copper, emerald and violet, restyled from Code OSS's `scmGraph.foreground1`..`5`. */
 export const LANE_COLORS = ['lane1', 'lane2', 'lane3', 'lane4', 'lane5'] as const
 
 /** One rotation color. */
@@ -77,7 +77,7 @@ export interface GraphCommit {
   readonly refs?: readonly ParsedRef[]
 }
 
-/** One line heading for a commit (VS Code `ISCMHistoryItemGraphNode`). */
+/** One line heading for a commit (Code OSS `ISCMHistoryItemGraphNode`). */
 export interface Swimlane {
   /** Commit the line heads for. */
   readonly id: string
@@ -91,7 +91,7 @@ export interface ColoredRef extends ParsedRef {
   readonly color: GraphColor
 }
 
-/** One laid-out commit row (VS Code `ISCMHistoryItemViewModel`). */
+/** One laid-out commit row (Code OSS `ISCMHistoryItemViewModel`). */
 export interface GraphRow {
   /** Full commit identifier. */
   readonly oid: string
@@ -107,17 +107,17 @@ export interface GraphRow {
   readonly lane: number
   /** Node color. */
   readonly color: GraphColor
-  /** References in VS Code's badge order, with their colors. */
+  /** References in Code OSS's badge order, with their colors. */
   readonly refs: readonly ColoredRef[]
 }
 
 /** One stroked line of a row. */
 export interface GraphPath {
-  /** SVG path data, in VS Code's command spelling. */
+  /** SVG path data, in Code OSS's command spelling. */
   readonly d: string
   /** Line color. */
   readonly color: GraphColor
-  /** Stroke width in pixels; omitted for VS Code's one-pixel lines. */
+  /** Stroke width in pixels; omitted for Code OSS's one-pixel lines. */
   readonly width?: number
 }
 
@@ -166,16 +166,16 @@ export interface GraphRowGeometry {
   readonly overhang: number
   /** Segments carrying the row's incoming lanes through the overhang above it. */
   readonly bridge: readonly GraphPath[]
-  /** Lines of this row, in VS Code's drawing order. */
+  /** Lines of this row, in Code OSS's drawing order. */
   readonly paths: readonly GraphPath[]
   /** Node. */
   readonly node: GraphNodeGeometry
 }
 
-/** Badge icon, after VS Code's codicons for each reference family. */
+/** Badge icon, after Code OSS's codicons for each reference family. */
 export type BadgeIcon = 'target' | 'branch' | 'cloud' | 'tag'
 
-/** One reference badge (VS Code `div.label`). */
+/** One reference badge (Code OSS `div.label`). */
 export interface RefBadge {
   /** Badge background color. */
   readonly color: GraphColor
@@ -190,7 +190,7 @@ export interface RefBadge {
 }
 
 /**
- * Rotate an index into a range (VS Code `rot`).
+ * Rotate an index into a range (Code OSS `rot`).
  * @param index - index.
  * @param modulo - range size.
  * @returns index in `[0, modulo)`.
@@ -212,7 +212,7 @@ function familyOrder(ref: ParsedRef): number {
 }
 
 /**
- * Sort references the way VS Code's Git extension reports them: local
+ * Sort references the way Code OSS's Git extension reports them: local
  * branches, remote branches, tags, each by name.
  * @param refs - references.
  * @returns sorted copy.
@@ -225,8 +225,8 @@ export function sortRefs(refs: readonly ParsedRef[]): ParsedRef[] {
 }
 
 /**
- * Build VS Code's graph color map from the special references. Only these map
- * to a color; every other reference takes its node's color, as under VS Code's
+ * Build Code OSS's graph color map from the special references. Only these map
+ * to a color; every other reference takes its node's color, as under Code OSS's
  * "All" filter.
  * @param references - special references, if known.
  * @returns color by reference id.
@@ -244,7 +244,7 @@ export function referenceColors(
 }
 
 /**
- * The first fixed color among a commit's references (VS Code
+ * The first fixed color among a commit's references (Code OSS
  * `getLabelColorIdentifier`).
  * @param refs - references in decoration-sort order.
  * @param colors - color map.
@@ -330,7 +330,7 @@ function cleanParents(parents: unknown): string[] {
 }
 
 /**
- * Lay commits out in swimlanes (VS Code `toISCMHistoryItemViewModelArray`).
+ * Lay commits out in swimlanes (Code OSS `toISCMHistoryItemViewModelArray`).
  * @param commits - commits in topological display order, newest first.
  * @param references - checked-out, upstream and base references.
  * @returns one row per commit.
@@ -360,7 +360,7 @@ export function computeGraph(
     let firstParentAdded = false
 
     // Continue the first parent in the node's position; drop the commit's
-    // other incoming lanes. VS Code skips this loop for a parentless commit and
+    // other incoming lanes. Code OSS skips this loop for a parentless commit and
     // so drops every lane; the port keeps the unrelated ones.
     for (const lane of input) {
       if (lane.id === commit.oid) {
@@ -401,7 +401,7 @@ export function computeGraph(
       color: colors.get(ref.id) ?? color,
     }))
     /**
-     * VS Code `compareHistoryItemRefs` order.
+     * Code OSS `compareHistoryItemRefs` order.
      * @param ref - colored reference.
      * @returns sort key.
      */
@@ -437,7 +437,7 @@ function laneX(lane: number): number {
 }
 
 /**
- * A straight vertical line (VS Code `drawVerticalLine`).
+ * A straight vertical line (Code OSS `drawVerticalLine`).
  * @param x - x.
  * @param y1 - start y.
  * @param y2 - end y.
@@ -483,10 +483,10 @@ function bridgePaths(input: readonly Swimlane[], offset: number): GraphPath[] {
 }
 
 /**
- * Node circles and gaps per shape. Visible radii equal VS Code's circles after
+ * Node circles and gaps per shape. Visible radii equal Code OSS's circles after
  * their background-colored strokes: a normal node is a 4px disc with a gap to
  * 6px; a merge node a 2px dot inside a ring from 4 to 5px with a gap to 7px;
- * the checked-out node a ring from 4 to 6px with a gap to 8px. On hover VS Code
+ * the checked-out node a ring from 4 to 6px with a gap to 8px. On hover Code OSS
  * makes the outer stroke transparent, so the outer edge grows by its half
  * stroke and the outer gap closes.
  */
@@ -515,7 +515,7 @@ const NODE_SHAPES: Record<
 }
 
 /**
- * Build one row's SVG geometry (VS Code `renderSCMHistoryItemGraph`). Every y
+ * Build one row's SVG geometry (Code OSS `renderSCMHistoryItemGraph`). Every y
  * lands in the graph's own coordinates, so a path that carries several rows can
  * be built by calling this once per row with the row's offset.
  * @param row - laid-out row.
@@ -641,10 +641,10 @@ export interface GraphGap {
 }
 
 /**
- * Lines of one change row under an expanded commit (VS Code
+ * Lines of one change row under an expanded commit (Code OSS
  * `renderSCMHistoryGraphPlaceholder(outputSwimlanes, highlightIndex)`): every
  * lane leaving the commit runs vertically through the row in its own position
- * and color, and the lane in the node's position is drawn wider. VS Code's
+ * and color, and the lane in the node's position is drawn wider. Code OSS's
  * highlight index is the node's input position, or the input count when no lane
  * expected the commit, which is exactly the row's `lane`.
  * @param row - laid-out commit row whose changes are listed.
@@ -667,7 +667,7 @@ export function graphPlaceholderPaths(row: GraphRow, offset = 0): GraphPath[] {
 }
 
 /**
- * Width of the graph area of a change row under an expanded commit (VS Code
+ * Width of the graph area of a change row under an expanded commit (Code OSS
  * `SWIMLANE_WIDTH * (outputSwimlanes.length + 1)`); the row's icon begins
  * right after it.
  * @param row - laid-out commit row whose changes are listed.
@@ -759,7 +759,7 @@ export function badgeIcon(kind: RefKind): BadgeIcon {
 }
 
 /**
- * Group a row's references into VS Code's badges: the first reference with
+ * Group a row's references into Code OSS's badges: the first reference with
  * its name, then one icon badge per color and icon, in first-seen order.
  * @param refs - colored references in badge order.
  * @returns badges.

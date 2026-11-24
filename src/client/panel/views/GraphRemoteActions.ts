@@ -1,6 +1,6 @@
 /**
  * Commit graph section header remote controls: Fetch, Pull and Push as icon
- * buttons, after VS Code's Source Control Graph, plus the overflow menu that
+ * buttons, after Code OSS's Source Control Graph, plus the overflow menu that
  * keeps Pull (Rebase), Sync, Publish Branch and the remote configuration.
  */
 

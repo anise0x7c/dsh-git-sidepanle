@@ -4,13 +4,13 @@
 
 Fetch, Pull and Push are the panel's most frequent network actions yet they hide
 behind the toolbar's overflow ellipsis, needing two clicks and staying hard to
-discover. VS Code's Source Control Graph puts them directly in the graph's title
+discover. Code OSS's Source Control Graph puts them directly in the graph's title
 bar, which the panel already reproduces.
 
 ## What Changes
 
 - The commit graph section header shows Fetch, Pull and Push as icon controls
-  modeled on VS Code's `repo-fetch`, `repo-pull` and `repo-push` actions,
+  modeled on Code OSS's `repo-fetch`, `repo-pull` and `repo-push` actions,
   followed by the overflow menu.
 - The toolbar's overflow menu (ellipsis and its dropdown) moves from the branch
   toolbar into the commit graph section header. The toolbar keeps the branch

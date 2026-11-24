@@ -4,7 +4,7 @@
 
 The previous round tuned the graph palette by raising vividness while holding
 each hue, and tightened the S-turn only from 5 to 4.5 pixels. Both changes were
-too subtle: side by side with VS Code's Source Control Graph the result still
+too subtle: side by side with Code OSS's Source Control Graph the result still
 read as the same palette and the same loops. The graph should look clearly
 different without becoming harder to see, and the S-turn should be visibly
 tighter.

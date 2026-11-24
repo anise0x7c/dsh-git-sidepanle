@@ -3,7 +3,7 @@
 ## Why
 Commit 93421d1 drew the whole row's node lane three pixels wide, so the line
 visibly thickened halfway between the commit above and this node, before the
-wide line into the listed files began. VS Code keeps every commit row's lane one
+wide line into the listed files began. Code OSS keeps every commit row's lane one
 pixel wide and only widens the lane in the positions that run through the listed
 changes, so the row between the two should not look thicker than the thin line
 it joins.

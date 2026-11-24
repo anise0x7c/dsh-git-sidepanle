@@ -6,7 +6,7 @@ The three change groups and the commit-details file list render each status
 letter at the start of the row, before the file-type icon, while the files
 listed under an expanded commit render it at the row's end. The same
 information therefore jumps between the left and right edges depending on
-which view the user is reading, and the change lists do not match VS Code's
+which view the user is reading, and the change lists do not match Code OSS's
 source-control list, which keeps the decoration at the row's end.
 
 ## What Changes

@@ -1,6 +1,6 @@
 # Tasks
 
-- [x] Inspect both VS Code references and the existing topology contract
+- [x] Inspect both Code OSS references and the existing topology contract
 - [x] Write the proposal, spec delta, and geometry/color design
 - [x] Add failing grid-geometry, node-following, single-line and convergence-color regressions
 - [x] Implement continuous-branch color resolution in the pure graph layout

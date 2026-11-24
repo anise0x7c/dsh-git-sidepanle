@@ -5,7 +5,7 @@
 
 ## Notes
 
-Palette: OKLCH hue held within 1.6°, chroma raised where sRGB allows; amber is at the gamut edge and moves least. S-turn radius 5 → 4.5 px; joins and merges keep 11 px. The VS Code equivalence oracle now takes the radius as an optional parameter (default 5), and the unit/UI path assertions pin the tuned radius.
+Palette: OKLCH hue held within 1.6°, chroma raised where sRGB allows; amber is at the gamut edge and moves least. S-turn radius 5 → 4.5 px; joins and merges keep 11 px. The Code OSS equivalence oracle now takes the radius as an optional parameter (default 5), and the unit/UI path assertions pin the tuned radius.
 
 ## Capabilities
 

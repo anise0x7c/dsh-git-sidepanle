@@ -6,7 +6,7 @@
  * follows light and dark themes and any user font setting exactly like DSH's
  * own sidebar surfaces. Sizes follow the host's sidebar conventions: 28px list
  * rows, 30px section headers, 0.5px hairlines, 8px inline inset, `--radius-*`.
- * The commit graph is the one exception: it reproduces VS Code's Source
+ * The commit graph is the one exception: it reproduces Code OSS's Source
  * Control Graph, including its `scmGraph.*` palette and 22px rows.
  */
 

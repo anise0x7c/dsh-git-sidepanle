@@ -7,7 +7,7 @@
 Each commit row SHALL show, on one line beside its graph cell, the commit's
 subject followed by its dimmed author, truncated together with an ellipsis,
 and then the commit's reference badges, which keep their size. The checked-out
-commit's subject and author SHALL be bold. Badges SHALL follow VS Code's rules:
+commit's subject and author SHALL be bold. Badges SHALL follow Code OSS's rules:
 references are ordered by the checked-out branch, its upstream, its base
 branch, then local branches, remote branches and tags by name; the first
 reference is a badge with its icon and its name, truncated beyond 100 pixels;

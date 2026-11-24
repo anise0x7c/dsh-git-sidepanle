@@ -1,7 +1,7 @@
 # Git Sidebar Specification
 
 ## Purpose
-Give Web GUI users a VS Code-style source-control surface for the Session's workspace: review changes, stage and commit them, inspect diffs, and follow branch history without leaving DSH.
+Give Web GUI users a Code OSS-style source-control surface for the Session's workspace: review changes, stage and commit them, inspect diffs, and follow branch history without leaving DSH.
 
 ## Requirements
 
@@ -35,7 +35,7 @@ The panel SHALL show the repository it resolved from the Session's working direc
 
 ### Requirement: Change overview
 
-The panel SHALL list the repository's changes as three groups in VS Code's
+The panel SHALL list the repository's changes as three groups in Code OSS's
 order: merge conflicts, staged changes, and changes not yet staged. Within a
 group, every changed file SHALL appear as one row in a single-layer list with
 no folder rows, sorted by its repository-relative path. Every row SHALL show
@@ -299,7 +299,7 @@ groups, the commit graph and the commit-details tree SHALL use one compact
 22-pixel row style: the same height, horizontal padding, gap, corner radius,
 hover surface and focus ring. A commit row SHALL keep its graph cell, subject
 and reference badges inside that shared row, and the commit graph's line, node
-and reference badge colors SHALL follow VS Code's Source Control Graph as the
+and reference badge colors SHALL follow Code OSS's Source Control Graph as the
 commit graph requirements describe. The panel's visible text SHALL follow the
 user's language, providing English and Chinese copy.
 
@@ -722,8 +722,7 @@ without moving.
 
 The panel SHALL show the most recent commits reachable from the repository's
 local branches, tags, and remote-tracking branches in topological order, with
-every commit after all of its children, as a commit graph laid out with VS
-Code's Source Control Graph swimlane rules. Every row SHALL carry an ordered
+every commit after all of its children, as a commit graph laid out with Code OSS's Source Control Graph swimlane rules. Every row SHALL carry an ordered
 set of incoming lines from the row above and outgoing lines toward the row
 below, each line heading for one commit:
 
@@ -789,7 +788,7 @@ below, each line heading for one commit:
 
 ### Requirement: Commit graph drawing
 
-The graph SHALL reproduce VS Code's Source Control Graph geometry: rows 22
+The graph SHALL reproduce Code OSS's Source Control Graph geometry: rows 22
 pixels high, line positions 11 pixels apart with the first position 11 pixels
 from the graph's left edge, nodes centered vertically in their row, and lines
 drawn one pixel wide with round caps. A continuing line SHALL be vertical. A
@@ -841,7 +840,7 @@ including when the rows' edges fall between device pixels.
 
 ### Requirement: Commit graph nodes
 
-Every listed commit SHALL be drawn as a node in VS Code's shapes: a filled dot
+Every listed commit SHALL be drawn as a node in Code OSS's shapes: a filled dot
 for a commit with at most one parent, a ring with a filled center dot for a
 merge commit, and a hollow ring for the checked-out commit, which takes
 precedence over the merge shape. Each node SHALL be separated by a clear gap
@@ -865,7 +864,7 @@ close while the pointer hovers the row.
 
 ### Requirement: Commit graph colors
 
-Graph lines SHALL use a restyled palette that is clearly distinct from VS Code's
+Graph lines SHALL use a restyled palette that is clearly distinct from Code OSS's
 Source Control Graph while keeping the same hue families and readable contrast: a
 new line SHALL take the next color of the five-color rotation `#D6A700` (gold),
 `#E0065B` (crimson), `#A66200` (copper), `#3EAD76` (emerald), `#9362F4`
@@ -881,7 +880,7 @@ instead of a rotation color. The blue SHALL be `#0088CD` in the light theme and
 purple SHALL switch between their light and dark variants with the host theme.
 Every color SHALL keep at least a 2:1 contrast ratio against the panel
 background in both themes. The base branch SHALL be the remote branch configured
-as the branch's VS Code merge base, otherwise the default branch of the default
+as the branch's Code OSS merge base, otherwise the default branch of the default
 remote, and SHALL only apply when it differs from the upstream. A node SHALL
 take the color of the line its first parent continues, or of its incoming line
 when it has no parents, and a joining line SHALL keep its own color until it
@@ -925,7 +924,7 @@ reaches the node.
 Each commit row SHALL show, on one line beside its graph cell, the commit's
 subject followed by its dimmed author, truncated together with an ellipsis,
 and then the commit's reference badges, which keep their size. The checked-out
-commit's subject and author SHALL be bold. Badges SHALL follow VS Code's rules:
+commit's subject and author SHALL be bold. Badges SHALL follow Code OSS's rules:
 references are ordered by the checked-out branch, its upstream, its base
 branch, then local branches, remote branches and tags by name; the first
 reference is a badge with its icon and its name, truncated beyond 100 pixels;
@@ -1798,7 +1797,7 @@ The Host MUST prevent asynchronous watch setup from acquiring or replacing repos
 
 Activating a commit row in the graph, by pointer or by Enter or Space while
 the row has keyboard focus, SHALL toggle a list of the files that commit
-changed relative to its first parent directly below the row, as VS Code's
+changed relative to its first parent directly below the row, as Code OSS's
 Source Control Graph expands a history item. The row SHALL expose whether it is
 expanded to assistive technology. Several commits SHALL be able to stay
 expanded at the same time, and activating an expanded row SHALL collapse its list. Each listed file
@@ -1883,8 +1882,7 @@ change the repository and SHALL NOT replace the change list or the graph.
 
 ### Requirement: Expanded commit drawing
 
-The rows listed under an expanded commit SHALL continue the commit graph as VS
-Code draws an expanded history item's changes: every line that leaves the
+The rows listed under an expanded commit SHALL continue the commit graph as Code OSS draws an expanded history item's changes: every line that leaves the
 commit's row at its bottom edge SHALL continue vertically in its own position
 and color through each listed row, the line in the commit node's position SHALL
 be drawn three pixels wide and the others one pixel wide, and the next commit

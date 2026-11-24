@@ -3,7 +3,7 @@
 ## REMOVED Requirements
 
 ### Requirement: Commit graph and branch switching
-Removed because its custom lane, color and row rules are replaced by the VS Code
+Removed because its custom lane, color and row rules are replaced by the Code OSS
 Source Control Graph behavior described in the commit graph swimlanes, drawing,
 nodes, colors, and rows requirements; branch switching keeps its own requirement.
 
@@ -12,8 +12,7 @@ nodes, colors, and rows requirements; branch switching keeps its own requirement
 ### Requirement: Commit graph swimlanes
 The panel SHALL show the most recent commits reachable from the repository's
 local branches, tags, and remote-tracking branches in topological order, with
-every commit after all of its children, as a commit graph laid out with VS
-Code's Source Control Graph swimlane rules. Every row SHALL carry an ordered
+every commit after all of its children, as a commit graph laid out with Code OSS's Source Control Graph swimlane rules. Every row SHALL carry an ordered
 set of incoming lines from the row above and outgoing lines toward the row
 below, each line heading for one commit:
 
@@ -71,7 +70,7 @@ below, each line heading for one commit:
 - **THEN** its line continues to the bottom edge of the graph
 
 ### Requirement: Commit graph drawing
-The graph SHALL reproduce VS Code's Source Control Graph geometry: rows 22
+The graph SHALL reproduce Code OSS's Source Control Graph geometry: rows 22
 pixels high, line positions 11 pixels apart with the first position 11 pixels
 from the graph's left edge, nodes centered vertically in their row, and lines
 drawn one pixel wide with round caps. A continuing line SHALL be vertical. A
@@ -108,7 +107,7 @@ text SHALL begin right after that cell.
   second row's text begins after a five-position graph cell
 
 ### Requirement: Commit graph nodes
-Every listed commit SHALL be drawn as a node in VS Code's shapes: a filled dot
+Every listed commit SHALL be drawn as a node in Code OSS's shapes: a filled dot
 for a commit with at most one parent, a ring with a filled center dot for a
 merge commit, and a hollow ring for the checked-out commit, which takes
 precedence over the merge shape. Each node SHALL be separated by a clear gap
@@ -128,7 +127,7 @@ close while the pointer hovers the row.
 - **THEN** its node is a filled dot in its line's color
 
 ### Requirement: Commit graph colors
-Graph lines SHALL take VS Code's Source Control Graph colors. A new line SHALL
+Graph lines SHALL take Code OSS's Source Control Graph colors. A new line SHALL
 take the next color of the five-color rotation `#FFB000`, `#DC267F`, `#994F00`,
 `#40B0A6`, `#B66DFF`, in the order lines are created from the top of the graph
 and restarting after the fifth. A first parent SHALL continue its child's line
@@ -136,9 +135,9 @@ color. A commit that carries the checked-out branch SHALL color the line it
 continues blue, a commit that carries that branch's upstream SHALL color it
 purple, and a commit that carries the branch's base branch SHALL color it
 orange, in that priority; a new line toward such a commit SHALL take that color
-instead of a rotation color. The blue and purple SHALL switch between VS Code's
+instead of a rotation color. The blue and purple SHALL switch between Code OSS's
 light and dark variants with the host theme. The base branch SHALL be the remote
-branch configured as the branch's VS Code merge base, otherwise the default
+branch configured as the branch's Code OSS merge base, otherwise the default
 branch of the default remote, and SHALL only apply when it differs from the
 upstream. A node SHALL take the color of the line its first parent continues,
 or of its incoming line when it has no parents, and a joining line SHALL keep
@@ -170,7 +169,7 @@ its own color until it reaches the node.
 Each commit row SHALL show, on one line beside its graph cell, the commit's
 subject followed by its dimmed author, truncated together with an ellipsis,
 and then the commit's reference badges, which keep their size. The checked-out
-commit's subject and author SHALL be bold. Badges SHALL follow VS Code's rules:
+commit's subject and author SHALL be bold. Badges SHALL follow Code OSS's rules:
 references are ordered by the checked-out branch, its upstream, its base
 branch, then local branches, remote branches and tags by name; the first
 reference is a badge with its icon and its name, truncated beyond 100 pixels;
@@ -237,7 +236,7 @@ language: colors, borders, surfaces, and focus rings SHALL come from the host
 theme tokens, and section headers, rows, metadata, and controls SHALL use the
 host's text sizes and weights, row heights, spacing, and corner radii. The
 commit graph is the one exception: its line, node and reference badge colors and
-its compact row height SHALL follow VS Code's Source Control Graph as the commit
+its compact row height SHALL follow Code OSS's Source Control Graph as the commit
 graph requirements describe. The panel's visible text SHALL follow the user's
 language, providing English and Chinese copy.
 
@@ -249,7 +248,7 @@ language, providing English and Chinese copy.
 #### Scenario: Matches the host sidebar
 
 - **WHEN** the panel is shown beside the sidebar's own sections and rows
-- **THEN** its section headers, file rows, metadata, controls, and menus share the host's text scale, row heights, spacing, and corner radii instead of introducing a separate scale, while commit graph rows keep VS Code's graph dimensions
+- **THEN** its section headers, file rows, metadata, controls, and menus share the host's text scale, row heights, spacing, and corner radii instead of introducing a separate scale, while commit graph rows keep Code OSS's graph dimensions
 
 #### Scenario: Chinese interface
 

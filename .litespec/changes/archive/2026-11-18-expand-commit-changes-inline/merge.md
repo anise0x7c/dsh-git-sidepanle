@@ -5,7 +5,7 @@
 
 ## Notes
 
-Commit rows toggle a VS Code-style inline file list (graph-placeholder lanes, node lane 3px, file icon/name/dir/status); the details view moved to the new first commit-menu action View Details. Verified by pnpm check (449 tests, VS Code placeholder oracle equivalence) and pnpm verify:contract. Follow-up: real-page click-through by the user.
+Commit rows toggle a Code OSS-style inline file list (graph-placeholder lanes, node lane 3px, file icon/name/dir/status); the details view moved to the new first commit-menu action View Details. Verified by pnpm check (449 tests, Code OSS placeholder oracle equivalence) and pnpm verify:contract. Follow-up: real-page click-through by the user.
 
 ## Capabilities
 

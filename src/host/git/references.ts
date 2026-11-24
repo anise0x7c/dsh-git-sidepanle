@@ -1,5 +1,5 @@
 /**
- * The references the commit graph colors specially, resolved the way VS Code's
+ * The references the commit graph colors specially, resolved the way Code OSS's
  * Git extension resolves them for its Source Control Graph: the checked-out
  * branch (or the detached HEAD commit), that branch's upstream, and its base
  * branch. Every command here only reads; the base branch is never written back
@@ -92,7 +92,7 @@ function toReference(record: RefRecord): GraphReference {
 /**
  * Resolve the checked-out, upstream and base references.
  *
- * The base branch follows VS Code: a configured `vscode-merge-base` that names
+ * The base branch follows Code OSS: a configured `vscode-merge-base` that names
  * a remote-tracking branch, otherwise the default branch of the default remote
  * (`origin`, or the first remote). It is dropped when it is the upstream.
  * @param inputs - records, remotes, configuration and detached HEAD.

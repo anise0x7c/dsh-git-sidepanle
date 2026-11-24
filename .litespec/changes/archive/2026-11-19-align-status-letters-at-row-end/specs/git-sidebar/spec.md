@@ -4,7 +4,7 @@
 
 ### Requirement: Change overview
 
-The panel SHALL list the repository's changes as three groups in VS Code's
+The panel SHALL list the repository's changes as three groups in Code OSS's
 order: merge conflicts, staged changes, and changes not yet staged. Within a
 group, every changed file SHALL appear as one row in a single-layer list with
 no folder rows, sorted by its repository-relative path. Every row SHALL show

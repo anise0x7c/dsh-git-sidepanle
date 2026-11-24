@@ -1,7 +1,7 @@
 # Tasks
 
 - [x] Write the spec delta (requirements and scenarios)
-- [x] Add VS Code-style `repo-fetch`, `repo-pull` and `repo-push` icons
+- [x] Add Code OSS-style `repo-fetch`, `repo-pull` and `repo-push` icons
 - [x] Add the commit graph header actions (Fetch, Pull, Push and overflow menu)
 - [x] Remove Fetch, Pull and Push from the overflow menu and move the menu out of the toolbar
 - [x] Keep the toolbar's branch chip, refresh and remote status controls working

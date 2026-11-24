@@ -28,7 +28,7 @@ export interface HistoryPage {
 
 /**
  * Read one page of recent commits across local branches, tags, and
- * remote-tracking branches, the way VS Code's Source Control Graph reads its
+ * remote-tracking branches, the way Code OSS's Source Control Graph reads its
  * "All" filter. The revision set and ordering do not depend on the offset, so
  * the next page always continues the topological order below the previous one.
  *

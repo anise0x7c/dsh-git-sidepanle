@@ -5,7 +5,7 @@
 Every color was re-picked in OKLCH by hue family, then checked against the
 panel backgrounds (`--dsw-alias-bg-base`: `#FFFFFF` light, `#151517` dark).
 Hue families and rotation order are preserved, but the values now move clearly
-away from VS Code's: the rotation is gold, crimson, copper, emerald and violet,
+away from Code OSS's: the rotation is gold, crimson, copper, emerald and violet,
 and the references are restyled blue, purple and orange.
 
 | Token | Before | After | OKLCH hue shift | Contrast white | Contrast dark |
@@ -30,14 +30,14 @@ narrower.
 
 ## Curve radius
 
-`SWIMLANE_CURVE_RADIUS` becomes 3 (VS Code's is 5). The shift geometry is
+`SWIMLANE_CURVE_RADIUS` becomes 3 (Code OSS's is 5). The shift geometry is
 formula-driven: the vertical lead-in now ends at 8 instead of 6.5, and the
 horizontal run between the quarter-turns at pitch 11 grows to 5 pixels, so the
 turn is visibly tighter without touching row height, lane pitch or node
 positions. Join and merge quarter-turns keep radius 11 because their endpoints
 are fixed by the row geometry.
 
-The VS Code equivalence oracle already accepts a radius parameter (default 5),
+The Code OSS equivalence oracle already accepts a radius parameter (default 5),
 so `test/unit/client-graph.test.ts` keeps rendering it with the port's radius
 while every other path command is compared literally. The exact 3-pixel radius
 is pinned by the hand-written path assertions in the unit and rendered-panel

@@ -5,7 +5,7 @@
 The commit box offers one small commit button. A user who wants to amend the
 last commit, commit and push, or commit and sync has to commit and then find a
 separate control in the toolbar, and the primary action is easy to miss next to
-the change lists. VS Code's Source Control view instead makes the commit button
+the change lists. Code OSS's Source Control view instead makes the commit button
 span the whole commit box and adds a trailing expand control with the other
 commit actions.
 

@@ -1,5 +1,5 @@
 /**
- * The rows listed under an expanded commit (VS Code `HistoryItemChangeRenderer`):
+ * The rows listed under an expanded commit (Code OSS `HistoryItemChangeRenderer`):
  * one 22px row per changed file with a graph area as wide as the commit's
  * outgoing lanes, a file icon, the name with its dimmed directory and the status
  * letter at the end — or a single loading, empty, failure or capped-list row.

@@ -98,7 +98,7 @@ export function RefreshIcon(props: IconProps): React.ReactElement {
 }
 
 /**
- * Fetch from all remotes, after VS Code's Source Control Graph action: a
+ * Fetch from all remotes, after Code OSS's Source Control Graph action: a
  * dashed twin-tail arrow descending into a repository node, so it stays
  * distinguishable from the solid Pull arrow at header size.
  */
@@ -121,7 +121,7 @@ export function RepoFetchIcon(props: IconProps): React.ReactElement {
 }
 
 /**
- * Pull the upstream, after VS Code's Source Control Graph action: an arrow
+ * Pull the upstream, after Code OSS's Source Control Graph action: an arrow
  * descending into a repository node.
  */
 export function RepoPullIcon(props: IconProps): React.ReactElement {
@@ -140,7 +140,7 @@ export function RepoPullIcon(props: IconProps): React.ReactElement {
 }
 
 /**
- * Push to the upstream, after VS Code's Source Control Graph action: an arrow
+ * Push to the upstream, after Code OSS's Source Control Graph action: an arrow
  * rising out of a repository node.
  */
 export function RepoPushIcon(props: IconProps): React.ReactElement {
@@ -184,7 +184,7 @@ export function CheckIcon(props: IconProps): React.ReactElement {
   return svgIcon(size, h('path', { d: 'M3 8.5 6.2 11.5 13 4.5' }))
 }
 
-/** Overflow ellipsis, after VS Code's `ellipsis` codicon. */
+/** Overflow ellipsis, after Code OSS's `ellipsis` codicon. */
 export function MoreIcon(props: IconProps): React.ReactElement {
   const size = props?.size ?? 16
   return svgIcon(
@@ -223,7 +223,7 @@ export function AlertIcon(props: IconProps): React.ReactElement {
   ])
 }
 
-/** Checked-out branch reference, after VS Code's `target` codicon. */
+/** Checked-out branch reference, after Code OSS's `target` codicon. */
 export function TargetIcon(props: IconProps): React.ReactElement {
   const size = props?.size ?? 16
   return svgIcon(
@@ -237,7 +237,7 @@ export function TargetIcon(props: IconProps): React.ReactElement {
   )
 }
 
-/** Remote-tracking branch reference, after VS Code's `cloud` codicon. */
+/** Remote-tracking branch reference, after Code OSS's `cloud` codicon. */
 export function CloudIcon(props: IconProps): React.ReactElement {
   const size = props?.size ?? 16
   return svgIcon(
@@ -249,7 +249,7 @@ export function CloudIcon(props: IconProps): React.ReactElement {
   )
 }
 
-/** Tag reference, after VS Code's `tag` codicon. */
+/** Tag reference, after Code OSS's `tag` codicon. */
 export function TagIcon(props: IconProps): React.ReactElement {
   const size = props?.size ?? 16
   return svgIcon(

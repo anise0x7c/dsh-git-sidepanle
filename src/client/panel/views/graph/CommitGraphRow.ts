@@ -61,7 +61,7 @@ function badgeIconElement(icon: BadgeIcon): React.ReactElement {
 }
 
 /**
- * One reference badge (VS Code `div.label`): optional count, icon, optional
+ * One reference badge (Code OSS `div.label`): optional count, icon, optional
  * name, on the reference's color.
  * @param props - badge.
  * @returns badge element.
@@ -88,7 +88,7 @@ function Badge(props: { badge: RefBadge }): React.ReactElement {
  * ellipsized line, then the reference badges. Activating the row toggles the
  * commit's inline file list; the row stays a focus stop and keeps its context-menu
  * gesture. The short identifier and relative time live in the tooltip, as in
- * VS Code's hover. Hovering the row closes its node's gap in the line layer.
+ * Code OSS's hover. Hovering the row closes its node's gap in the line layer.
  * @param props - row props.
  * @returns commit row element.
  */

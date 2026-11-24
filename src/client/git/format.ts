@@ -8,7 +8,7 @@ import type { ChangeEntry, Failure } from '../types/domain.ts'
 import type { LocaleBinder } from '../types/dsh.ts'
 
 /**
- * Reference family, as VS Code's Git extension classifies a decoration:
+ * Reference family, as Code OSS's Git extension classifies a decoration:
  * `head` is the checked-out branch, `branch` another local branch, `remote` a
  * remote-tracking branch and `tag` a tag.
  */
@@ -168,7 +168,7 @@ function classifyRef(label: string, head: boolean, tag: boolean): ParsedRef | nu
 }
 
 /**
- * Parse a commit's `refs` decoration string into the references VS Code's Git
+ * Parse a commit's `refs` decoration string into the references Code OSS's Git
  * extension shows: the checked-out branch, local branches, remote-tracking
  * branches and tags. A detached `HEAD` marker and a remote's `HEAD` pointer are
  * not references of their own and are skipped.

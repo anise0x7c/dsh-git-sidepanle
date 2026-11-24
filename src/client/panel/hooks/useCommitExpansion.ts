@@ -1,5 +1,5 @@
 /**
- * Inline commit expansion in the graph (VS Code's expanded history item): which
+ * Inline commit expansion in the graph (Code OSS's expanded history item): which
  * commits list their changed files below their rows, the file list read for
  * each one, its loading/failure flags, and the toggle/retry transitions.
  */

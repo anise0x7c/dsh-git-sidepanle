@@ -1,14 +1,14 @@
 /* ---------------------------------------------------------------- graph --- */
 
-/* The commit graph follows VS Code's Source Control Graph, so its palette is
- * derived from VS Code's `scmGraph.*` color set rather than host tokens: five
+/* The commit graph follows Code OSS's Source Control Graph, so its palette is
+ * derived from Code OSS's `scmGraph.*` color set rather than host tokens: five
  * rotation colors shared by light and dark themes, plus the checked-out
  * (`charts.blue`), upstream (`charts.purple`) and base reference colors. Each
  * value is restyled within its hue family — gold, crimson, copper, emerald and
  * violet rotations, blue, purple and orange references — and keeps at least a
  * 2:1 contrast ratio against the panel background in both themes, so the graph
  * reads as the plugin's own rendering without becoming hard to see. Badge text
- * uses the host's base background, standing in for VS Code's `panel.background`. */
+ * uses the host's base background, standing in for Code OSS's `panel.background`. */
 .dshgg-root {
   --dshgg-scm-lane1: #d6a700;
   --dshgg-scm-lane2: #e0065b;
@@ -42,7 +42,7 @@ body[data-ds-dark-theme] .dshgg-root {
   pointer-events: none;
 }
 
-/* VS Code `.history-item`: the shared compact row carries the height, padding,
+/* Code OSS `.history-item`: the shared compact row carries the height, padding,
  * hover surface and focus ring; this row adds only the graph cell, the label and
  * the badges. */
 
@@ -53,7 +53,7 @@ body[data-ds-dark-theme] .dshgg-root {
   flex: none;
 }
 
-/* VS Code's one-pixel strokes. Every segment of one color in the whole graph
+/* Code OSS's one-pixel strokes. Every segment of one color in the whole graph
  * shares an element, so a lane crossing a row boundary is one continuous
  * stroke and no seam can appear between two rows. */
 .dshgg-graphEdge {
@@ -62,7 +62,7 @@ body[data-ds-dark-theme] .dshgg-root {
   stroke-linecap: round;
 }
 
-/* VS Code clears its node strokes on hover: the node's outer edge grows by half
+/* Code OSS clears its node strokes on hover: the node's outer edge grows by half
  * a stroke. The geometry carries the hover radii; the node gap that also closes
  * is driven by the section's hovered row, because the gap belongs to the line
  * layer rather than to the row. */
@@ -76,7 +76,7 @@ body[data-ds-dark-theme] .dshgg-root {
   }
 }
 
-/* VS Code `.monaco-icon-label`: subject and description ellipsize together. */
+/* Code OSS `.monaco-icon-label`: subject and description ellipsize together. */
 .dshgg-graphLabel {
   flex: 1 1 auto;
   min-width: 0;
@@ -103,7 +103,7 @@ body[data-ds-dark-theme] .dshgg-root {
   font-weight: 600;
 }
 
-/* VS Code `.label-container` and `.label`. The host's superellipse corner
+/* Code OSS `.label-container` and `.label`. The host's superellipse corner
  * shape would turn the clamped corner radius into a rounded square, so a badge
  * opts back into circular corner arcs and keeps the capsule silhouette. */
 .dshgg-graphBadges {
@@ -133,7 +133,7 @@ body[data-ds-dark-theme] .dshgg-root {
 }
 
 /* The icon element is sized by its own attributes: 16px, or 12px for branches,
- * matching VS Code's codicon font sizes inside an 18px badge. */
+ * matching Code OSS's codicon font sizes inside an 18px badge. */
 
 .dshgg-graphBadge[data-icon="branch"] .dshgg-graphBadgeIcon {
   padding: 3px;
@@ -176,7 +176,7 @@ body[data-ds-dark-theme] .dshgg-root {
   cursor: default;
 }
 
-/* VS Code `.history-item-change`: the rows an expanded commit lists below
+/* Code OSS `.history-item-change`: the rows an expanded commit lists below
  * itself. The shared row carries their layout; each keeps a graph area as wide
  * as the commit's outgoing lanes, and the lanes themselves come from the
  * section's line layer. */

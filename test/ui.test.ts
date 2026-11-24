@@ -1713,7 +1713,7 @@ test('hovering a row closes its node gap in the line layer', async () => {
   await mounted.harness.dispose()
 })
 
-test('a merge fans out to the right and joins its fork point like VS Code', async () => {
+test('a merge fans out to the right and joins its fork point like Code OSS', async () => {
   const now = Math.floor(Date.now() / 1000)
   const history: HistoryResult = {
     commits: [
@@ -1839,7 +1839,7 @@ test('a merge fans out to the right and joins its fork point like VS Code', asyn
         ['dshgg-graphAuthor', 'Bob'],
       ],
     ],
-    'each row shows the subject and the author, like VS Code',
+    'each row shows the subject and the author, like Code OSS',
   )
   const featureBadges = collectElements(
     rows[2] as TestElement,
@@ -1873,7 +1873,7 @@ test('a merge fans out to the right and joins its fork point like VS Code', asyn
   await mounted.harness.dispose()
 })
 
-test('lanes right of a joined lane shift left with VS Code curves', async () => {
+test('lanes right of a joined lane shift left with Code OSS curves', async () => {
   const now = Math.floor(Date.now() / 1000)
   const oid = (char: string): string => char.repeat(40)
   const entry = (id: string, parents: string[], refs = '') => ({

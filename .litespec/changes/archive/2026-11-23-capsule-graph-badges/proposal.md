@@ -22,6 +22,6 @@ keep their position.
 - The shape of graph nodes, lines or buttons elsewhere in the panel is
   unchanged.
 - The badge palette, its contrast-checked colors and the reference ordering
-  stay VS Code's; this change touches only the badge silhouette.
+  stay Code OSS's; this change touches only the badge silhouette.
 - Rounded corners on rows, sections, menus and dialogs keep the application's
   corner shape.

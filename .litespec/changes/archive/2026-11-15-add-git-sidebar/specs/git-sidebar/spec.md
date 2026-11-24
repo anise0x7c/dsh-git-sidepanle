@@ -1,7 +1,7 @@
 # git-sidebar delta
 
 ## Purpose
-Give Web GUI users a VS Code-style source-control surface for the Session's workspace: review changes, stage and commit them, inspect diffs, and follow branch history without leaving DSH.
+Give Web GUI users a Code OSS-style source-control surface for the Session's workspace: review changes, stage and commit them, inspect diffs, and follow branch history without leaving DSH.
 
 ## ADDED Requirements
 
@@ -28,7 +28,7 @@ The panel SHALL show the repository it resolved from the Session's working direc
 - **THEN** the panel shows a no-repository explanation naming the directory and offers refresh, with no stage, commit, or discard controls
 
 ### Requirement: Change overview
-The panel SHALL list the repository's changes as three groups in VS Code's order: merge conflicts, staged changes, and changes not yet staged. Every entry SHALL carry a status letter identifying added, modified, deleted, renamed, untracked, or conflicted state, and entries SHALL be arranged in a folder tree whose folders collapse and expand. A file with both staged and unstaged modifications SHALL appear in both the staged and the unstaged group.
+The panel SHALL list the repository's changes as three groups in Code OSS's order: merge conflicts, staged changes, and changes not yet staged. Every entry SHALL carry a status letter identifying added, modified, deleted, renamed, untracked, or conflicted state, and entries SHALL be arranged in a folder tree whose folders collapse and expand. A file with both staged and unstaged modifications SHALL appear in both the staged and the unstaged group.
 
 #### Scenario: Partially staged file
 - **WHEN** a tracked file has staged edits and further unstaged edits

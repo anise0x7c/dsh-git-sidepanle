@@ -2,7 +2,7 @@
 
 ## Why
 
-VS Code's wide change-row lane starts at the expanded commit's bottom edge: the
+Code OSS's wide change-row lane starts at the expanded commit's bottom edge: the
 commit row's own line stays one pixel, the lines listed under it are three, and
 at the row boundary the lane visibly changes width. The row that owns the files
 therefore looks disconnected from them, which reads as a drawing defect rather
@@ -24,6 +24,6 @@ than as the emphasis the wide line is meant to carry.
 
 - Widening the whole checked-out branch lane, or any lane of a collapsed commit
   row: only the row whose files are listed is emphasised.
-- Changing VS Code's three-pixel highlight or one-pixel lines elsewhere,
+- Changing Code OSS's three-pixel highlight or one-pixel lines elsewhere,
   including the change rows' own graph area.
 - Version bumps or commits.

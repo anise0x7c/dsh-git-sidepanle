@@ -16,7 +16,7 @@ groups, the commit graph and the commit-details tree SHALL use one compact
 22-pixel row style: the same height, horizontal padding, gap, corner radius,
 hover surface and focus ring. A commit row SHALL keep its graph cell, subject
 and reference badges inside that shared row, and the commit graph's line, node
-and reference badge colors SHALL follow VS Code's Source Control Graph as the
+and reference badge colors SHALL follow Code OSS's Source Control Graph as the
 commit graph requirements describe. The panel's visible text SHALL follow the
 user's language, providing English and Chinese copy.
 

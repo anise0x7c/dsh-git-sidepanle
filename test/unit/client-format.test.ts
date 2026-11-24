@@ -242,7 +242,7 @@ describe('parseRefs', () => {
     }
   })
 
-  test('classifies full decorations the way VS Code does', () => {
+  test('classifies full decorations the way Code OSS does', () => {
     assert.deepEqual(
       parseRefs(
         'HEAD -> refs/heads/feature/x, tag: refs/tags/v2, refs/remotes/origin/feature/x, refs/heads/main',

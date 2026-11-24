@@ -61,7 +61,7 @@ rows, metadata, and controls SHALL use the host's text sizes and weights, row
 heights, spacing, and corner radii. Section header titles SHALL use one text
 size step above file rows and a heavier weight than their surrounding metadata.
 The commit graph is the one exception: its line, node and reference badge colors
-and its compact row height SHALL follow VS Code's Source Control Graph as the
+and its compact row height SHALL follow Code OSS's Source Control Graph as the
 commit graph requirements describe. The panel's visible text SHALL follow the
 user's language, providing English and Chinese copy.
 
@@ -76,7 +76,7 @@ user's language, providing English and Chinese copy.
 - **THEN** its section headers, file rows, metadata, controls, menus and divider
   lines share the host's text scale, row heights, spacing, corner radii and
   standard divider color instead of introducing a separate scale, while commit
-  graph rows keep VS Code's graph dimensions
+  graph rows keep Code OSS's graph dimensions
 
 #### Scenario: Chinese interface
 

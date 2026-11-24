@@ -4,8 +4,7 @@
 
 ### Requirement: Expanded commit drawing
 
-The rows listed under an expanded commit SHALL continue the commit graph as VS
-Code draws an expanded history item's changes: every line that leaves the
+The rows listed under an expanded commit SHALL continue the commit graph as Code OSS draws an expanded history item's changes: every line that leaves the
 commit's row at its bottom edge SHALL continue vertically in its own position
 and color through each listed row, the line in the commit node's position SHALL
 be drawn three pixels wide and the others one pixel wide, and the next commit

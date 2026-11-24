@@ -5,7 +5,7 @@
 The Git panel can review, stage, commit, switch local branches, and read
 history, but it cannot move commits between the repository and its remotes.
 Users must leave the Web GUI and run `git fetch`, `git pull`, or `git push` in
-a terminal to see and publish remote work. VS Code's Source Control view keeps
+a terminal to see and publish remote work. Code OSS's Source Control view keeps
 those actions in the panel, so this change closes the largest remaining gap
 between the two surfaces.
 

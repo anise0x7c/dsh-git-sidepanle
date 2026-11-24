@@ -2,11 +2,11 @@
 
 ## Why
 
-The commit graph follows VS Code's Source Control Graph closely, and deliberately
+The commit graph follows Code OSS's Source Control Graph closely, and deliberately
 so: the same swimlane rules, the same 22-pixel rows, and until now the same
 `scmGraph.*` hex values and the same 5-pixel S-turn radius. That fidelity is
 useful for familiarity, but it also makes the graph look like a direct copy of
-VS Code's renderer. A small style shift keeps the graph instantly recognizable
+Code OSS's renderer. A small style shift keeps the graph instantly recognizable
 while giving the plugin a rendering of its own.
 
 ## What Changes
@@ -29,7 +29,7 @@ endpoints.
 ## Non-goals
 
 - Row height, lane pitch, line width, node shapes, node gaps, badge rules and
-  layout stay VS Code's.
+  layout stay Code OSS's.
 - The reference color semantics (blue checked-out branch, purple upstream,
   orange base) and their light/dark theme switching are unchanged.
 - No wide-gamut color space: the palette stays within sRGB so every display
