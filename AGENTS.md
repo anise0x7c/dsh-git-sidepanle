@@ -80,6 +80,10 @@ use the linked docs for behavior and implementation details.
 - Extend [mini-react](test/support/mini-react.ts) for UI coverage rather than
   reaching into component internals. Loader and UI integration tests should
   exercise the built bundle, not just its source entry points.
+- Put rendered-UI behavior in the matching `test/ui/<surface>.test.ts` and add
+  its helpers to [ui-panel](test/support/ui-panel.ts) instead of growing a
+  private fixture. Mount and clean up through that harness, so a failure still
+  restores the timer, fetch and document globals.
 - Have doubles mirror the real Host's payloads and call ordering; use the
   existing [fake context](test/support/fake-ctx.ts) as a starting point.
   Prefer a failing regression test first. Do not weaken behavioral assertions

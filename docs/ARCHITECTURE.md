@@ -84,11 +84,15 @@ scripts/
   build.ts                    both build targets, watch, read-only freshness gate
   verify-contract.ts          integration with the real installed DSH registry
 test/
-  *.test.ts                   Host, loader, rendered UI, workflow and architecture regressions
+  *.test.ts                   Host contract, loader, workflow and architecture regressions
   registration.test.ts        loader registration, style lease and factory side effects
-  tooling.test.ts             package manifest, exports, CI and artifact contracts
+  tooling.test.ts             package manifest, exports, gate wiring and artifact contracts
+  ui/*.test.ts                rendered-UI behavior, one file per surface: layout, graph,
+                              changes, commit, prompts, header, remote, details, expansion,
+                              diff, menu, menu-fallback, live, toast
   types/rpc.type-test.ts      compile-only RPC request/response assertions
   support/architecture.ts     TypeScript-AST import graph checks over virtual source trees
+  support/ui-panel.ts         shared rendered-UI harness: bundle loader, mountGit and helpers
   unit/*.test.ts              pure modules, no Git process or DOM
   support/*.ts                fixtures, minimal React, fake context/menu, Code OSS graph oracle
 ```
