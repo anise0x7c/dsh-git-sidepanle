@@ -1,6 +1,9 @@
 node_modules/
 *~
 
+# Ignore custom workflow files
+.litespec/
+
 # Every project scratch/temporary folder lives under .temp/ (never at the root)
 .temp/
 
