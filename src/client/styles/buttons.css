@@ -26,6 +26,15 @@
   cursor: default;
 }
 
+/* A control inside a hovered row or header layers this highlight above that
+ * surface's own, so the pointer marks both the row and its target; where no
+ * surface is hovered, as in the toolbar, it is the control's only highlight. */
+@media (hover: hover) {
+  .dshgg-iconBtn:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
 .dshgg-iconBtn[data-spinning="true"] svg {
   animation: dshgg-spin 1s linear infinite;
 }

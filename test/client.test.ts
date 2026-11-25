@@ -211,6 +211,24 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /@media \(hover: hover\) \{\s*\.dshgg-sectionHeader:hover::before \{\s*opacity: 1;\s*\}\s*\}/,
   )
+  // Hover paints two layers: the whole surface keeps the host highlight, and a
+  // control inside it — a header's action or a file row's revealed actions —
+  // adds the same translucent host highlight above that surface, so the control
+  // reads darker than the row it sits in. The section toggle spans most of the
+  // header, so it keeps only the header highlight instead of a second layer, and
+  // the graph header keeps that whole-surface highlight instead of a
+  // controls-only mode.
+  assert.match(
+    graphStyles,
+    /\.dshgg-iconBtn:hover:not\(:disabled\)\s*\{[^}]*background: var\(--dsw-alias-interactive-bg-hover\);/,
+  )
+  assert.doesNotMatch(
+    graphStyles,
+    /\.dshgg-sectionToggle:hover/,
+    'the section toggle adds no second hover layer',
+  )
+  // File-row actions are shared icon buttons, so the rule above reaches them.
+  assert.doesNotMatch(graphStyles, /data-hover/, 'no header opts out of the surface highlight')
   // The scroll frame is free of top padding and has no inset above the first
   // section: the first header starts at the pane's top edge, so its own
   // surface covers the edge and no row can appear above it.

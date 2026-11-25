@@ -259,7 +259,6 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
       retainBody: true,
       onToggle: props.onToggle,
       actions: props.actions,
-      hover: 'controls',
       menuTrigger: trigger,
       menuHint: t('menu.hint'),
       ...(menu === undefined || trigger === null

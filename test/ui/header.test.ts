@@ -117,7 +117,11 @@ test('the commit graph header owns fetch, pull, push and the overflow menu', asy
     hasClass(element, 'dshgg-sectionHeader'),
   )
   assert.ok(header, 'no graph section header rendered')
-  assert.equal(header.props['data-hover'], 'controls', 'header controls highlight individually')
+  assert.equal(
+    header.props['data-hover'],
+    undefined,
+    'the graph header keeps the whole-header highlight like every other header',
+  )
   const toggle = (): TestElement => {
     const [element] = collectElements(
       graphSection(mounted),

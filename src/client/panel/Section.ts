@@ -29,8 +29,6 @@ export interface SectionProps {
   readonly count?: number | null
   /** Optional header actions. */
   readonly actions?: React.ReactNode
-  /** Hover highlight target: the whole header surface (default) or each control. */
-  readonly hover?: 'header' | 'controls'
   /** Host trigger binding; null or absent disables the header menu. */
   readonly menuTrigger?: MenuTriggerFactory | null
   /** Tooltip for the header menu. */
@@ -83,7 +81,6 @@ export function Section(props: SectionProps): React.ReactElement {
       'div',
       {
         className: 'dshgg-sectionHeader',
-        ...(props.hover === 'controls' ? { 'data-hover': 'controls' } : {}),
         ...(menuProps ?? {}),
       },
       h(

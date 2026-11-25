@@ -50,19 +50,10 @@
   }
 }
 
-/* The commit graph header keeps the whole-row highlight off: its controls are
- * separate targets, so each one carries its own hover surface instead. */
-.dshgg-sectionHeader[data-hover="controls"]::before {
-  display: none;
-}
-
-@media (hover: hover) {
-  .dshgg-sectionHeader[data-hover="controls"] .dshgg-sectionToggle:hover,
-  .dshgg-sectionHeader[data-hover="controls"] .dshgg-iconBtn:hover:not(:disabled) {
-    background: var(--dsw-alias-interactive-bg-hover);
-  }
-}
-
+/* The toggle spans most of the header but is not marked a second time: it keeps
+ * only the header's own hover surface, so hovering the title reads as hovering
+ * the header rather than as a control inside it. The header's action controls
+ * still add their own highlight above that surface. */
 .dshgg-sectionToggle {
   display: flex;
   flex: 1;

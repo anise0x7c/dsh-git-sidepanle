@@ -123,6 +123,23 @@ The architecture guide now matches the implementation:
   contract describes the one host external, the failure-detail fallback and the
   factory's guarded host reads.
 
+Hover feedback now comes in two layers, a block and the control under the
+pointer:
+
+- A section header and a changed-file row keep their whole-block hover
+  highlight, and a control inside them adds its own highlight while the pointer
+  rests on it: a group's bulk actions, a file row's stage, unstage and discard
+  buttons, and the commit graph header's remote controls. A section's toggle
+  spans most of the header, so it keeps only the header highlight instead of a
+  second layer. The commit graph header no longer highlights only its controls,
+  so it behaves like every other section header.
+- Every icon button now has a hover layer of its own, including the toolbar's
+  refresh control and the controls in the commit details and diff tab headers.
+- Both layers come from the Host's half-transparent interactive hover token, so
+  the control area reads deeper than the block beneath it. A disabled control
+  shows no layer of its own, and the note rows that accept no pointer input,
+  such as the loading, empty and failed states, show no hover at all.
+
 ## 0.13.1
 
 Commit details now show in file tree which can be collapsed
