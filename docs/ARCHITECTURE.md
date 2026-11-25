@@ -52,6 +52,7 @@ src/
   client-entry.ts             browser exports only
   client/
     types/                    local structural DSH and UI/domain contracts
+    assets.d.ts               ambient CSS-module declaration for the typecheck
     constants.ts              identifiers, paths, rendering limits
     locale/{en,zh}.ts          UI dictionaries
     styles/                   per-area CSS sections and the ordered cascade assembly
@@ -60,11 +61,12 @@ src/
     host-file-icon.ts         the host's file-type glyph, resolved softly with the plugin icon as fallback
     toast/                    the single-notice store and the native Toast host with a shared-service fallback
     data/caller.ts            the only fetch layer
-    git/{format,list,graph,tree}.ts pure formatting, list ordering, commit-file tree, Code OSS graph port
-    menu/                     targets, triggers, clipboard, actions, command bus
+    git/{format,list,tree,graph}.ts pure formatting, list ordering, commit-file tree, Code OSS graph port
+    menu/                     captured targets and triggers, clipboard, actions, command bus
     panel/
       controls.ts, rows.ts    controls and rows for the flat change lists and the commit-details folder tree
       change-groups.ts        pure grouping, path ordering and display-letter rules
+      commit-mode.ts          commit variants shared by the actions, menu and tests
       Section.ts              collapsible section header
       feedback.ts             empty states
       FloatingPanel.ts        shared panel-local floating operation surface and actions
@@ -74,8 +76,12 @@ src/
       split.ts                pure split-ratio range, pointer mapping and key steps
       scroll.ts               pure near-end rule that pages the commit history
       autosize.ts             commit-message height rule and its one element pass
-      hooks/                  repository/history/branches/details/expansion/action hooks
-      views/                  branch/commit/change/graph sections, the commit-details card, reference dialogs and the split view
+      hooks/                  state/request hooks: repository, history, branches, details,
+                              expansion, changes, commit menu, remotes, live updates,
+                              failure notices, menu commands and transient UI
+      views/                  branch/commit/change/graph sections, the commit action menu,
+                              remote controls, reference/remote dialogs, the commit-details
+                              card and the split view
         graph/                shared SVG artwork, commit row/badge and expanded change-row presentation
       GitPanel.ts             hook and view assembly
     diff/                     diff panel and pure diff rendering
@@ -94,28 +100,40 @@ test/
   support/architecture.ts     TypeScript-AST import graph checks over virtual source trees
   support/ui-panel.ts         shared rendered-UI harness: bundle loader, mountGit and helpers
   unit/*.test.ts              pure modules, no Git process or DOM
-  support/*.ts                fixtures, minimal React, fake context/menu, Code OSS graph oracle
+  support/*.ts                fixtures, minimal React, fake context/menu/Host, shared test
+                              types and the Code OSS graph oracle
 ```
 
 ## Dependency direction
 
 ```text
-client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/*, toast/* }
-GitPanel -> panel/hooks/* -> { data/caller, panel/menu, menu/bus, git/* }
-panel/views/* -> { panel/FloatingPanel, panel/Section, panel/BranchMenu, panel/autosize, panel/controls, panel/feedback, panel/rows, panel/split, icons, host-file-icon, menu/trigger, git/format, git/graph, git/tree, type-only hooks/types }
+client-entry -> plugin -> { titles, panel/GitPanel, diff/DiffPanel, menu/*, locale/*, toast/*,
+                            styles, constants, icons }
+GitPanel -> { panel/hooks/*, panel/views/*, panel/FloatingPanel, panel/change-groups, panel/confirm,
+              panel/feedback, panel/menu, panel/scroll, panel/split, git/format, git/list, icons,
+              constants }
+GitPanel -> panel/hooks/* -> { data/caller, panel/menu, menu/bus, git/*, constants }
+panel/views/* -> { panel/FloatingPanel, panel/Section, panel/BranchMenu, panel/autosize,
+                  panel/change-groups, panel/commit-mode, panel/controls, panel/feedback,
+                  panel/rows, panel/split, icons, host-file-icon, menu/trigger, git/format,
+                  git/graph, git/tree, type-only hooks/types }
 pure git/menu/locale logic -> no React, no ctx
 host-file-icon -> { icons, react, one guarded host-module request }
 toast/ToastHost -> { toast/notify, icons, react, one guarded host-module request }
 toast/notify -> no React, no ctx
 host: http/* -> nothing; git/paths -> errors; git/exec -> errors
-      git/files -> { exec, paths }; git/changes -> { exec, paths, files, ignore }
-      git/mutations -> { exec, branches }; git/remotes -> { exec }
-      readers -> { exec, paths, files as needed }
-      validation -> { errors, git/exec }; watch/* -> git/exec
-      rpc -> { validation, session, errors, git/exec, readers, changes, mutations, remotes, watch }
+      git/files -> { exec, paths, errors }; git/changes -> { exec, paths, files, ignore, errors }
+      git/mutations -> { exec, branches, errors }; git/remotes -> { exec, errors }
+      git/ignore -> errors; session -> { context (type-only), errors }
+      readers -> { exec, paths, files and errors as needed }
+      validation -> { errors, git/exec }; watch/registry -> { git/exec, watch/classify }
+      watch/classify -> nothing
+      rpc -> { validation, session, errors, git/exec, readers, changes, mutations, remotes, watch (type-only) }
       host-entry -> { rpc, http/*, watch, errors }
 either half -- import type --> shared/git
 ```
+
+Arrows list runtime edges; a type-only edge is named as such.
 
 Pure logic stays directly importable in Node. Views never call `fetch`; hooks
 own requests and state. DSH interfaces are local structural subsets of the
@@ -136,12 +154,14 @@ every public export or semantic branch has a consumer.
 1. The keyed `sidebar.right.pane.tab` slot supplies Session identity, translation,
    tab-info and context-menu hooks.
 2. `useRepoStatus` creates a caller for `/api/dsh-git-graph/rpc` and loads status.
-   While the tab is visible, `useLiveUpdates` subscribes the panel's repository to
-   the Host watch registry and polls two in-memory counters (working tree/index
-   and references) about every 700 ms; a counter move refreshes only the status,
-   or the status plus the graph references, without re-reading the commits. The
-   old 5-second status check stays as the fallback while the Host cannot watch
-   and stands down once the counters are live. Status reads are serialized;
+   `useLiveUpdates` subscribes the panel's repository to the Host watch registry
+   on mount and whenever the repository changes; while the tab is visible it
+   polls two in-memory counters (working tree/index and references) about every
+   700 ms. A working-tree/index move refreshes only the status; a reference move
+   also re-reads the graph references and reloads the newest history page only
+   when the checked-out commit is not among the loaded rows. The old 5-second
+   status check stays as the fallback while the Host cannot watch and stands
+   down once the counters are live. Status reads are serialized;
    explicit requests during a read coalesce into a follow-up, and a successful
    action waits for its post-write read before releasing its busy lock.
 3. The Host watch registry shares one recursive working-tree watcher, one Git
@@ -151,41 +171,41 @@ every public export or semantic branch has a consumer.
    only move counters; the Git reads still happen when the browser asks.
    Per-panel setup identities invalidate cancelled or superseded asynchronous
    discovery, and registry disposal permanently fences off new watchers.
-4. History loads one page on mount and more on demand. `history` returns commits
-   in `--topo-order` with full decorations, an `offset` for earlier pages, a
-   `hasMore` flag, and the checked-out, upstream and base references; reaching
-   the end of the graph pane (`panel/scroll.ts`) asks the history hook to append
-   the next page. `git/graph.ts` turns the loaded commits into Code OSS swimlane
-   view models, SVG paths, node shapes and reference badges (a port of Code OSS's
-   `scmHistory.ts`, checked against a literal transcription in
-   `test/support/code-oss-scm-history.ts`). The lines of the whole list are one
-   layer with one path per color, so a lane that crosses a row boundary is
-   rasterized as one stroke; each row's cell keeps only its node and its graph
-   width, and the node gaps are circles in the layer's mask that the section
-   closes for the hovered row.
+4. History loads one page on mount and more on demand. `history` accepts an
+   `offset` for earlier pages and returns commits in `--topo-order` with full
+   decorations, a `hasMore` flag, and the checked-out, upstream and base
+   references; reaching the end of the graph pane (`panel/scroll.ts`) asks the
+   history hook to append the next page. `git/graph.ts` turns the loaded commits
+   into Code OSS swimlane view models, SVG paths, node shapes and reference
+   badges (a port of Code OSS's `scmHistory.ts`, checked against a literal
+   transcription in `test/support/code-oss-scm-history.ts`). The lines of the
+   whole list are one layer with one path per color and stroke width, so a lane
+   that crosses a row boundary is rasterized as one stroke; each row's cell
+   keeps only its node and its graph width, and the node gaps are circles in the
+   layer's mask that the section closes for the hovered row.
 5. The body is a resizable split: change groups scroll above the graph in their
    own pane, and `panel/split.ts` owns the 20%–80% ratio mapped from pointer and
    keyboard gestures. `GitPanel` keeps the ratio so commit details (opened from
    the commit row's View Details menu action) can overlay the still-mounted
    split as a card and reveal it again, while commit metadata and files load
    lazily. Activating a commit row instead toggles `useCommitExpansion`, which
-   reads each expanded commit's files
-   with its own request token; `GraphSection` derives one list of inserted rows
-   per commit and hands its lengths to `graphLayer`, which offsets the commit
-   rows below and draws Code OSS's graph-placeholder lanes through the inserted
-   rows (the node lane in a separate three-pixel element).
+   reads each expanded commit's files with its own request token; `GraphSection`
+   derives one list of inserted rows per commit and hands its lengths to
+   `graphLayer`, which offsets the commit rows below and draws Code OSS's
+   graph-placeholder lanes through the inserted rows (the node lane in a
+   separate three-pixel element).
 6. Change actions share a busy lock, failure handling, confirmation and refresh
    path. Commit/checkout also refresh history. The commit box sizes itself to its
    message (`panel/autosize.ts`): one line at rest, ten at most, re-measured from
    a layout effect per message and from a width watcher when the box rewraps.
-   The commit action is a split button: the main control commits, and the
-   trailing expand control opens the presentational `views/CommitMenu`, whose
-   dismissal lives in `useCommitActionMenu`; both halves share one disabled
-   state, so an empty message or a running action disables the whole control
-   and closes the menu. `useChangeActions` runs every
-   variant (Commit, Amend, Commit and Push, Commit and Sync) through the same
-   busy lock, committing first and treating a failed push or sync as a reported
-   failure that keeps the commit.
+   The commit action is a split button: the main control commits, or runs Sync
+   when a clean branch is ahead of its upstream; the trailing expand control
+   opens the presentational `views/CommitMenu`, whose dismissal lives in
+   `useCommitActionMenu`; both halves share one disabled state, so an empty
+   message or a running action disables the whole control and closes the menu.
+   `useChangeActions` runs every variant (Commit, Amend, Commit and Push, Commit
+   and Sync) through the same busy lock, committing first and treating a failed
+   push or sync as a reported failure that keeps the commit.
    `FloatingPanel` owns the presentation shared by discard/commit confirmations
    and reference forms: a non-modal absolute layer anchored inside the panel,
    with native frosted surface tokens, a height-bounded scrolling content area,
@@ -219,22 +239,23 @@ every public export or semantic branch has a consumer.
 The commit graph header's Fetch, Pull and Push controls and its overflow menu
 call the guarded RPC like every other panel action. `remotes` reads
 `git remote -v` into name, fetch URL and push URL; publish uses that list to
-prefer `origin`, offer a choice, or report that none exists. `fetch`, `pull`, `push`, `sync` and `publish` run on the Host
-with the shared literal argument-vector executor, a longer bounded timeout,
-terminal prompts disabled, and `GIT_MERGE_AUTOEDIT=no` so a merge never waits
-for an editor. Pull merges (`--no-rebase`), Pull (Rebase) rebases, and Sync
-stops before pushing when its pull fails. `add-remote` and `remove-remote`
-write repository configuration; `checkout-remote` creates or switches to the
-local branch tracking a listed remote branch. Successful writes use the same
-busy lock, success Toast and post-write status refresh as local actions; a
-failed network action still refreshes the status so conflicts and partially
-fetched refs appear.
+prefer `origin`, offer a choice, or report that none exists. `fetch`, `pull`,
+`push`, `sync` and `publish` run on the Host with the shared literal
+argument-vector executor, a longer bounded timeout, terminal prompts disabled,
+and `GIT_MERGE_AUTOEDIT=no` so a merge never waits for an editor. Pull merges
+(`--no-rebase`), Pull (Rebase) rebases, and Sync stops before pushing when its
+pull fails. `add-remote` and `remove-remote` write repository configuration;
+`checkout-remote` creates or switches to the local branch tracking a listed
+remote branch. Successful writes use the same busy lock, success Toast and
+post-write status refresh as local actions; a failed network action still
+refreshes the status so conflicts and partially fetched refs appear.
 
 ## Runtime contracts
 
 - Routes stay `POST /api/dsh-git-graph/rpc` and
-  `GET /api/dsh-git-graph/health`. Accept only loopback sockets/Host, bundle
-  header `x-dsh-git-graph: 1`, no forwarding headers, and same-origin markers.
+  `GET`/`HEAD /api/dsh-git-graph/health`. Accept only loopback sockets/Host,
+  bundle header `x-dsh-git-graph: 1`, no `x-forwarded-for` or
+  `cf-connecting-ip` forwarding headers, and same-origin markers.
   Git never runs through a shell and file arguments are literal pathspecs.
   Browser requests contain Session ids and repository-relative paths, never a
   repository root supplied by the browser. Direct filesystem operations reject
@@ -242,30 +263,35 @@ fetched refs appear.
   and both previews and deletion recheck Git's current untracked classification.
   Normal Git hooks/configuration and local-account trust remain unchanged; these
   checks do not sandbox concurrent local replacement of ancestor directories.
-- The browser factory calls `window.__ModuleLoader__.load({id, factory})`,
-  returns `{inject, apply}`, and has no side effects. Registrations belong to
-  `apply` with `ctx.effect`; style leases are shared across module replacements
-  and released on disposal. The platform supplies `react`; the only other
-  runtime requests are the two guarded host-primitive wrappers: the file-type
-  icon in `host-file-icon.ts` and the native Toast component in
-  `toast/ToastHost.ts`.
+- The browser factory calls `window.__ModuleLoader__.load({id, factory})` and
+  returns `{inject, apply}`. It registers nothing and touches no DOM outside
+  `apply`; besides `react`, its only host access outside `apply` is the two
+  guarded host-primitive reads described below. Registrations belong to `apply`
+  with `ctx.effect`; style leases are shared across module replacements and
+  released on disposal. The platform supplies `react`; the only other runtime
+  request is the host external `@deepseek-ai/dsh-client-ui-primitives`, read
+  through the two guarded wrappers: the file-type icon in `host-file-icon.ts`
+  and the native Toast component in `toast/ToastHost.ts`.
 - `props.useContextMenu` is bound once inside `useMemo`. No DSH UI package is
-  imported as a module; the guarded host-icon and native-Toast requests above
-  are the only exceptions.
+  imported as a module; the guarded host-icon and native-Toast reads above are
+  the only exceptions.
 - Absolute copy paths use `repo.root`, never the possibly nested Session cwd.
-- All visible copy comes from the bound English/Chinese dictionaries. Styling
-  retains the Host theme tokens and keyboard/menu focus semantics. The one
-  exception is the commit graph, which uses a restyled version of Code OSS's
+- All static UI copy comes from the bound English/Chinese dictionaries; a Git
+  or Host failure detail whose code has no dictionary entry is shown verbatim.
+  Styling retains the Host theme tokens and keyboard/menu focus semantics. The
+  one exception is the commit graph, which uses a restyled version of Code OSS's
   `scmGraph.*` palette as `--dshgg-scm-*` variables (same hue families,
-  contrast-checked, dark variants under `body[data-ds-dark-theme]`) and Code OSS's 22px graph rows and curve geometry.
+  contrast-checked, dark variants under `body[data-ds-dark-theme]`) and Code
+  OSS's 22px graph rows and curve geometry.
 
 ## Build and quality gates
 
 TypeScript is strict and no-emit, including scripts and test support. Explicit
 `.ts` imports are executed only by the development-only `tsx` loader. esbuild
-emits self-contained JavaScript with embedded-source maps, targeting ES2022.
-The Host target is Node ESM; the browser is CJS inside its DSH loader wrapper,
-with CSS imported as text and React external. Both are dependency-free at install.
+emits self-contained JavaScript plus a source map that embeds the sources,
+targeting ES2022. The Host target is Node ESM; the browser is CJS inside its DSH
+loader wrapper, with CSS imported as text and React external. Both are
+dependency-free at install.
 
 ```bash
 pnpm install --frozen-lockfile

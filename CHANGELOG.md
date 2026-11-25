@@ -111,6 +111,18 @@ place:
 - The derived source files keep Microsoft's copyright line and point at the
   notice, which now ships with the plugin's file set together with `LICENSE`.
 
+The architecture guide now matches the implementation:
+
+- Live updates: a reference move re-reads the graph references and reloads the
+  newest history page only when the checked-out commit is not among the loaded
+  rows; `history` accepts a page offset rather than returning one.
+- The health route also accepts `HEAD`; the trust fence names the two forwarding
+  headers it rejects; the commit split button's primary action can become Sync.
+- The directory and dependency maps list `commit-mode.ts`, the assets
+  declaration, the hook/view families and the Host `errors` edges; the loader
+  contract describes the one host external, the failure-detail fallback and the
+  factory's guarded host reads.
+
 ## 0.13.1
 
 Commit details now show in file tree which can be collapsed
