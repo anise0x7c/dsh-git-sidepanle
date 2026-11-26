@@ -5,6 +5,23 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+The Workspace header now has a view menu that switches how its change groups
+show files:
+
+- The ellipsis button at the end of the Workspace header opens a menu with
+  **View as List** and **View as Tree**, drawn like the commit graph header's
+  remote overflow menu. The view in effect carries a check mark; the list stays
+  the default the panel opens with, and both views stay selectable while a Git
+  operation runs.
+- **View as Tree** draws each group as the folder tree the commit details card
+  already uses: folder rows with expansion arrows, unbranched chains joined by
+  `/`, subfolders before files. Folders start expanded and toggle only their own
+  group's subtree, so a folder shared by two groups collapses independently.
+- The chosen view and the collapsed folders survive status refreshes, section
+  collapsing and opening and closing a commit's details, and reset when the tab
+  closes. Switching views runs no Git command, keeps every group's files and
+  count, and opens no diff.
+
 The panel body now groups the working-tree lists under one Workspace section:
 
 - The panel shows exactly two top-level sections, **Workspace** above

@@ -59,6 +59,9 @@ export interface ChangeRow extends ChangeEntry {
   readonly letter: string
 }
 
+/** File view the change groups render: one flat path list or a folder tree. */
+export type ChangeView = 'list' | 'tree'
+
 /** One file a commit changed, marked for the commit-details flat list. */
 export interface CommitFileRow extends ChangedFile {
   /** Distinguishes past-commit rows from working-tree rows. */

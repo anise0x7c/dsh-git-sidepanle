@@ -64,8 +64,9 @@ src/
     git/{format,list,tree,graph}.ts pure formatting, list ordering, commit-file tree, Code OSS graph port
     menu/                     captured targets and triggers, clipboard, actions, command bus
     panel/
-      controls.ts, rows.ts    controls and rows for the flat change lists and the commit-details folder tree
+      controls.ts, rows.ts    controls and rows for the flat and tree change lists and the commit-details folder tree
       change-groups.ts        pure grouping, path ordering and display-letter rules
+      change-view.ts          pure per-group folder-collapse rules for the tree view
       commit-mode.ts          commit variants shared by the actions, menu and tests
       Section.ts              collapsible section header
       feedback.ts             empty states
@@ -77,12 +78,12 @@ src/
       scroll.ts               pure near-end rule that pages the commit history
       autosize.ts             commit-message height rule and its one element pass
       hooks/                  state/request hooks: repository, history, branches, details,
-                              expansion, changes, commit menu, remotes, live updates,
-                              failure notices, menu commands and transient UI
-      views/                  the Workspace section and its nested change groups, the
-                              branch/commit/graph sections, the commit action menu, remote
-                              controls, reference/remote dialogs, the commit-details card and
-                              the split view
+                              expansion, changes, change view, commit menu, remotes, live
+                              updates, failure notices, menu commands and transient UI
+      views/                  the Workspace section, its view menu and its nested change
+                              groups, the branch/commit/graph sections, the commit action
+                              menu, remote controls, reference/remote dialogs, the
+                              commit-details card and the split view
         graph/                shared SVG artwork, commit row/badge and expanded change-row presentation
       GitPanel.ts             hook and view assembly
     diff/                     diff panel and pure diff rendering
@@ -115,9 +116,9 @@ GitPanel -> { panel/hooks/*, panel/views/*, panel/FloatingPanel, panel/change-gr
               constants }
 GitPanel -> panel/hooks/* -> { data/caller, panel/menu, menu/bus, git/*, constants }
 panel/views/* -> { panel/FloatingPanel, panel/Section, panel/BranchMenu, panel/autosize,
-                  panel/change-groups, panel/commit-mode, panel/controls, panel/feedback,
-                  panel/rows, panel/split, icons, host-file-icon, menu/trigger, git/format,
-                  git/graph, git/tree, type-only hooks/types }
+                  panel/change-groups, panel/change-view, panel/commit-mode, panel/controls,
+                  panel/feedback, panel/rows, panel/split, icons, host-file-icon, menu/trigger,
+                  git/format, git/graph, git/tree, type-only hooks/types }
 pure git/menu/locale logic -> no React, no ctx
 host-file-icon -> { icons, react, one guarded host-module request }
 toast/ToastHost -> { toast/notify, icons, react, one guarded host-module request }
@@ -192,7 +193,12 @@ every public export or semantic branch has a consumer.
    room, the divider turns inert, and expanding any section restores the ratio.
    `GitPanel` keeps the ratio so commit details (opened from the commit row's
    View Details menu action) can overlay the still-mounted split as a card and
-   reveal it again, while commit metadata and files load lazily. Activating a
+   reveal it again, while commit metadata and files load lazily. The Workspace
+   header's own view menu (`views/ChangeViewMenu.ts`) reports the chosen file
+   view to `useChangeView`, which also owns each group's collapsed folders
+   (`panel/change-view.ts` is the pure rule); `ChangeGroups` renders every group
+   through `renderFileRows` or, in the tree view, through `buildFileTree` and
+   `renderFileTree`, the renderers the details card uses. Activating a
    commit row instead toggles `useCommitExpansion`, which reads each expanded
    commit's files with its own request token; `GraphSection`
    derives one list of inserted rows per commit and hands its lengths to

@@ -98,6 +98,13 @@
   padding: 5px;
 }
 
+/* A header whose own dropdown is open paints above the headers that follow it.
+ * Every sticky header is a stacking context at the same level, so without this
+ * the next section's header would cover a menu dropped from an earlier one. */
+.dshgg-sectionHeader:has(.dshgg-menu) {
+  z-index: 2;
+}
+
 .dshgg-sectionActions .dshgg-iconBtn svg {
   width: 16px;
   height: 16px;

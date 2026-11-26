@@ -1,12 +1,13 @@
 /**
  * The three change groups — merge conflicts, staged files, unstaged changes —
- * as flat, path-sorted file lists with their section actions. They render as
- * nested groups inside the Workspace section; the workspace view owns the
- * surrounding section and the clean-workspace text.
+ * as path-sorted file lists or folder trees, with their section actions. They
+ * render as nested groups inside the Workspace section; the workspace view owns
+ * the surrounding section and the clean-workspace text.
  */
 
 import type React from 'react'
 import { createElement, Fragment } from 'react'
+import { buildFileTree } from '../../git/tree.ts'
 import { MinusIcon, PlusIcon, UndoIcon } from '../../icons.ts'
 import type {
   MenuTarget,
@@ -14,12 +15,13 @@ import type {
   MenuTargetKind,
   MenuTriggerFactory,
 } from '../../menu/trigger.ts'
-import type { ChangeEntry, ChangeRow } from '../../types/domain.ts'
+import type { ChangeEntry, ChangeRow, ChangeView } from '../../types/domain.ts'
 import type { LocaleBinder } from '../../types/dsh.ts'
 import type { ChangeGroupMode } from '../change-groups.ts'
 import { visibleChangeGroups } from '../change-groups.ts'
+import type { CollapsedFolders } from '../change-view.ts'
 import { IconButton } from '../controls.ts'
-import { ROW_INDENT, renderFileRows } from '../rows.ts'
+import { ROW_INDENT, renderFileRows, renderFileTree } from '../rows.ts'
 import { Section } from '../Section.ts'
 
 const h = createElement
@@ -34,6 +36,12 @@ export interface ChangeGroupsProps {
   readonly stagedRows: readonly ChangeRow[]
   /** Sorted unstaged files with display letters. */
   readonly changedRows: readonly ChangeRow[]
+  /** File view every group renders. */
+  readonly view: ChangeView
+  /** Folders each group's tree hides. */
+  readonly collapsedFolders: CollapsedFolders
+  /** Collapse or expand one folder of one group's tree. */
+  readonly onToggleFolder: (mode: ChangeGroupMode, path: string) => void
   /** Open state per section id. */
   readonly openSections: Readonly<Record<string, boolean>>
   /** Whether the workspace pane folds away when its last open group closes. */
@@ -117,33 +125,45 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
           ],
   }
   /**
-   * Render one group's flat file list with its per-row actions and menu target.
+   * Render one group's rows as the selected view, with its per-row actions and
+   * menu target.
    * @param mode - group id.
    * @param rows - the group's sorted rows.
-   * @returns file-row elements.
+   * @returns file-row elements, with folder rows in the tree view.
    */
   const rowsFor = (
     mode: 'merge' | 'staged' | 'changes',
     rows: readonly ChangeRow[],
-  ): React.ReactElement[] =>
-    renderFileRows(rows, {
+  ): React.ReactElement[] => {
+    const context = {
       t,
       busy: props.busy,
       mode,
-      onOpen: (entry) => props.onOpenDiff(entry, mode === 'staged' ? 'staged' : 'changes'),
-      onStage: (entry) => {
+      onOpen: (entry: ChangeRow) =>
+        props.onOpenDiff(entry, mode === 'staged' ? 'staged' : 'changes'),
+      onStage: (entry: ChangeRow) => {
         void props.onStage([entry])
       },
-      onUnstage: (entry) => {
+      onUnstage: (entry: ChangeRow) => {
         void props.onUnstage([entry])
       },
-      onDiscard: (entry) => props.onDiscard(entry),
+      onDiscard: (entry: ChangeRow) => props.onDiscard(entry),
       menuTrigger: props.menuTrigger,
-      menuTarget: (entry) => props.rowTarget('file', { section: mode, path: entry.path }),
+      menuTarget: (entry: ChangeRow) =>
+        props.rowTarget('file', { section: mode, path: entry.path }),
       // The groups are one level below the Workspace header, so their rows take
       // the same nesting step as the group headers themselves.
       indent: ROW_INDENT,
-    })
+    }
+    if (props.view === 'tree') {
+      const tree = buildFileTree(rows, { collapsed: props.collapsedFolders[mode] })
+      return renderFileTree(tree, {
+        ...context,
+        onToggleFolder: (path) => props.onToggleFolder(mode, path),
+      })
+    }
+    return renderFileRows(rows, context)
+  }
   const visible = visibleChangeGroups(props)
   const shows = (mode: ChangeGroupMode): boolean => visible.includes(mode)
   return h(

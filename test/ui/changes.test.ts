@@ -1,5 +1,6 @@
 /**
- * Change list rows: grouping, file-type icons and status letters.
+ * Change list rows: grouping, file-type icons, status letters and the
+ * Workspace header's list/tree view menu.
  *
  * Mounts the built bundle over the shared mini React harness and asserts
  * what the Host receives; see `support/ui-panel.ts` for the fixture.
@@ -8,14 +9,19 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import type { ChangeEntry } from '../../src/shared/git.ts'
-import { createStatus } from '../support/fixtures.ts'
+import { createStatus, STATUS } from '../support/fixtures.ts'
 import type { TestElement } from '../support/types.ts'
+import type { MountedGit } from '../support/ui-panel.ts'
 import {
+  buttonByLabel,
   buttonInside,
   collectElements,
   commitCard,
+  dispatchDocumentPointerdown,
   disposeUiLifetimes,
   elementText,
+  escapeKeydown,
+  finishMotion,
   hasClass,
   isElement,
   loadUiPanel,
@@ -26,6 +32,72 @@ import {
 afterEach(disposeUiLifetimes)
 
 await loadUiPanel()
+
+/** The Workspace section header that carries the view menu. */
+function workspaceHeader(mounted: MountedGit): TestElement {
+  const section = mounted.harness.findAll(
+    (element) => element.props?.['data-section'] === 'workspace',
+  )[0]
+  assert.ok(section, 'no Workspace section rendered')
+  const header = section.children.find(isElement)
+  assert.ok(header, 'the Workspace section renders no header')
+  return header
+}
+
+/** Every rendered changed-file row, optionally one path. */
+function fileRows(mounted: MountedGit, title?: string): TestElement[] {
+  return mounted.harness.findAll(
+    (element) =>
+      hasClass(element, 'dshgg-fileRow') && (title === undefined || element.props.title === title),
+  )
+}
+
+/** Every rendered folder row. */
+function folderRows(mounted: MountedGit): TestElement[] {
+  return mounted.harness.findAll((element) => hasClass(element, 'dshgg-folderRow'))
+}
+
+/** The Workspace header's view-menu trigger. */
+function viewTrigger(mounted: MountedGit): TestElement {
+  return buttonInside(workspaceHeader(mounted), 'menu.view')
+}
+
+/** Items of the open Workspace view menu. */
+function viewItems(mounted: MountedGit): TestElement[] {
+  return mounted.harness.findAll((element) => hasClass(element, 'dshgg-menuItem'))
+}
+
+/** Labels of the open Workspace view menu's items. */
+function viewLabels(mounted: MountedGit): string[] {
+  return viewItems(mounted).map((item) => elementText(item))
+}
+
+/** Open the Workspace header's view menu. */
+async function openViewMenu(mounted: MountedGit): Promise<void> {
+  mounted.harness.click(viewTrigger(mounted))
+  await mounted.harness.flush()
+}
+
+/** Choose one file view from the Workspace header's view menu. */
+async function chooseView(
+  mounted: MountedGit,
+  label: 'menu.viewList' | 'menu.viewTree',
+): Promise<void> {
+  await openViewMenu(mounted)
+  const [item] = viewItems(mounted).filter((element) => elementText(element) === label)
+  assert.ok(item, `no view menu item labelled "${label}"`)
+  mounted.harness.click(item)
+  await mounted.harness.flush()
+}
+
+/** Indexes of the open menu's items that carry a check glyph. */
+function markedItems(mounted: MountedGit): number[] {
+  return viewItems(mounted)
+    .map((item, index) =>
+      collectElements(item, (element) => element.type === 'svg').length > 0 ? index : -1,
+    )
+    .filter((index) => index >= 0)
+}
 
 test('the change lists and commit details draw the host file-type icon for every file', async () => {
   const mounted = await mountGit({
@@ -281,5 +353,263 @@ test('row actions stage and unstage through the Host', async () => {
   await mounted.harness.flush()
   const unstageCall = mounted.calls.find((call) => call.op === 'unstage')
   assert.deepEqual(unstageCall?.paths, ['src/app.js'])
+  await mounted.harness.dispose()
+})
+
+test('the Workspace header drops a view menu that marks the list', async () => {
+  const mounted = await mountGit()
+  const callsBefore = mounted.calls.length
+  assert.equal(viewItems(mounted).length, 0, 'the menu starts closed')
+  assert.equal(viewTrigger(mounted).props['aria-expanded'], false)
+  await openViewMenu(mounted)
+  assert.equal(viewTrigger(mounted).props['aria-haspopup'], 'menu')
+  assert.equal(viewTrigger(mounted).props['aria-expanded'], true)
+  assert.deepEqual(viewLabels(mounted), ['menu.viewList', 'menu.viewTree'])
+  assert.deepEqual(markedItems(mounted), [0], 'only the view in effect carries a check mark')
+  for (const item of viewItems(mounted)) {
+    assert.equal(item.props.role, 'menuitemradio', 'a view is one choice of a radio group')
+    assert.equal(
+      item.props.disabled ?? false,
+      false,
+      'the view in effect stays selectable so choosing it only closes the menu',
+    )
+  }
+  assert.equal(mounted.calls.length, callsBefore, 'opening the menu runs no Git operation')
+  assert.equal(mounted.menu.opens.length, 0, 'the Workspace header keeps its own menu component')
+  mounted.harness.click(viewItems(mounted)[1])
+  await mounted.harness.flush()
+  assert.equal(viewItems(mounted).length, 0, 'choosing a view closes the menu')
+  await openViewMenu(mounted)
+  assert.deepEqual(markedItems(mounted), [1], 'the menu marks the view now in effect')
+  await mounted.harness.dispose()
+})
+
+test('the trigger toggles the view menu and Escape or an outside pointerdown closes it', async () => {
+  const mounted = await mountGit()
+  const callsBefore = mounted.calls.length
+  await openViewMenu(mounted)
+  assert.equal(viewItems(mounted).length, 2)
+  const closed = escapeKeydown()
+  await mounted.harness.flush()
+  assert.equal(viewItems(mounted).length, 0, 'Escape closes the menu')
+  assert.equal(closed.prevented, false, 'the menu does not consume the key')
+  await openViewMenu(mounted)
+  mounted.harness.click(viewTrigger(mounted))
+  await mounted.harness.flush()
+  assert.equal(viewItems(mounted).length, 0, 'the trigger closes the menu again')
+  await openViewMenu(mounted)
+  dispatchDocumentPointerdown({})
+  await mounted.harness.flush()
+  assert.equal(viewItems(mounted).length, 0, 'an outside pointerdown closes the menu')
+  assert.equal(mounted.calls.length, callsBefore, 'closing the menu runs no Git operation')
+  await mounted.harness.dispose()
+})
+
+test('a running Git operation keeps the view menu selectable', async () => {
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const mounted = await mountGit({ pending: { op: 'stage', until: pending } })
+  const unstaged = fileRows(mounted, 'src/app.js').at(-1)
+  assert.ok(unstaged, 'the unstaged file row is missing')
+  mounted.harness.click(buttonInside(unstaged, 'actions.stage'))
+  await mounted.harness.flush()
+  assert.equal(mounted.calls.filter((call) => call.op === 'stage').length, 1)
+  const busyRow = fileRows(mounted, 'src/app.js').at(-1)
+  assert.ok(busyRow, 'the unstaged file row is missing while the operation runs')
+  assert.equal(
+    buttonInside(busyRow, 'actions.stage').props.disabled,
+    true,
+    'the running operation disables the row actions',
+  )
+  await openViewMenu(mounted)
+  for (const item of viewItems(mounted))
+    assert.equal(item.props.disabled ?? false, false, 'a view command never waits for Git')
+  mounted.harness.click(viewItems(mounted)[1])
+  await mounted.harness.flush()
+  assert.deepEqual(
+    folderRows(mounted).map((row) => elementText(row)),
+    ['src', 'src'],
+    'the tree view applies to every group while the operation runs',
+  )
+  release()
+  await mounted.harness.flush()
+  await mounted.harness.dispose()
+})
+
+test('the tree view groups every change group into folders', async () => {
+  const mounted = await mountGit()
+  await chooseView(mounted, 'menu.viewTree')
+  const folders = folderRows(mounted)
+  assert.deepEqual(
+    folders.map((row) => elementText(row)),
+    ['src', 'src'],
+    'the staged and the unstaged group each draw their own src folder',
+  )
+  assert.equal(fileRows(mounted).length, 4, 'every changed file keeps one row in the tree')
+  assert.equal(
+    fileRows(mounted, 'src/app.js').length,
+    2,
+    'a partially staged file stays in both groups',
+  )
+  for (const folder of folders) {
+    assert.equal(folder.props.role, 'button', 'a change-group folder is a disclosure control')
+    assert.equal(folder.props.tabIndex, 0, 'a folder row takes keyboard focus')
+    assert.equal(folder.props['aria-expanded'], true, 'folders start expanded')
+    assert.equal(
+      folder.props.style?.paddingLeft,
+      '20px',
+      'a root folder takes only the group nesting inset',
+    )
+  }
+  for (const row of fileRows(mounted, 'src/app.js')) {
+    assert.equal(
+      row.props.style?.paddingLeft,
+      '34px',
+      'a file below a folder is one indentation step deeper',
+    )
+    assert.ok(!elementText(row).includes('src'), 'the folder row carries the directory in the tree')
+    const [status] = collectElements(row, (element) => hasClass(element, 'dshgg-status'))
+    assert.ok(status, 'a tree file row keeps its status letter')
+    assert.equal(elementText(status), status.props['data-status'])
+  }
+  for (const row of [...fileRows(mounted, 'README.md'), ...fileRows(mounted, 'merge.txt')]) {
+    assert.equal(row.props.style?.paddingLeft, '20px', 'a root-level file stays at folder depth')
+  }
+  await mounted.harness.dispose()
+})
+
+test('a folder row hides only its own group and the tree state survives the list', async () => {
+  const mounted = await mountGit()
+  await chooseView(mounted, 'menu.viewTree')
+  const stagedFolder = folderRows(mounted)[0]
+  assert.ok(stagedFolder, 'the staged group renders no folder row')
+  mounted.harness.click(stagedFolder)
+  await mounted.harness.flush()
+  const collapsed = folderRows(mounted)
+  assert.equal(collapsed[0]?.props['aria-expanded'], false, 'the clicked folder collapses')
+  assert.equal(collapsed[1]?.props['aria-expanded'], true, 'the other group keeps its folder open')
+  assert.equal(fileRows(mounted, 'src/app.js').length, 1, 'only the staged subtree is hidden')
+  mounted.harness.keydown(collapsed[0], { key: 'Enter' })
+  await mounted.harness.flush()
+  assert.equal(
+    folderRows(mounted)[0]?.props['aria-expanded'],
+    true,
+    'Enter expands the folder again',
+  )
+  mounted.harness.click(folderRows(mounted)[0])
+  await mounted.harness.flush()
+  await chooseView(mounted, 'menu.viewList')
+  assert.equal(folderRows(mounted).length, 0, 'the flat list renders no folder row')
+  assert.equal(fileRows(mounted).length, 4, 'the flat list keeps one row per file')
+  const [flatApp] = fileRows(mounted, 'src/app.js')
+  assert.ok(flatApp, 'the flat list lost the staged file row')
+  assert.ok(elementText(flatApp).includes('src'), 'the flat list shows the directory again')
+  await chooseView(mounted, 'menu.viewTree')
+  const restored = folderRows(mounted)
+  assert.equal(restored[0]?.props['aria-expanded'], false, 'the collapsed folder stays collapsed')
+  assert.equal(restored[1]?.props['aria-expanded'], true)
+  assert.equal(fileRows(mounted, 'src/app.js').length, 1)
+  await mounted.harness.dispose()
+})
+
+test('the chosen view and folder states survive a status refresh', async () => {
+  const refreshed = createStatus({
+    files: [
+      ...STATUS.files,
+      {
+        kind: 'ordinary',
+        x: '.',
+        y: 'M',
+        path: 'docs/notes.md',
+        conflict: false,
+        untracked: false,
+      },
+    ],
+  })
+  const mounted = await mountGit({ statusPages: [STATUS, refreshed] })
+  await chooseView(mounted, 'menu.viewTree')
+  mounted.harness.click(folderRows(mounted)[0])
+  await mounted.harness.flush()
+  const statusCalls = mounted.calls.filter((call) => call.op === 'status').length
+  mounted.harness.click(buttonByLabel(mounted.harness, 'refresh'))
+  await mounted.harness.flush()
+  assert.ok(
+    mounted.calls.filter((call) => call.op === 'status').length > statusCalls,
+    'the refresh reads the status again',
+  )
+  const folders = folderRows(mounted)
+  assert.deepEqual(
+    folders.map((row) => elementText(row)),
+    ['src', 'docs', 'src'],
+    'the refreshed tree lists the new folder without leaving the tree view',
+  )
+  assert.equal(folders[0]?.props['aria-expanded'], false, 'the collapsed folder stays collapsed')
+  assert.equal(folders[1]?.props['aria-expanded'], true)
+  assert.equal(folders[2]?.props['aria-expanded'], true)
+  assert.equal(fileRows(mounted, 'docs/notes.md').length, 1, 'the refreshed file is listed')
+  assert.equal(fileRows(mounted, 'src/app.js').length, 1, 'the collapsed subtree stays hidden')
+  await mounted.harness.dispose()
+})
+
+test('the chosen view survives a commit card opening and closing', async () => {
+  const mounted = await mountGit()
+  await chooseView(mounted, 'menu.viewTree')
+  await openCommitDetails(mounted)
+  mounted.harness.click(buttonByLabel(mounted.harness, 'commitDetails.back'))
+  await finishMotion(mounted.harness)
+  assert.deepEqual(
+    folderRows(mounted).map((row) => elementText(row)),
+    ['src', 'src'],
+    'the change lists are still trees after returning from the details card',
+  )
+  const workspaceToggle = (): TestElement => {
+    const [toggle] = collectElements(workspaceHeader(mounted), (element) =>
+      hasClass(element, 'dshgg-sectionToggle'),
+    )
+    assert.ok(toggle, 'the Workspace header has no collapse toggle')
+    return toggle
+  }
+  mounted.harness.click(workspaceToggle())
+  await finishMotion(mounted.harness)
+  assert.equal(workspaceToggle().props['aria-expanded'], false, 'the Workspace section collapses')
+  assert.equal(folderRows(mounted).length, 0, 'a collapsed Workspace hides its rows')
+  mounted.harness.click(workspaceToggle())
+  await finishMotion(mounted.harness)
+  assert.deepEqual(
+    folderRows(mounted).map((row) => elementText(row)),
+    ['src', 'src'],
+    'the tree view survives collapsing and expanding the Workspace section',
+  )
+  await mounted.harness.dispose()
+})
+
+test('switching views runs no Git and opens no diff', async () => {
+  const mounted = await mountGit()
+  const callsBefore = mounted.calls.length
+  await chooseView(mounted, 'menu.viewTree')
+  await chooseView(mounted, 'menu.viewList')
+  assert.equal(mounted.calls.length, callsBefore, 'switching views requests nothing')
+  assert.deepEqual(mounted.openedTabs, [], 'switching views opens no diff tab')
+  await mounted.harness.dispose()
+})
+
+test('a clean workspace still offers both views', async () => {
+  const mounted = await mountGit({ status: createStatus({ files: [] }) })
+  const callsBefore = mounted.calls.length
+  await chooseView(mounted, 'menu.viewTree')
+  assert.equal(folderRows(mounted).length, 0)
+  assert.equal(fileRows(mounted).length, 0)
+  assert.match(elementText(workspaceHeader(mounted)), /sections\.workspace/)
+  assert.match(mounted.harness.text(), /clean\.title/)
+  assert.equal(
+    mounted.calls.length,
+    callsBefore,
+    'choosing a view in a clean workspace runs no Git',
+  )
+  await openViewMenu(mounted)
+  assert.deepEqual(viewLabels(mounted), ['menu.viewList', 'menu.viewTree'])
+  assert.deepEqual(markedItems(mounted), [1], 'a clean workspace keeps the view it chose')
   await mounted.harness.dispose()
 })

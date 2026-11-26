@@ -68,9 +68,12 @@
   text-overflow: ellipsis;
 }
 
-/* ------------------------------------------------- remote controls --- */
+/* ------------------------------------------------- menu triggers --- */
 
-.dshgg-remoteWrap {
+/* A control that drops a menu below itself: the commit graph header's remote
+ * overflow menu and the Workspace header's view menu. */
+.dshgg-remoteWrap,
+.dshgg-viewWrap {
   position: relative;
   display: flex;
   flex: none;

@@ -27,6 +27,7 @@ import { FloatingPanel } from './FloatingPanel.ts'
 import { EmptyState } from './feedback.ts'
 import { useBranches } from './hooks/useBranches.ts'
 import { useChangeActions } from './hooks/useChangeActions.ts'
+import { useChangeView } from './hooks/useChangeView.ts'
 import { useCommitActionMenu } from './hooks/useCommitActionMenu.ts'
 import { useCommitDetails } from './hooks/useCommitDetails.ts'
 import { useCommitExpansion } from './hooks/useCommitExpansion.ts'
@@ -264,6 +265,9 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   }
   const commitState = useCommitDetails({ call, refs })
   const expansion = useCommitExpansion({ call, refs })
+  // The chosen file view and the collapsed folders outlive refreshes, section
+  // collapsing and the details card, and reset with the panel.
+  const changeView = useChangeView()
   // One generation per retryable failure. An explicit retry bumps the entry's
   // generation so a retry that fails again reports a fresh notice even when
   // the previous failure never cleared first; repeated poll failures with the
@@ -649,6 +653,10 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
             mergeRows,
             stagedRows,
             changedRows,
+            view: changeView.view,
+            collapsedFolders: changeView.collapsedFolders,
+            onToggleFolder: changeView.toggleFolder,
+            onSetView: changeView.setView,
             openSections,
             foldBodies: groupRetainBody,
             busy: busy !== null,
