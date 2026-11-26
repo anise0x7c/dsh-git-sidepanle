@@ -79,9 +79,10 @@ src/
       hooks/                  state/request hooks: repository, history, branches, details,
                               expansion, changes, commit menu, remotes, live updates,
                               failure notices, menu commands and transient UI
-      views/                  branch/commit/change/graph sections, the commit action menu,
-                              remote controls, reference/remote dialogs, the commit-details
-                              card and the split view
+      views/                  the Workspace section and its nested change groups, the
+                              branch/commit/graph sections, the commit action menu, remote
+                              controls, reference/remote dialogs, the commit-details card and
+                              the split view
         graph/                shared SVG artwork, commit row/badge and expanded change-row presentation
       GitPanel.ts             hook and view assembly
     diff/                     diff panel and pure diff rendering
@@ -183,13 +184,17 @@ every public export or semantic branch has a consumer.
    that crosses a row boundary is rasterized as one stroke; each row's cell
    keeps only its node and its graph width, and the node gaps are circles in the
    layer's mask that the section closes for the hovered row.
-5. The body is a resizable split: change groups scroll above the graph in their
-   own pane, and `panel/split.ts` owns the 20%–80% ratio mapped from pointer and
-   keyboard gestures. `GitPanel` keeps the ratio so commit details (opened from
-   the commit row's View Details menu action) can overlay the still-mounted
-   split as a card and reveal it again, while commit metadata and files load
-   lazily. Activating a commit row instead toggles `useCommitExpansion`, which
-   reads each expanded commit's files with its own request token; `GraphSection`
+5. The body is a resizable split: the Workspace section, with its nested change
+   groups, scrolls above the graph in its own pane, and `panel/split.ts` owns the
+   20%–80% ratio mapped from pointer and keyboard gestures. The pane folds to the
+   Workspace header when that section closes, and to the Workspace header plus
+   the nested group headers when every group closes; the other pane takes the
+   room, the divider turns inert, and expanding any section restores the ratio.
+   `GitPanel` keeps the ratio so commit details (opened from the commit row's
+   View Details menu action) can overlay the still-mounted split as a card and
+   reveal it again, while commit metadata and files load lazily. Activating a
+   commit row instead toggles `useCommitExpansion`, which reads each expanded
+   commit's files with its own request token; `GraphSection`
    derives one list of inserted rows per commit and hands its lengths to
    `graphLayer`, which offsets the commit rows below and draws Code OSS's
    graph-placeholder lanes through the inserted rows (the node lane in a

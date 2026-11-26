@@ -15,6 +15,9 @@ import { IconButton } from './controls.ts'
 
 const h = createElement
 
+/** Pixels one nesting level adds to a row's left inset. */
+export const ROW_INDENT = 14
+
 /** The fields a flat file row renders; working-tree and commit rows both fit. */
 export interface FileRowEntry {
   /** Source family used in the element key. */
@@ -60,6 +63,8 @@ export interface FileRowProps<Entry extends FileRowEntry = FileRowEntry> {
   readonly menuTarget?: MenuTarget
   /** Rendered nesting level; omitted for flat lists. */
   readonly depth?: number
+  /** Extra left inset in pixels for rows nested under a parent section. */
+  readonly indent?: number
   /** Whether to show the trailing dimmed directory; defaults to true. */
   readonly showDirectory?: boolean
 }
@@ -150,6 +155,10 @@ export function FileRow<Entry extends FileRowEntry>(
     menuTrigger === null || props.menuTarget === undefined
       ? keyboard
       : menuTrigger(props.menuTarget, { ...keyboard, 'aria-haspopup': 'menu' })
+  const paddingLeft =
+    props.indent === undefined && props.depth === undefined
+      ? undefined
+      : `${6 + (props.indent ?? 0) + (props.depth ?? 0) * ROW_INDENT}px`
   return h(
     'div',
     {
@@ -160,7 +169,7 @@ export function FileRow<Entry extends FileRowEntry>(
       title,
       onClick: () => props.onOpen(entry),
       ...rowProps,
-      ...(props.depth === undefined ? {} : { style: { paddingLeft: `${6 + props.depth * 14}px` } }),
+      ...(paddingLeft === undefined ? {} : { style: { paddingLeft } }),
     },
     h('span', { className: 'dshgg-rowIcon' }, h(HostFileIcon, { path: entry.path, size: 16 })),
     h('span', { className: 'dshgg-fileName' }, name),
@@ -199,6 +208,8 @@ export interface FileRowsContext<Entry extends FileRowEntry> {
   readonly menuTrigger: MenuTriggerFactory | null
   /** Captured menu target for one row. */
   readonly menuTarget?: (entry: Entry) => MenuTarget
+  /** Extra left inset shared by every row of this list. */
+  readonly indent?: number
 }
 
 /**
@@ -227,6 +238,7 @@ function fileRowElement<Entry extends FileRowEntry>(
     onDiscard: context.onDiscard,
     menuTrigger: context.menuTrigger,
     ...(treeDepth === undefined ? {} : { depth: treeDepth, showDirectory: false }),
+    ...(context.indent === undefined ? {} : { indent: context.indent }),
     ...(target === undefined ? {} : { menuTarget: target }),
   })
 }
@@ -254,6 +266,8 @@ export function renderFileRows<Entry extends FileRowEntry>(
 export function FileFolderRow(props: {
   readonly folder: FileTreeFolderRow
   readonly onToggle: (path: string) => void
+  /** Extra left inset in pixels for a tree nested under a parent section. */
+  readonly indent?: number
 }): React.ReactElement {
   const folder = props.folder
   const open = !folder.collapsed
@@ -265,7 +279,7 @@ export function FileFolderRow(props: {
       tabIndex: 0,
       'aria-expanded': open,
       title: folder.path,
-      style: { paddingLeft: `${6 + folder.depth * 14}px` },
+      style: { paddingLeft: `${6 + (props.indent ?? 0) + folder.depth * ROW_INDENT}px` },
       onClick: () => props.onToggle(folder.path),
       onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
@@ -308,6 +322,7 @@ export function renderFileTree<Entry extends FileRowEntry>(
           key: `folder:${row.path}`,
           folder: row,
           onToggle: context.onToggleFolder,
+          ...(context.indent === undefined ? {} : { indent: context.indent }),
         })
       : fileRowElement(row.entry, context, row.depth),
   )

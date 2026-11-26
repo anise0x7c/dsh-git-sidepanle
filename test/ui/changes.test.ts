@@ -68,6 +68,20 @@ test('the change lists and commit details draw the host file-type icon for every
   await mounted.harness.dispose()
 })
 
+test('the workspace groups indent their rows one nesting level', async () => {
+  const mounted = await mountGit()
+  const rows = mounted.harness.findAll((element) => hasClass(element, 'dshgg-fileRow'))
+  assert.equal(rows.length, 4, 'the three change groups render one row per file')
+  for (const [index, row] of rows.entries()) {
+    assert.equal(
+      row.props.style?.paddingLeft,
+      '20px',
+      `change row ${index} sits one level below the Workspace header`,
+    )
+  }
+  await mounted.harness.dispose()
+})
+
 test('every flat file row puts its status letter at the row end', async () => {
   const mounted = await mountGit()
   const fileRows = (scope?: TestElement): TestElement[] =>
@@ -239,7 +253,11 @@ test('nested changed files stay in one flat path-sorted layer', async () => {
     'a nested file keeps its whole parent path on one line',
   )
   for (const row of fileRows)
-    assert.equal(row.props.style, undefined, 'a flat row needs no indentation')
+    assert.equal(
+      row.props.style?.paddingLeft,
+      '20px',
+      'a flat row takes the group nesting inset but no folder indentation',
+    )
   await mounted.harness.dispose()
 })
 

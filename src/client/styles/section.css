@@ -107,3 +107,24 @@
   display: flex;
   flex-direction: column;
 }
+
+/* A nested change group's header rests and pins directly below the Workspace
+ * header instead of at the pane's top edge. The offset is the Workspace
+ * header's height, SECTION_HEADER_HEIGHT in split.ts. The toggle is indented by
+ * the row nesting step, so the group header and its rows sit one level below
+ * the Workspace header (ROW_INDENT in rows.ts). */
+.dshgg-section[data-depth="1"] > .dshgg-sectionHeader {
+  top: 30px;
+}
+
+.dshgg-section[data-depth="1"] .dshgg-sectionToggle {
+  padding-left: 20px;
+}
+
+/* The nested groups stack with the pane's own 2px rhythm; the gap is
+ * SECTION_GAP in split.ts. */
+.dshgg-workspaceGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

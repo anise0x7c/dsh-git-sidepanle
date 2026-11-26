@@ -1,7 +1,8 @@
 /**
  * The three change groups — merge conflicts, staged files, unstaged changes —
- * as flat, path-sorted file lists with their section actions, plus the
- * clean-workspace text.
+ * as flat, path-sorted file lists with their section actions. They render as
+ * nested groups inside the Workspace section; the workspace view owns the
+ * surrounding section and the clean-workspace text.
  */
 
 import type React from 'react'
@@ -18,7 +19,7 @@ import type { LocaleBinder } from '../../types/dsh.ts'
 import type { ChangeGroupMode } from '../change-groups.ts'
 import { visibleChangeGroups } from '../change-groups.ts'
 import { IconButton } from '../controls.ts'
-import { renderFileRows } from '../rows.ts'
+import { ROW_INDENT, renderFileRows } from '../rows.ts'
 import { Section } from '../Section.ts'
 
 const h = createElement
@@ -27,8 +28,6 @@ const h = createElement
 export interface ChangeGroupsProps {
   /** Locale binder. */
   readonly t: LocaleBinder
-  /** Repository exists and has no changes. */
-  readonly clean: boolean
   /** Sorted conflicted files with display letters. */
   readonly mergeRows: readonly ChangeRow[]
   /** Sorted staged files with display letters. */
@@ -37,7 +36,7 @@ export interface ChangeGroupsProps {
   readonly changedRows: readonly ChangeRow[]
   /** Open state per section id. */
   readonly openSections: Readonly<Record<string, boolean>>
-  /** Whether the change pane folds away when its last open group closes. */
+  /** Whether the workspace pane folds away when its last open group closes. */
   readonly foldBodies: boolean
   /** An action is running. */
   readonly busy: boolean
@@ -64,7 +63,7 @@ export interface ChangeGroupsProps {
 }
 
 /**
- * Render the three groups plus the clean-workspace text.
+ * Render the three groups as nested sections.
  * @param props - change-group props.
  * @returns the groups as one fragment.
  */
@@ -141,6 +140,9 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
       onDiscard: (entry) => props.onDiscard(entry),
       menuTrigger: props.menuTrigger,
       menuTarget: (entry) => props.rowTarget('file', { section: mode, path: entry.path }),
+      // The groups are one level below the Workspace header, so their rows take
+      // the same nesting step as the group headers themselves.
+      indent: ROW_INDENT,
     })
   const visible = visibleChangeGroups(props)
   const shows = (mode: ChangeGroupMode): boolean => visible.includes(mode)
@@ -153,6 +155,7 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
           {
             id: 'merge',
             title: t('sections.merge'),
+            depth: 1,
             count: props.mergeRows.length,
             open: props.openSections.merge === true,
             retainBody: props.foldBodies,
@@ -171,6 +174,7 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
           {
             id: 'staged',
             title: t('sections.staged'),
+            depth: 1,
             count: props.stagedRows.length,
             open: props.openSections.staged === true,
             retainBody: props.foldBodies,
@@ -189,6 +193,7 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
           {
             id: 'changes',
             title: t('sections.changes'),
+            depth: 1,
             count: props.changedRows.length,
             open: props.openSections.changes === true,
             retainBody: props.foldBodies,
@@ -199,14 +204,6 @@ export function ChangeGroups(props: ChangeGroupsProps): React.ReactElement {
             menuTarget: props.sectionTarget('changes'),
           },
           rowsFor('changes', props.changedRows),
-        )
-      : null,
-    props.clean
-      ? h(
-          'div',
-          { className: 'dshgg-clean' },
-          h('span', { className: 'dshgg-cleanTitle' }, t('clean.title')),
-          h('span', { className: 'dshgg-cleanDesc' }, t('clean.desc')),
         )
       : null,
   )

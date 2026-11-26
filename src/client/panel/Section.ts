@@ -1,5 +1,6 @@
 /**
- * Collapsible section header shared by the change groups and the history graph.
+ * Collapsible section header shared by the Workspace section, its nested change
+ * groups and the history graph.
  */
 
 import type React from 'react'
@@ -16,6 +17,11 @@ export interface SectionProps {
   readonly id: string
   /** Section title. */
   readonly title: string
+  /**
+   * Nesting depth. A nested header rests and pins below its parent header
+   * instead of at the pane's top edge.
+   */
+  readonly depth?: 0 | 1
   /** Whether the body is expanded. */
   readonly open: boolean
   /**
@@ -66,6 +72,7 @@ export function Section(props: SectionProps): React.ReactElement {
     return () => clearTimeout(timer)
   }, [props.open, props.retainBody, bodyMounted])
   const bodyVisible = props.open === true || (bodyMounted && props.retainBody === true)
+  const depth = props.depth === 1 ? 1 : 0
   const menuProps =
     menuTrigger === null || props.menuTarget === undefined
       ? null
@@ -76,7 +83,12 @@ export function Section(props: SectionProps): React.ReactElement {
         })
   return h(
     'section',
-    { className: 'dshgg-section', 'data-section': props.id, 'aria-label': props.title },
+    {
+      className: 'dshgg-section',
+      'data-section': props.id,
+      'data-depth': String(depth),
+      'aria-label': props.title,
+    },
     h(
       'div',
       {

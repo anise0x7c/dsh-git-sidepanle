@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { createStatus } from '../support/fixtures.ts'
 import type { TestElement, TestEventTarget } from '../support/types.ts'
+import type { MountedGit } from '../support/ui-panel.ts'
 import {
   buttonByLabel,
   collectElements,
@@ -24,17 +25,30 @@ afterEach(disposeUiLifetimes)
 
 await loadUiPanel()
 
-test('the panel renders branch, change groups, status letters, and the graph', async () => {
+test('the panel renders the workspace, its nested groups, status letters and the graph', async () => {
   const mounted = await mountGit()
   const text = mounted.harness.text()
   assert.match(text, /main/)
   assert.match(text, /origin\/main/)
+  assert.match(text, /sections\.workspace/)
   assert.match(text, /sections\.merge/)
   assert.match(text, /sections\.staged/)
   assert.match(text, /sections\.changes/)
   assert.match(text, /sections\.graph/)
   assert.match(text, /Fix the sidebar/)
   assert.match(text, /Initial commit/)
+  // The three change groups live inside the one Workspace section instead of
+  // sitting beside the commit graph as peers.
+  const workspace = sectionOf(mounted, 'workspace')
+  const nested = collectElements(
+    workspace,
+    (element) => element.type === 'section' && element.props['data-section'] !== 'workspace',
+  ).map((element) => element.props['data-section'])
+  assert.deepEqual(nested, ['merge', 'staged', 'changes'])
+  assert.equal(workspace.props['data-depth'], '0', 'the workspace is a top-level section')
+  for (const id of ['merge', 'staged', 'changes']) {
+    assert.equal(sectionOf(mounted, id).props['data-depth'], '1', `${id} is a nested group`)
+  }
   const badges = mounted.harness.findAll(
     (element) => String(element.props?.className ?? '') === 'dshgg-graphBadge',
   )
@@ -77,12 +91,12 @@ test('the panel renders branch, change groups, status letters, and the graph', a
   await mounted.harness.dispose()
 })
 
-test('change groups and graph are independent scroll panes with a resizable divider', async () => {
+test('the workspace and graph are independent scroll panes with a resizable divider', async () => {
   const mounted = await mountGit()
   const panes = mounted.harness.findAll((element) =>
     String(element.props?.className ?? '').includes('dshgg-pane'),
   )
-  assert.equal(panes.length, 2, 'the changes and graph each get a scroll pane')
+  assert.equal(panes.length, 2, 'the workspace and graph each get a scroll pane')
   const [changesPane, graphPane] = panes
   assert.ok(changesPane)
   assert.ok(graphPane)
@@ -93,7 +107,7 @@ test('change groups and graph are independent scroll panes with a resizable divi
     collectElements(pane, (element) => element.props['data-section'] !== undefined).map(
       (element) => element.props['data-section'],
     )
-  assert.deepEqual(sectionsIn(changesPane), ['merge', 'staged', 'changes'])
+  assert.deepEqual(sectionsIn(changesPane), ['workspace', 'merge', 'staged', 'changes'])
   assert.deepEqual(sectionsIn(graphPane), ['graph'])
   assert.deepEqual(changesPane.props.style, { flex: '0 0 50%' })
   const divider = (): TestElement => {
@@ -228,19 +242,57 @@ test('a collapsed section folds its pane to the header row and leaves the divide
   assert.equal(divider()?.props.tabIndex, 0)
   assert.equal(divider()?.props['data-disabled'], undefined)
 
-  // Collapsing every change group folds the change pane to its three headers
-  // and hands the room to the graph, again with an inert divider.
+  // Collapsing the Workspace section folds its pane to the single Workspace
+  // header and hides every nested group with it. The body stays mounted until
+  // the fold has clipped it, and the divider is inert.
+  mounted.harness.click(sectionToggle('workspace'))
+  await mounted.harness.flush()
+  assert.deepEqual(changesPane().props.style, { flex: '0 0 30px' })
+  assert.equal(changesPane().props['data-collapsed'], 'true')
+  assert.deepEqual(graphPane().props.style, { flex: '1 1 0px' })
+  assert.equal(divider()?.props['data-disabled'], 'true')
+  const workspaceBody = sectionBody('workspace')
+  assert.ok(workspaceBody, 'the nested groups stay mounted while the workspace folds')
+  assert.equal(workspaceBody.props['aria-hidden'], 'true')
+  assert.ok(sectionOf(mounted, 'staged'), 'the nested groups are still mounted during the fold')
+  mounted.harness.runTimeouts()
+  await mounted.harness.flush()
+  assert.equal(sectionBody('workspace'), undefined, 'the nested groups unmount after the fold')
+  assert.equal(
+    mounted.harness.findAll(
+      (candidate) => candidate.type === 'section' && candidate.props['data-section'] === 'staged',
+    ).length,
+    0,
+    'collapsing the workspace removes the nested group headers',
+  )
+
+  // Expanding the workspace restores the split and the nested open states.
+  mounted.harness.click(sectionToggle('workspace'))
+  await mounted.harness.flush()
+  assert.deepEqual(changesPane().props.style, { flex: '0 0 50%' })
+  assert.equal(changesPane().props['data-collapsed'], undefined)
+  for (const id of ['merge', 'staged', 'changes']) {
+    assert.ok(sectionOf(mounted, id), `${id} comes back with the workspace`)
+  }
+  assert.equal(divider()?.props.tabIndex, 0)
+
+  // Collapsing every nested group folds the workspace pane to the Workspace
+  // header plus its group headers, and hands the room to the graph.
   for (const id of ['merge', 'staged', 'changes']) {
     mounted.harness.click(sectionToggle(id))
     await mounted.harness.flush()
   }
-  assert.deepEqual(changesPane().props.style, { flex: '0 0 94px' })
+  assert.deepEqual(changesPane().props.style, { flex: '0 0 124px' })
   assert.equal(changesPane().props['data-collapsed'], 'true')
   assert.deepEqual(graphPane().props.style, { flex: '1 1 0px' })
   assert.equal(divider()?.props['data-disabled'], 'true')
   assert.equal(divider()?.props.tabIndex, -1)
+  assert.ok(sectionOf(mounted, 'workspace'), 'the workspace header stays in the folded pane')
+  for (const id of ['merge', 'staged', 'changes']) {
+    assert.ok(sectionOf(mounted, id), `${id}'s header stays reachable in the folded pane`)
+  }
 
-  // One expanded group brings the change pane's share back.
+  // One expanded group brings the workspace pane's share back.
   mounted.harness.click(sectionToggle('staged'))
   await mounted.harness.flush()
   assert.deepEqual(changesPane().props.style, { flex: '0 0 50%' })
@@ -249,21 +301,68 @@ test('a collapsed section folds its pane to the header row and leaves the divide
   await mounted.harness.dispose()
 })
 
-test('a clean workspace keeps the change pane share of the split', async () => {
+test('one collapsed group keeps the workspace pane and divider usable', async () => {
+  const mounted = await mountGit()
+  const changesPane = (): TestElement => {
+    const [element] = mounted.harness.findAll((candidate) =>
+      String(candidate.props?.className ?? '').includes('dshgg-paneTop'),
+    )
+    assert.ok(element)
+    return element
+  }
+  const divider = (): TestElement | undefined =>
+    mounted.harness.findAll((candidate) => candidate.props.role === 'separator')[0]
+  const toggle = (id: string): TestElement => {
+    const section = sectionOf(mounted, id)
+    const [button] = collectElements(
+      section,
+      (candidate) => candidate.type === 'button' && hasClass(candidate, 'dshgg-sectionToggle'),
+    )
+    assert.ok(button)
+    return button
+  }
+  mounted.harness.click(toggle('changes'))
+  await mounted.harness.flush()
+  assert.deepEqual(changesPane().props.style, { flex: '0 0 50%' })
+  assert.equal(changesPane().props['data-collapsed'], undefined)
+  assert.equal(divider()?.props.tabIndex, 0)
+  assert.equal(divider()?.props['data-disabled'], undefined)
+  assert.ok(
+    collectElements(sectionOf(mounted, 'staged'), (element) =>
+      hasClass(element, 'dshgg-sectionBody'),
+    ).length > 0,
+  )
+  await mounted.harness.dispose()
+})
+
+test('a clean workspace keeps the workspace pane share of the split', async () => {
   const mounted = await mountGit({ status: createStatus({ files: [] }) })
   const [changesPane] = mounted.harness.findAll((candidate) =>
     String(candidate.props?.className ?? '').includes('dshgg-paneTop'),
   )
-  assert.ok(changesPane, 'no change pane rendered')
+  assert.ok(changesPane, 'no workspace pane rendered')
   assert.deepEqual(
     changesPane.props.style,
     { flex: '0 0 50%' },
-    'a pane that renders no section keeps its share',
+    'a pane that renders no group keeps its share',
   )
   assert.equal(
     changesPane.props['data-collapsed'],
     undefined,
-    'no section means nothing is collapsed',
+    'no collapsed group means the pane is not folded',
+  )
+  const workspace = sectionOf(mounted, 'workspace')
+  const clean = collectElements(
+    workspace,
+    (element) => String(element.props?.className ?? '') === 'dshgg-clean',
+  )
+  assert.equal(clean.length, 1, 'the clean-workspace text lives inside the Workspace section')
+  assert.equal(
+    mounted.harness.findAll(
+      (candidate) => candidate.type === 'section' && candidate.props['data-section'] === 'staged',
+    ).length,
+    0,
+    'a clean workspace renders no nested group',
   )
   assert.equal(
     mounted.harness.findAll((candidate) => candidate.props.role === 'separator').length,
@@ -278,7 +377,12 @@ test('each section header belongs to its own section so only one can stick', asy
   const sections = mounted.harness.findAll((element) => element.props['data-section'] !== undefined)
   assert.deepEqual(
     sections.map((section) => section.props['data-section']),
-    ['merge', 'staged', 'changes', 'graph'],
+    ['workspace', 'merge', 'staged', 'changes', 'graph'],
+  )
+  assert.deepEqual(
+    sections.map((section) => section.props['data-depth']),
+    ['0', '1', '1', '1', '0'],
+    'only the Workspace and Commit Graph headers are top-level',
   )
   for (const section of sections) {
     // A header only pins while its own section is in view when the section is
@@ -296,23 +400,20 @@ test('each section header belongs to its own section so only one can stick', asy
 
 test('the graph header shows no commit count while group headers keep theirs', async () => {
   const mounted = await mountGit()
-  const section = (id: string): TestElement => {
-    const [element] = mounted.harness.findAll(
-      (candidate) => candidate.props?.['data-section'] === id,
-    )
-    assert.ok(element, `no ${id} section rendered`)
-    return element
+  const countChips = (id: string): TestElement[] => {
+    const section = sectionOf(mounted, id)
+    const header = elementOf(section.children[0])
+    return collectElements(header, (element) => hasClass(element, 'dshgg-sectionCount'))
   }
-  const countChips = (id: string): TestElement[] =>
-    collectElements(section(id), (element) =>
-      String(element.props?.className ?? '')
-        .split(' ')
-        .includes('dshgg-sectionCount'),
-    )
   assert.equal(
     countChips('graph').length,
     0,
     'the graph header shows no count of the loaded commits',
+  )
+  assert.equal(
+    countChips('workspace').length,
+    0,
+    'the Workspace header shows no file count; the groups own the counts',
   )
   assert.deepEqual(
     countChips('staged').map((chip) => elementText(chip)),
@@ -326,3 +427,17 @@ test('the graph header shows no commit count while group headers keep theirs', a
   )
   await mounted.harness.dispose()
 })
+
+/**
+ * Find one section by its id.
+ * @param mounted - mounted panel.
+ * @param id - section id.
+ * @returns the section element.
+ */
+function sectionOf(mounted: MountedGit, id: string): TestElement {
+  const [section] = mounted.harness.findAll(
+    (candidate) => candidate.type === 'section' && candidate.props['data-section'] === id,
+  )
+  assert.ok(section, `no ${id} section rendered`)
+  return section
+}

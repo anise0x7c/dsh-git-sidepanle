@@ -5,6 +5,25 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+The panel body now groups the working-tree lists under one Workspace section:
+
+- The panel shows exactly two top-level sections, **Workspace** above
+  **Commit graph**. Merge changes, staged changes and changes not yet staged are
+  nested collapsible groups inside Workspace, keeping their file counts, bulk
+  actions and context menus; the clean-workspace text now lives inside
+  Workspace too.
+- Collapsing Workspace folds its pane to that header; collapsing every nested
+  group folds it to the Workspace header plus the group headers and gives the
+  room to the graph as before. Expanding either restores the split ratio and
+  the group open states. The divider stays visible and inert while the pane is
+  folded.
+- The Workspace header pins at the pane's top edge and the group in view pins
+  directly below it, so both stay visible while the group's rows scroll. Nested
+  group headers and their rows are indented one level inside the Workspace
+  body.
+- The split divider's accessible name now describes resizing the Workspace and
+  the commit graph, and the commit graph header is titled "Commit graph".
+
 The change lists and the commit graph now share one row style:
 
 - Changed-file rows, commit-details folder rows, commit rows and the files

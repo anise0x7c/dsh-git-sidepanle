@@ -201,6 +201,21 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
     graphStyles,
     /\[data-dockkit-float\] \.dshgg-sectionHeader\s*\{[^}]*background: var\(--dsw-alias-bg-layer-2\);/,
   )
+  // A nested change-group header rests one Workspace header below the pane edge
+  // and pins there, so the Workspace header stays above it while the pane
+  // scrolls; the nested groups stack with the pane's own 2px rhythm.
+  assert.match(
+    graphStyles,
+    /\.dshgg-section\[data-depth="1"\]\s*>\s*\.dshgg-sectionHeader\s*\{[^}]*top: 30px;/,
+  )
+  assert.match(
+    graphStyles,
+    /\.dshgg-section\[data-depth="1"\] \.dshgg-sectionToggle\s*\{[^}]*padding-left: 20px;/,
+  )
+  assert.match(
+    graphStyles,
+    /\.dshgg-workspaceGroups\s*\{[^}]*display: flex;[^}]*flex-direction: column;[^}]*gap: 2px;/,
+  )
   assert.doesNotMatch(graphStyles, /--dshgg-section-inset/)
   assert.doesNotMatch(graphStyles, /\.dshgg-sectionHeader\s*\{[^}]*box-shadow:/)
   assert.match(

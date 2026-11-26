@@ -22,6 +22,7 @@ import {
   SECTION_HEADER_HEIGHT,
   SPLIT_STEP,
   splitSizing,
+  workspaceHeadersHeight,
 } from '../../src/client/panel/split.ts'
 
 /**
@@ -118,29 +119,33 @@ describe('collapsed panes', () => {
   test('an expanded split sizes each pane from the ratio', () => {
     const sizing = splitSizing({
       ratio: 0.5,
-      changesCollapsed: false,
+      workspaceCollapsed: false,
+      groupsCollapsed: false,
+      groupSections: 3,
       graphCollapsed: false,
-      changeSections: 3,
     })
-    assert.deepEqual(sizing.changes, { flex: '0 0 50%' })
+    assert.deepEqual(sizing.workspace, { flex: '0 0 50%' })
     assert.deepEqual(sizing.graph, { flex: '1 1 0px' })
     assert.equal(sizing.dividerEnabled, true)
+    assert.equal(sizing.workspaceFolded, false)
     assert.deepEqual(
       splitSizing({
         ratio: 0.555,
-        changesCollapsed: false,
+        workspaceCollapsed: false,
+        groupsCollapsed: false,
+        groupSections: 3,
         graphCollapsed: false,
-        changeSections: 3,
-      }).changes,
+      }).workspace,
       { flex: '0 0 55.5%' },
     )
     assert.deepEqual(
       splitSizing({
         ratio: 2,
-        changesCollapsed: false,
+        workspaceCollapsed: false,
+        groupsCollapsed: false,
+        groupSections: 3,
         graphCollapsed: false,
-        changeSections: 3,
-      }).changes,
+      }).workspace,
       { flex: '0 0 80%' },
       'the ratio still clamps',
     )
@@ -149,56 +154,92 @@ describe('collapsed panes', () => {
   test('a collapsed graph keeps its header at the bottom and its basis for the fold', () => {
     const sizing = splitSizing({
       ratio: 0.5,
-      changesCollapsed: false,
+      workspaceCollapsed: false,
+      groupsCollapsed: false,
+      groupSections: 3,
       graphCollapsed: true,
-      changeSections: 3,
     })
-    // The change pane grows into the free space while keeping the ratio as its
-    // basis, so expanding can animate back to the same split.
-    assert.deepEqual(sizing.changes, { flex: '1 1 50%' })
+    // The workspace pane grows into the free space while keeping the ratio as
+    // its basis, so expanding can animate back to the same split.
+    assert.deepEqual(sizing.workspace, { flex: '1 1 50%' })
     assert.deepEqual(sizing.graph, { flex: '0 0 30px' })
     assert.equal(sizing.dividerEnabled, false, 'the divider is rendered but inert')
+    assert.equal(sizing.workspaceFolded, false)
   })
 
-  test('a collapsed change pane keeps only its headers and the graph takes the room', () => {
+  test('a collapsed workspace keeps only its own header', () => {
     const sizing = splitSizing({
       ratio: 0.5,
-      changesCollapsed: true,
+      workspaceCollapsed: true,
+      groupsCollapsed: false,
+      groupSections: 3,
       graphCollapsed: false,
-      changeSections: 3,
     })
-    assert.deepEqual(sizing.changes, { flex: '0 0 94px' })
+    assert.deepEqual(sizing.workspace, { flex: '0 0 30px' })
     assert.deepEqual(sizing.graph, { flex: '1 1 0px' })
     assert.equal(sizing.dividerEnabled, false)
+    assert.equal(sizing.workspaceFolded, true)
   })
 
-  test('both panes collapsed lets the change pane hold the empty space', () => {
+  test('collapsed groups keep the workspace header and their own headers', () => {
     const sizing = splitSizing({
       ratio: 0.5,
-      changesCollapsed: true,
-      graphCollapsed: true,
-      changeSections: 3,
+      workspaceCollapsed: false,
+      groupsCollapsed: true,
+      groupSections: 3,
+      graphCollapsed: false,
     })
-    assert.deepEqual(sizing.changes, { flex: '1 1 50%' })
+    assert.equal(workspaceHeadersHeight(3), 124, '30px workspace header plus a 94px stack')
+    assert.deepEqual(sizing.workspace, { flex: '0 0 124px' })
+    assert.deepEqual(sizing.graph, { flex: '1 1 0px' })
+    assert.equal(sizing.dividerEnabled, false)
+    assert.equal(sizing.workspaceFolded, true)
+  })
+
+  test('one expanded group keeps the workspace share of the split', () => {
+    const sizing = splitSizing({
+      ratio: 0.65,
+      workspaceCollapsed: false,
+      groupsCollapsed: false,
+      groupSections: 3,
+      graphCollapsed: false,
+    })
+    assert.deepEqual(sizing.workspace, { flex: '0 0 65%' })
+    assert.equal(sizing.dividerEnabled, true)
+    assert.equal(sizing.workspaceFolded, false)
+  })
+
+  test('both folded panes let the workspace pane hold the empty space', () => {
+    const sizing = splitSizing({
+      ratio: 0.5,
+      workspaceCollapsed: true,
+      groupsCollapsed: true,
+      groupSections: 3,
+      graphCollapsed: true,
+    })
+    assert.deepEqual(sizing.workspace, { flex: '1 1 50%' })
     assert.deepEqual(sizing.graph, { flex: '0 0 30px' })
     assert.equal(sizing.dividerEnabled, false)
+    assert.equal(sizing.workspaceFolded, true)
   })
 
   test('expanding again restores the ratio that was in effect', () => {
     const collapsed = splitSizing({
       ratio: 0.65,
-      changesCollapsed: false,
+      workspaceCollapsed: false,
+      groupsCollapsed: false,
+      groupSections: 3,
       graphCollapsed: true,
-      changeSections: 3,
     })
-    assert.deepEqual(collapsed.changes, { flex: '1 1 65%' })
+    assert.deepEqual(collapsed.workspace, { flex: '1 1 65%' })
     assert.deepEqual(
       splitSizing({
         ratio: 0.65,
-        changesCollapsed: false,
+        workspaceCollapsed: false,
+        groupsCollapsed: false,
+        groupSections: 3,
         graphCollapsed: false,
-        changeSections: 3,
-      }).changes,
+      }).workspace,
       { flex: '0 0 65%' },
     )
   })
@@ -206,12 +247,24 @@ describe('collapsed panes', () => {
   test('a clean workspace keeps its pane share and an operable divider', () => {
     const sizing = splitSizing({
       ratio: 0.5,
-      changesCollapsed: false,
+      workspaceCollapsed: false,
+      groupsCollapsed: true,
+      groupSections: 0,
       graphCollapsed: false,
-      changeSections: 0,
     })
-    assert.deepEqual(sizing.changes, { flex: '0 0 50%' })
+    assert.deepEqual(sizing.workspace, { flex: '0 0 50%' })
     assert.equal(sizing.dividerEnabled, true)
+    assert.equal(sizing.workspaceFolded, false, 'no group header exists to keep the pane at')
+  })
+
+  test('the workspace header stack adds the parent header to the group stack', () => {
+    assert.equal(workspaceHeadersHeight(0), 30)
+    assert.equal(workspaceHeadersHeight(1), 60)
+    assert.equal(workspaceHeadersHeight(2), 92)
+    assert.equal(workspaceHeadersHeight(3), 124)
+    assert.equal(workspaceHeadersHeight(2.8), 92, 'a fractional count still sizes whole headers')
+    assert.equal(workspaceHeadersHeight(-1), 30)
+    assert.equal(workspaceHeadersHeight(Number.NaN), 30)
   })
 })
 
@@ -229,6 +282,16 @@ describe('split stylesheet contract', () => {
       read('scroll.css'),
       /\.dshgg-scroll\s*\{[^}]*\bgap:\s*2px/,
       'SECTION_GAP must match the pane gap',
+    )
+    assert.match(
+      read('section.css'),
+      /\.dshgg-workspaceGroups\s*\{[^}]*\bgap:\s*2px/,
+      'SECTION_GAP must match the nested group rhythm',
+    )
+    assert.match(
+      read('section.css'),
+      /\.dshgg-section\[data-depth="1"\]\s*>\s*\.dshgg-sectionHeader\s*\{[^}]*\btop:\s*30px/,
+      'a nested header pins below the Workspace header',
     )
     assert.equal(SPLIT_MOTION_MS, 200)
   })

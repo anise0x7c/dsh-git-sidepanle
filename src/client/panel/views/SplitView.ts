@@ -1,10 +1,11 @@
 /**
  * Two vertically stacked, independently scrolling panes with a draggable
  * divider. The surrounding panel owns the ratio, so opening commit details and
- * returning keeps the user's chosen split. A pane whose sections are all
- * collapsed keeps only their headers: it folds to the height of that stack
- * instead of a share of the split, the other pane takes the rest, and the
- * divider stays visible but inert because there is no split left to move.
+ * returning keeps the user's chosen split. A workspace pane whose section is
+ * collapsed, or whose nested groups are all collapsed, keeps only its headers
+ * instead of a share of the split; the graph pane folds the same way. The other
+ * pane takes the rest and the divider stays visible but inert because there is
+ * no split left to move.
  */
 
 import type React from 'react'
@@ -22,7 +23,7 @@ const h = createElement
 
 /** Props of the resizable two-pane view. */
 export interface SplitViewProps {
-  /** Share of the split height given to the change pane. */
+  /** Share of the split height given to the workspace pane. */
   readonly ratio: number
   /** Receives a clamped ratio while dragging or using the keyboard. */
   readonly onRatioChange: (ratio: number) => void
@@ -30,14 +31,16 @@ export interface SplitViewProps {
   readonly label: string
   /** Divider tooltip. */
   readonly hint: string
-  /** Number of change-group headers the change pane renders. */
-  readonly changeSections: number
-  /** Whether every change section is collapsed, so the change pane keeps its headers. */
-  readonly changesCollapsed: boolean
+  /** Number of nested group headers the workspace pane renders. */
+  readonly groupSections: number
+  /** Whether every nested change group is collapsed, so the workspace keeps its headers. */
+  readonly groupsCollapsed: boolean
+  /** Whether the Workspace section itself is collapsed, so its pane keeps only its header. */
+  readonly workspaceCollapsed: boolean
   /** Whether the commit graph section is collapsed, so its pane keeps its header. */
   readonly graphCollapsed: boolean
-  /** Upper pane: the change groups. */
-  readonly changes: React.ReactNode
+  /** Upper pane: the Workspace section. */
+  readonly workspace: React.ReactNode
   /** Lower pane: the commit graph. */
   readonly graph: React.ReactNode
   /** Scroll handler of the graph pane; the panel pages history from it. */
@@ -63,14 +66,15 @@ export function SplitView(props: SplitViewProps): React.ReactElement {
   const [dragging, setDragging] = useState(false)
   const dragStart = useRef<DragStart | null>(null)
   const ratio = clampSplitRatio(props.ratio)
-  // A pane whose sections are all collapsed keeps only their headers, so the
-  // other pane takes the room and there is no split left to drag. The divider
-  // still renders so the panes keep their frame.
+  // A folded pane keeps only its headers, so the other pane takes the room and
+  // there is no split left to drag. The divider still renders so the panes keep
+  // their frame.
   const sizing = splitSizing({
     ratio,
-    changesCollapsed: props.changesCollapsed === true,
+    workspaceCollapsed: props.workspaceCollapsed === true,
+    groupsCollapsed: props.groupsCollapsed === true,
+    groupSections: props.groupSections,
     graphCollapsed: props.graphCollapsed === true,
-    changeSections: props.changeSections,
   })
   const dividerEnabled = sizing.dividerEnabled
 
@@ -118,10 +122,10 @@ export function SplitView(props: SplitViewProps): React.ReactElement {
       'div',
       {
         className: 'dshgg-scroll dshgg-pane dshgg-paneTop',
-        'data-collapsed': props.changesCollapsed === true ? 'true' : undefined,
-        style: sizing.changes,
+        'data-collapsed': sizing.workspaceFolded ? 'true' : undefined,
+        style: sizing.workspace,
       },
-      props.changes,
+      props.workspace,
     ),
     h(
       'div',

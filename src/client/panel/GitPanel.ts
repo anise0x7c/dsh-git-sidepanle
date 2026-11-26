@@ -43,7 +43,6 @@ import { createMenuTargets, usePanelRefs } from './menu.ts'
 import { isNearEnd } from './scroll.ts'
 import { allSectionsCollapsed, DEFAULT_SPLIT_RATIO } from './split.ts'
 import { BranchHeader } from './views/BranchHeader.ts'
-import { ChangeGroups } from './views/ChangeGroups.ts'
 import { CommitBox } from './views/CommitBox.ts'
 import { CommitDetails } from './views/CommitDetails.ts'
 import { CommitMenuDialog } from './views/CommitMenuDialog.ts'
@@ -52,6 +51,7 @@ import { GraphSection } from './views/GraphSection.ts'
 import { RemoteDialog } from './views/RemoteDialog.ts'
 import { RemoteMenu } from './views/RemoteMenu.ts'
 import { SplitView } from './views/SplitView.ts'
+import { WorkspaceSection } from './views/WorkspaceSection.ts'
 
 const h = createElement
 
@@ -102,6 +102,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   }, [loadGraph])
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    workspace: true,
     merge: true,
     staged: true,
     changes: true,
@@ -124,8 +125,9 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
   const { mergeRows, stagedRows, changedRows } = groups
   const clean =
     repo !== null && mergeRows.length === 0 && stagedRows.length === 0 && changedRows.length === 0
-  // The change pane keeps only its headers once every group it renders is
-  // collapsed; a clean workspace renders no group, so its pane keeps its share.
+  // The workspace pane keeps only its headers once the Workspace section is
+  // closed or every group it renders is collapsed; a clean workspace renders no
+  // group, so its pane keeps its share.
   const changeGroups = useMemo(() => visibleChangeGroups(groups), [groups])
 
   // Watched repository updates are scoped: a working-tree or index change only
@@ -616,8 +618,13 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
 
   // A pane folds away only when it keeps its headers and the other pane is not
   // already holding the split; only then do its closing rows outlive its bodies.
-  const changesCollapsed = allSectionsCollapsed(changeGroups, openSections)
+  const workspaceCollapsed = openSections.workspace !== true
+  const groupsCollapsed = allSectionsCollapsed(changeGroups, openSections)
   const graphCollapsed = openSections.graph !== true
+  // The workspace body folds to the Workspace header alone when that section
+  // closes, and to the Workspace plus group headers when every group closes.
+  const workspaceRetainBody = workspaceCollapsed && !graphCollapsed
+  const groupRetainBody = groupsCollapsed && !graphCollapsed && !workspaceCollapsed
   const singlePane = renderState()
   const body =
     singlePane !== null
@@ -627,19 +634,23 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
           onRatioChange: setSplitRatio,
           label: t('split.label'),
           hint: t('split.hint'),
-          changeSections: changeGroups.length,
-          changesCollapsed,
+          groupSections: changeGroups.length,
+          groupsCollapsed,
+          workspaceCollapsed,
           graphCollapsed,
           onGraphScroll: handleGraphScroll,
           graphRef: graphPane,
-          changes: h(ChangeGroups, {
+          workspace: h(WorkspaceSection, {
             t,
+            open: openSections.workspace === true,
+            retainBody: workspaceRetainBody,
+            onToggle: () => toggleSection('workspace'),
             clean,
             mergeRows,
             stagedRows,
             changedRows,
             openSections,
-            foldBodies: changesCollapsed && !graphCollapsed,
+            foldBodies: groupRetainBody,
             busy: busy !== null,
             canAct,
             onToggleSection: toggleSection,
