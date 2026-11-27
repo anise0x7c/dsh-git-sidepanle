@@ -5920,107 +5920,7 @@ var branch_menu_default = `/* --------------------------------------------------
 `;
 
 // src/client/styles/buttons.css
-var buttons_default = `/* --------------------------------------------------------------- buttons --- */
-
-.dshgg-iconBtn {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 6px;
-  color: var(--dsw-alias-label-secondary);
-  line-height: 1;
-  background: transparent;
-  border: none;
-  border-radius: var(--dsw-radius-sm);
-  cursor: pointer;
-}
-
-.dshgg-iconBtn svg {
-  width: 14px;
-  height: 14px;
-}
-
-.dshgg-iconBtn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-/* A control inside a hovered row or header layers this highlight above that
- * surface's own, so the pointer marks both the row and its target; where no
- * surface is hovered, as in the toolbar, it is the control's only highlight. */
-@media (hover: hover) {
-  .dshgg-iconBtn:hover:not(:disabled) {
-    background: var(--dsw-alias-interactive-bg-hover);
-  }
-}
-
-.dshgg-iconBtn[data-spinning="true"] svg {
-  animation: dshgg-spin 1s linear infinite;
-}
-
-@keyframes dshgg-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.dshgg-btn {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
-  border: 0.5px solid transparent;
-  border-radius: var(--dsw-radius-sm);
-  font: var(--dsw-font-xxs-strong-12);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.dshgg-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.dshgg-btnPrimary {
-  color: var(--dsw-alias-label-primary-foreground);
-  background: var(--dsw-alias-button-primary-fill);
-}
-
-.dshgg-btnPrimary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover);
-}
-
-.dshgg-btnGhost {
-  color: var(--dsw-alias-label-primary);
-  background: transparent;
-  border-color: var(--dsw-alias-border-l3);
-  font-weight: 400;
-}
-
-.dshgg-btnGhost:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover-solid);
-}
-
-.dshgg-linkBtn {
-  flex: none;
-  padding: 0;
-  color: var(--dsw-alias-state-business-primary);
-  font: var(--dsw-font-xxs-strong-12);
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
-.dshgg-linkBtn:hover {
-  text-decoration: underline;
-}
-`;
+var buttons_default = "/* --------------------------------------------------------------- buttons --- */\n\n.dshgg-iconBtn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n  padding: 6px;\n  color: var(--dsw-alias-label-secondary);\n  line-height: 1;\n  background: transparent;\n  border: none;\n  border-radius: var(--dsw-radius-sm);\n  cursor: pointer;\n}\n\n.dshgg-iconBtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n.dshgg-iconBtn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n/* A control inside a hovered row or header layers this highlight above that\n * surface's own, so the pointer marks both the row and its target; where no\n * surface is hovered, as in the toolbar, it is the control's only highlight.\n * A nested control fills its surface's height, so a transparent 2px border and\n * `background-clip: padding-box` draw the layer 2px inside the control: it\n * keeps 2px from the surface's top and bottom (and from a header's trailing\n * edge), and its corners take the surface's 12px radius minus that inset, so\n * the two shapes nest concentrically. The control's whole box stays the\n * pointer target. */\n.dshgg-row .dshgg-iconBtn,\n.dshgg-sectionHeader .dshgg-iconBtn {\n  border: 2px solid transparent;\n  border-radius: var(--dsw-radius-md);\n  background-clip: padding-box;\n}\n\n@media (hover: hover) {\n  .dshgg-iconBtn:hover:not(:disabled) {\n    /* The longhand keeps the nested rule's `padding-box` clip; the shorthand\n     * would reset it and paint the layer over the transparent border again. */\n    background-color: var(--dsw-alias-interactive-bg-hover);\n  }\n}\n\n.dshgg-iconBtn[data-spinning=\"true\"] svg {\n  animation: dshgg-spin 1s linear infinite;\n}\n\n@keyframes dshgg-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.dshgg-btn {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  gap: 6px;\n  height: 28px;\n  padding: 0 12px;\n  border: 0.5px solid transparent;\n  border-radius: var(--dsw-radius-sm);\n  font: var(--dsw-font-xxs-strong-12);\n  white-space: nowrap;\n  cursor: pointer;\n}\n\n.dshgg-btn:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.dshgg-btnPrimary {\n  color: var(--dsw-alias-label-primary-foreground);\n  background: var(--dsw-alias-button-primary-fill);\n}\n\n.dshgg-btnPrimary:hover:not(:disabled) {\n  background: var(--dsw-alias-button-primary-hover);\n}\n\n.dshgg-btnGhost {\n  color: var(--dsw-alias-label-primary);\n  background: transparent;\n  border-color: var(--dsw-alias-border-l3);\n  font-weight: 400;\n}\n\n.dshgg-btnGhost:hover:not(:disabled) {\n  background: var(--dsw-alias-interactive-bg-hover-solid);\n}\n\n.dshgg-linkBtn {\n  flex: none;\n  padding: 0;\n  color: var(--dsw-alias-state-business-primary);\n  font: var(--dsw-font-xxs-strong-12);\n  background: none;\n  border: none;\n  cursor: pointer;\n}\n\n.dshgg-linkBtn:hover {\n  text-decoration: underline;\n}\n";
 
 // src/client/styles/commit-box.css
 var commit_box_default = '/* ------------------------------------------------------------ commit box --- */\n\n.dshgg-commitBox {\n  display: flex;\n  flex: none;\n  flex-direction: column;\n  gap: 8px;\n  padding: 10px 8px 8px;\n}\n\n/* The message decides the height: one row at rest and ten at most, after which\n   the box scrolls. `panel/autosize.ts` applies it; the line height comes from\n   the font shorthand, and `overflow-y: auto` keeps the message reachable before\n   the first measurement. */\n.dshgg-commitMessage {\n  box-sizing: border-box;\n  width: 100%;\n  padding: 6px 8px;\n  color: var(--dsw-alias-label-primary);\n  font: var(--dsw-font-xs-13);\n  background: var(--dsw-specific-input-major);\n  border: 0.5px solid var(--dsw-alias-border-l4);\n  border-radius: var(--dsw-radius-md);\n  overflow-y: auto;\n  resize: none;\n  outline: none;\n}\n\n.dshgg-commitMessage::placeholder {\n  color: var(--dsw-alias-label-dimmed);\n}\n\n.dshgg-commitMessage:focus {\n  border-color: var(--dsw-alias-state-business-primary);\n}\n\n.dshgg-commitMessage:disabled {\n  opacity: 0.5;\n}\n\n/* The split button: the main commit control and its action-menu chevron share\n   one primary fill, separated by a hairline. An empty message or a running\n   action disables the whole control, so both halves and the hairline dim\n   together instead of reading as separate controls. */\n.dshgg-commitActions {\n  position: relative;\n  display: flex;\n  align-items: stretch;\n  width: 100%;\n  height: 28px;\n}\n\n/* The wrapper dims as one control; its buttons opt out of their own disabled\n   opacity so the two halves and the hairline keep a single tone. */\n.dshgg-commitActions[data-disabled="true"] {\n  opacity: 0.4;\n}\n\n.dshgg-commitActions[data-disabled="true"] > .dshgg-btn {\n  opacity: 1;\n}\n\n.dshgg-commitMain {\n  flex: 1 1 auto;\n  min-width: 0;\n  height: 100%;\n  border-radius: var(--dsw-radius-sm) 0 0 var(--dsw-radius-sm);\n}\n\n/* Syncing a clean workspace is one undivided control: the commit modes have\n   nothing to commit, so the main button keeps every corner rounded. */\n.dshgg-commitActions[data-sync="true"] > .dshgg-commitMain {\n  border-radius: var(--dsw-radius-sm);\n}\n\n.dshgg-commitExpand {\n  flex: none;\n  width: 30px;\n  height: 100%;\n  padding: 0;\n  border-radius: 0 var(--dsw-radius-sm) var(--dsw-radius-sm) 0;\n}\n\n.dshgg-commitDivider {\n  flex: none;\n  width: 0.5px;\n  margin: 6px 0;\n  background: var(--dsw-alias-label-primary-foreground);\n  opacity: 0.35;\n}\n\n.dshgg-commitActions .dshgg-commitMain:hover:not(:disabled),\n.dshgg-commitActions .dshgg-commitExpand:hover:not(:disabled) {\n  background: var(--dsw-alias-button-primary-hover);\n}\n\n.dshgg-commitMenu {\n  min-width: 200px;\n}\n';
@@ -6336,10 +6236,13 @@ var rows_default = `/* ---------------------------------------------------------
   opacity: 1;
 }
 
+/* The row's 22px control keeps that full hit box; its 2px border and 2px
+ * padding leave a 14px glyph, and the shared nested rule clips the hover layer
+ * to the 18px the border encloses. */
 .dshgg-fileActions .dshgg-iconBtn {
   width: 22px;
   height: 22px;
-  padding: 4px;
+  padding: 2px;
 }
 
 .dshgg-fileActions .dshgg-iconBtn svg {
@@ -6377,7 +6280,7 @@ var section_default = `/* ------------------------------------------------------
   align-items: center;
   gap: 2px;
   height: 30px;
-  padding: 0 4px 0 2px;
+  padding: 0 0 0 2px;
   background: var(--dsw-alias-bg-base);
 }
 
@@ -6443,12 +6346,15 @@ var section_default = `/* ------------------------------------------------------
   display: flex;
   flex: none;
   align-items: center;
-  gap: 1px;
+  gap: 0;
 }
 
+/* The control fills the 30px header, so the shared nested rule's 2px border and
+ * 5px padding leave a 16px glyph and draw the hover layer 2px inside the
+ * header, with 4px between adjacent layers. */
 .dshgg-sectionActions .dshgg-iconBtn {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   padding: 5px;
 }
 

@@ -23,7 +23,7 @@
   align-items: center;
   gap: 2px;
   height: 30px;
-  padding: 0 4px 0 2px;
+  padding: 0 0 0 2px;
   background: var(--dsw-alias-bg-base);
 }
 
@@ -89,12 +89,15 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 1px;
+  gap: 0;
 }
 
+/* The control fills the 30px header, so the shared nested rule's 2px border and
+ * 5px padding leave a 16px glyph and draw the hover layer 2px inside the
+ * header, with 4px between adjacent layers. */
 .dshgg-sectionActions .dshgg-iconBtn {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   padding: 5px;
 }
 

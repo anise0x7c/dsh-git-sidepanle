@@ -162,10 +162,13 @@
   opacity: 1;
 }
 
+/* The row's 22px control keeps that full hit box; its 2px border and 2px
+ * padding leave a 14px glyph, and the shared nested rule clips the hover layer
+ * to the 18px the border encloses. */
 .dshgg-fileActions .dshgg-iconBtn {
   width: 22px;
   height: 22px;
-  padding: 4px;
+  padding: 2px;
 }
 
 .dshgg-fileActions .dshgg-iconBtn svg {

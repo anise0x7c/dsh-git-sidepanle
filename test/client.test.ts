@@ -235,7 +235,7 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   // controls-only mode.
   assert.match(
     graphStyles,
-    /\.dshgg-iconBtn:hover:not\(:disabled\)\s*\{[^}]*background: var\(--dsw-alias-interactive-bg-hover\);/,
+    /\.dshgg-iconBtn:hover:not\(:disabled\)\s*\{[^}]*background-color: var\(--dsw-alias-interactive-bg-hover\);/,
   )
   assert.doesNotMatch(
     graphStyles,
@@ -244,6 +244,25 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   )
   // File-row actions are shared icon buttons, so the rule above reaches them.
   assert.doesNotMatch(graphStyles, /data-hover/, 'no header opts out of the surface highlight')
+  // The second layer is 2px inside its surface on every edge. A row control
+  // fills the row, so a transparent 2px border clips its background to an 18px
+  // layer; a header control fills the 30px header and clips to 26px. Both take
+  // the surface radius minus the inset, so the two shapes nest concentrically,
+  // and adjacent layers keep 4px between them.
+  assert.match(
+    graphStyles,
+    /\.dshgg-row \.dshgg-iconBtn,\s*\.dshgg-sectionHeader \.dshgg-iconBtn\s*\{[^}]*border: 2px solid transparent;[^}]*border-radius: var\(--dsw-radius-md\);[^}]*background-clip: padding-box;/,
+  )
+  assert.match(
+    graphStyles,
+    /\.dshgg-fileActions \.dshgg-iconBtn\s*\{[^}]*width: 22px;[^}]*height: 22px;[^}]*padding: 2px;/,
+  )
+  assert.match(
+    graphStyles,
+    /\.dshgg-sectionActions \.dshgg-iconBtn\s*\{[^}]*width: 30px;[^}]*height: 30px;[^}]*padding: 5px;/,
+  )
+  assert.match(graphStyles, /\.dshgg-sectionHeader\s*\{[^}]*padding: 0 0 0 2px;/)
+  assert.match(graphStyles, /\.dshgg-sectionActions\s*\{[^}]*gap: 0;/)
   // The scroll frame is free of top padding and has no inset above the first
   // section: the first header starts at the pane's top edge, so its own
   // surface covers the edge and no row can appear above it.

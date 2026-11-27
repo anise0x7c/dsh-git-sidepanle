@@ -5,6 +5,12 @@ is the `engines.dsh` range in `package.json`.
 
 ## Unreleased
 
+The second hover layer inside a row or a section header now uses one geometry
+everywhere: its control fills the surface height and the layer sits 2px inside
+the control, so it keeps 2px from the surface's top and bottom and its corners
+take the surface's radius minus that inset. Adjacent layers keep 4px between
+them, and a row action's 22px hit box is unchanged.
+
 The Workspace header now has a view menu that switches how its change groups
 show files:
 

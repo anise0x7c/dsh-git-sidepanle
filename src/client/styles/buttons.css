@@ -28,10 +28,25 @@
 
 /* A control inside a hovered row or header layers this highlight above that
  * surface's own, so the pointer marks both the row and its target; where no
- * surface is hovered, as in the toolbar, it is the control's only highlight. */
+ * surface is hovered, as in the toolbar, it is the control's only highlight.
+ * A nested control fills its surface's height, so a transparent 2px border and
+ * `background-clip: padding-box` draw the layer 2px inside the control: it
+ * keeps 2px from the surface's top and bottom (and from a header's trailing
+ * edge), and its corners take the surface's 12px radius minus that inset, so
+ * the two shapes nest concentrically. The control's whole box stays the
+ * pointer target. */
+.dshgg-row .dshgg-iconBtn,
+.dshgg-sectionHeader .dshgg-iconBtn {
+  border: 2px solid transparent;
+  border-radius: var(--dsw-radius-md);
+  background-clip: padding-box;
+}
+
 @media (hover: hover) {
   .dshgg-iconBtn:hover:not(:disabled) {
-    background: var(--dsw-alias-interactive-bg-hover);
+    /* The longhand keeps the nested rule's `padding-box` clip; the shorthand
+     * would reset it and paint the layer over the transparent border again. */
+    background-color: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
