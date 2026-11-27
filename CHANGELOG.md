@@ -3,7 +3,11 @@
 All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
-## Unreleased
+## 1.0.0
+
+First stable release: the panel's visible behavior, its loader exports and its
+Host routes now count as the stable interface, and later versions keep them
+compatible within SemVer. Changes since 0.13.1:
 
 The second hover layer inside a row or a section header now uses one geometry
 everywhere: its control fills the surface height and the layer sits 2px inside
