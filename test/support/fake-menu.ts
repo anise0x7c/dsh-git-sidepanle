@@ -20,6 +20,9 @@ import type {
  */
 export function createMenuMock(): MenuMock {
   const opens: MenuMock['opens'] = []
+  // The host prop is named `useContextMenu`, but this stand-in is a plain
+  // callback that closes over this mock's recorder rather than a React hook.
+  // biome-ignore lint/correctness/noComponentHookFactories: a per-mock trigger callback, not a React hook.
   const useContextMenu = (): MenuTriggerBindings => ({
     getTriggerProps(target: CapturedTarget, handlers: MenuTriggerHandlers = {}): MenuTriggerProps {
       const show = (event: TestEvent, x: number, y: number) => {

@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { COMMIT_DETAILS } from '../support/fixtures.ts'
-import type { TestElement } from '../support/types.ts'
+import type { TestComponent, TestElement } from '../support/types.ts'
 import {
   buttonByLabel,
   buttonByText,
@@ -32,6 +32,15 @@ import {
 afterEach(disposeUiLifetimes)
 
 await loadUiPanel()
+
+/** Every request one mount made to the host's file-type glyph. */
+const iconRequests: Array<{ path: string; size: number }> = []
+
+/** Recorder for the host file-type glyph, so a test can read the slot it got. */
+const RecordingFileTypeIcon: TestComponent = (props) => {
+  iconRequests.push({ path: String(props.path), size: Number(props.size) })
+  return { type: 'svg', props: { 'data-file-type': props.path }, children: [] }
+}
 
 test('clicking a commit expands its files inline and a file opens the commit diff', async () => {
   const mounted = await mountGit()
@@ -116,15 +125,10 @@ test('clicking a commit expands its files inline and a file opens the commit dif
 })
 
 test('the expanded file rows draw the host file-type icon for their path', async () => {
-  const requested: Array<{ path: string; size: number }> = []
+  iconRequests.length = 0
   const mounted = await mountGit({
     hostModules: {
-      '@deepseek-ai/dsh-client-ui-primitives': {
-        FileTypeIcon: (props: { path: string; size: number }) => {
-          requested.push({ path: props.path, size: props.size })
-          return { type: 'svg', props: { 'data-file-type': props.path }, children: [] }
-        },
-      },
+      '@deepseek-ai/dsh-client-ui-primitives': { FileTypeIcon: RecordingFileTypeIcon },
     },
   })
   mounted.harness.click(graphRows(mounted.harness)[0])
@@ -139,7 +143,7 @@ test('the expanded file rows draw the host file-type icon for their path', async
     'each expanded row passes the changed file path to the host icon',
   )
   assert.ok(
-    requested.length >= icons.length && requested.every((props) => props.size === 16),
+    iconRequests.length >= icons.length && iconRequests.every((props) => props.size === 16),
     'the host icon keeps the row 16-pixel slot',
   )
   await mounted.harness.dispose()

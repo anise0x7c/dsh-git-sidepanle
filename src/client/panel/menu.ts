@@ -112,7 +112,9 @@ export function usePanelRefs(): PanelRefs {
   )
   return useMemo(
     () => ({ inFlight, busy, confirm, mounted, watching, wrap, remoteWrap }),
-    [inFlight, busy, confirm, mounted, watching, wrap, remoteWrap],
+    // Every field is a ref, so the identities never change; the object can be
+    // built once.
+    [],
   )
 }
 

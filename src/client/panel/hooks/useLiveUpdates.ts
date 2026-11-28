@@ -82,6 +82,7 @@ export function useLiveUpdates(options: UseLiveUpdatesOptions): LiveUpdatesState
     }
   }, [call, panelId, refs])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: repoRoot resubscribes when the repository changes.
   useEffect(() => {
     void subscribe()
     return () => {

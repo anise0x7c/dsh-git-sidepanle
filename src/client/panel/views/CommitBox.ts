@@ -52,6 +52,7 @@ export function CommitBox(props: CommitBoxProps): React.ReactElement {
   const messageArea = useRef<HTMLTextAreaElement | null>(null)
   // Size the box before it paints, so a message that is already wrapped when the
   // panel shows it never flashes at one line.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: props.message regrows the box; it is not read here.
   useLayoutEffect(() => {
     const area = messageArea.current
     if (area === null) return

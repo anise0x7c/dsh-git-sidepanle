@@ -523,7 +523,9 @@ function usePanelRefs() {
   );
   return (0, import_react5.useMemo)(
     () => ({ inFlight, busy, confirm, mounted, watching, wrap, remoteWrap }),
-    [inFlight, busy, confirm, mounted, watching, wrap, remoteWrap]
+    // Every field is a ref, so the identities never change; the object can be
+    // built once.
+    []
   );
 }
 function createMenuTargets(options) {
@@ -1828,7 +1830,7 @@ function useCommitActionMenu(options) {
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [open, wrap]);
+  }, [open]);
   (0, import_react12.useEffect)(() => {
     if (!enabled) setOpen(false);
   }, [enabled]);

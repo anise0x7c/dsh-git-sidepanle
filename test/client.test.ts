@@ -408,6 +408,9 @@ test('components render without a browser and expose stable markup entry points'
     },
     navigation: { address: 'sidebar://git', params: {}, revision: 0 },
   }
+  // A per-test tab-info callback handed to the panel under the host's prop
+  // name; it closes over this fixture's tab, so it stays where the tab is.
+  // biome-ignore lint/correctness/noComponentHookFactories: a per-fixture tab-info callback, not a React hook.
   const useTabInfo = () => ({
     sidebar: { expanded: true, fullscreen: false },
     panel: { id: 'pane-1', isFloating: false },

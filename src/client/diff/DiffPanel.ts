@@ -92,6 +92,8 @@ export function DiffPanel(props: DiffPanelProps): React.ReactElement {
   const staged = params.staged === true
   const untracked = params.untracked === true
 
+  // revision and reload are refetch triggers, not reads.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: listed so a new revision or retry refetches.
   useEffect(() => {
     if (path === null) {
       setState({ phase: 'empty', diff: null, failure: null })

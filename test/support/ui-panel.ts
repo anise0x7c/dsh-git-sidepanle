@@ -350,6 +350,9 @@ export async function mountGit(options: MountOptions = {}): Promise<MountedGit> 
     },
     navigation: { address: 'sidebar://git', params: {}, revision: 0 },
   }
+  // The panel calls this like a hook, but it is a plain callback closing over
+  // this mount's tab, so it cannot live at module scope.
+  // biome-ignore lint/correctness/noComponentHookFactories: a per-mount tab-info callback, not a React hook.
   const useTabInfo: UiTabInfo = () => ({
     sidebar: { expanded: true, fullscreen: false },
     panel: { id: 'pane-1', isFloating: false },
@@ -373,21 +376,16 @@ export async function mountGit(options: MountOptions = {}): Promise<MountedGit> 
     harness.setComponent(component, panelProps)
   } else {
     // The bundle adds a frame-wide Toast host next to the panel. Render both
-    // as sibling seats so the native toast surface is exercised alongside the
-    // panel it reports for.
-    const PanelSeat: TestComponent = () => ({ type: component, props: panelProps, children: [] })
-    const ToastSeat: TestComponent = () => ({
-      type: toast.component,
-      props: toast.props,
-      children: [],
-    })
+    // as siblings so the native toast surface is exercised alongside the
+    // panel it reports for. The seat types are the loaded components
+    // themselves, so mounting keeps one stable type per element.
     harness.setComponent(
       () => ({
         type: 'div',
         props: { 'data-test-root': '' },
         children: [
-          { type: PanelSeat, props: {}, children: [] },
-          { type: ToastSeat, props: {}, children: [] },
+          { type: component, props: panelProps, children: [] },
+          { type: toast.component, props: toast.props, children: [] },
         ],
       }),
       {},

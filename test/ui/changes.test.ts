@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import type { ChangeEntry } from '../../src/shared/git.ts'
 import { createStatus, STATUS } from '../support/fixtures.ts'
-import type { TestElement } from '../support/types.ts'
+import type { TestComponent, TestElement } from '../support/types.ts'
 import type { MountedGit } from '../support/ui-panel.ts'
 import {
   buttonByLabel,
@@ -32,6 +32,13 @@ import {
 afterEach(disposeUiLifetimes)
 
 await loadUiPanel()
+
+/** Stand-in for the host's file-type glyph; it draws the path it was given. */
+const HostFileTypeIcon: TestComponent = (props) => ({
+  type: 'svg',
+  props: { 'data-file-type': props.path },
+  children: [],
+})
 
 /** The Workspace section header that carries the view menu. */
 function workspaceHeader(mounted: MountedGit): TestElement {
@@ -102,13 +109,7 @@ function markedItems(mounted: MountedGit): number[] {
 test('the change lists and commit details draw the host file-type icon for every file', async () => {
   const mounted = await mountGit({
     hostModules: {
-      '@deepseek-ai/dsh-client-ui-primitives': {
-        FileTypeIcon: (props: { path: string; size: number }) => ({
-          type: 'svg',
-          props: { 'data-file-type': props.path },
-          children: [],
-        }),
-      },
+      '@deepseek-ai/dsh-client-ui-primitives': { FileTypeIcon: HostFileTypeIcon },
     },
   })
   const fileRows = (): TestElement[] =>

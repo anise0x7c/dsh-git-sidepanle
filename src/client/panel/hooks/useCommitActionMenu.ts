@@ -54,7 +54,7 @@ export function useCommitActionMenu(options: { readonly enabled: boolean }): Com
       document.removeEventListener('pointerdown', onPointerDown, true)
       document.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [open, wrap])
+  }, [open])
 
   // An unavailable commit action owns the panel, so the menu does not stay open
   // over a running operation or an emptied message.
