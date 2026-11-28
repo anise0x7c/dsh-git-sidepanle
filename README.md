@@ -16,7 +16,10 @@ row.
 - Shared wire types: `src/shared/git.ts`, erased from runtime output.
 - Tests: checked TypeScript on Node's built-in test runner, with real Git and
   loopback fixtures, pure unit tests, loader tests and a tiny React renderer.
-- Zero runtime dependencies. TypeScript, tsx, esbuild and Biome are development-only.
+- Zero runtime dependencies. The two host modules the client bundle requires,
+  `react` and `@deepseek-ai/dsh-client-ui-primitives`, are declared as optional
+  peers because DSH supplies them. TypeScript, tsx, esbuild and Biome are
+  development-only.
 
 ## Development
 

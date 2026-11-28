@@ -2,7 +2,7 @@
   "name": "@local/dsh-git-graph",
   "version": "1.0.0",
   "private": true,
-  "description": "A Code OSS-style Git source-control sidebar for the DeepSeek Harness Web GUI",
+  "description": "A VS Code(Code OSS) style Git source-control sidebar for the DeepSeek Harness",
   "type": "module",
   "icon": "icon.svg",
   "exports": {
@@ -57,6 +57,15 @@
     "check": "pnpm typecheck && pnpm lint && pnpm test:run && pnpm check:build",
     "check:build": "node --import tsx scripts/build.ts --check",
     "verify:contract": "node --import tsx scripts/verify-contract.ts"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.2.3-alpha.2",
+    "react": "^18.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-ui-primitives": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.7",

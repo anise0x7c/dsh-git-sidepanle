@@ -321,8 +321,13 @@ bundle alone guarantees HMR in every deployment.
 
 Biome manages authored TypeScript, CSS and JSON, not generated output or historical
 specifications. pnpm pins development resolution; no runtime dependencies or
-install scripts are added. CI runs the portable gate on Node 22 and 24. The real
-installed-DSH contract check remains an explicit local integration gate.
+install scripts are added. The client bundle's two host modules, `react` and
+`@deepseek-ai/dsh-client-ui-primitives`, are declared in `peerDependencies` — the
+primitives entry optional, since it is not installed as a package of its own — so
+a profile keeps one runtime instead of a second copy. `engines.dsh` stays the
+compatibility gate: DSH checks it before peer ranges and ignores the peers when it
+is present. CI runs the portable gate on Node 22 and 24. The real installed-DSH
+contract check remains an explicit local integration gate.
 
 ## Adding code
 
