@@ -77,7 +77,7 @@ export function createCommandBus(): CommandBus {
         try {
           listener(command)
         } catch (error) {
-          console.warn('[git-graph] context menu command failed', error)
+          console.warn('[git-sidepanel] context menu command failed', error)
         }
       }
     },

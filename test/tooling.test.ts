@@ -81,7 +81,7 @@ test('both committed maps contain TypeScript sources and no bundled dependencies
 })
 
 test('the distributed Host entry loads and disposes without a compiler or node_modules', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'dsh-git-graph-artifact-'))
+  const directory = await mkdtemp(path.join(tmpdir(), 'dsh-git-sidepanel-artifact-'))
   try {
     await cp(path.join(root, 'index.js'), path.join(directory, 'index.js'))
     await writeFile(path.join(directory, 'package.json'), '{"type":"module"}\n')
@@ -99,8 +99,8 @@ test('the distributed Host entry loads and disposes without a compiler or node_m
         get: () => undefined,
       })
       assert.equal(routes.size, 2)
-      assert.ok(routes.has('/api/dsh-git-graph/rpc'))
-      assert.ok(routes.has('/api/dsh-git-graph/health'))
+      assert.ok(routes.has('/api/dsh-git-sidepanel/rpc'))
+      assert.ok(routes.has('/api/dsh-git-sidepanel/health'))
       cleanup()
       assert.equal(routes.size, 0)
     `
@@ -112,7 +112,7 @@ test('the distributed Host entry loads and disposes without a compiler or node_m
   } finally {
     // Only this exact mkdtemp-owned directory is eligible for cleanup.
     assert.equal(path.dirname(directory), tmpdir())
-    assert.ok(path.basename(directory).startsWith('dsh-git-graph-artifact-'))
+    assert.ok(path.basename(directory).startsWith('dsh-git-sidepanel-artifact-'))
     await rm(directory, { recursive: true, force: true })
   }
 })

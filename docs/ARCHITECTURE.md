@@ -22,7 +22,7 @@ specification remains the source of truth.
 ```text
 index.js, index.js.map         GENERATED Host ESM + source map
 client.js, client.js.map       GENERATED browser loader artifact + source map
-cordis.patch.yml               one loader row: @local/dsh-git-graph
+cordis.patch.yml               one loader row: dsh-git-sidepanel
 locale/{en,zh}.json            plugin metadata only, not UI copy
 src/
   host-entry.ts               inject + apply; routes and failure envelopes
@@ -155,7 +155,7 @@ every public export or semantic branch has a consumer.
 
 1. The keyed `sidebar.right.pane.tab` slot supplies Session identity, translation,
    tab-info and context-menu hooks.
-2. `useRepoStatus` creates a caller for `/api/dsh-git-graph/rpc` and loads status.
+2. `useRepoStatus` creates a caller for `/api/dsh-git-sidepanel/rpc` and loads status.
    `useLiveUpdates` subscribes the panel's repository to the Host watch registry
    on mount and whenever the repository changes; while the tab is visible it
    polls two in-memory counters (working tree/index and references) about every
@@ -263,9 +263,9 @@ refreshes the status so conflicts and partially fetched refs appear.
 
 ## Runtime contracts
 
-- Routes stay `POST /api/dsh-git-graph/rpc` and
-  `GET`/`HEAD /api/dsh-git-graph/health`. Accept only loopback sockets/Host,
-  bundle header `x-dsh-git-graph: 1`, no `x-forwarded-for` or
+- Routes stay `POST /api/dsh-git-sidepanel/rpc` and
+  `GET`/`HEAD /api/dsh-git-sidepanel/health`. Accept only loopback sockets/Host,
+  bundle header `x-dsh-git-sidepanel: 1`, no `x-forwarded-for` or
   `cf-connecting-ip` forwarding headers, and same-origin markers.
   Git never runs through a shell and file arguments are literal pathspecs.
   Browser requests contain Session ids and repository-relative paths, never a

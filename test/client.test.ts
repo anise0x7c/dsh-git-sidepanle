@@ -64,7 +64,7 @@ const fakeReact: HarnessReact = {
 }
 
 /** Contribution id of the bundle's context-menu provider. */
-const MENU_ID = 'git-graph.actions'
+const MENU_ID = 'git-sidepanel.actions'
 
 /** A resolved action id as the shared registry publishes it. */
 const menuActionId = (id: string): string => `${MENU_ID}/${id}`
@@ -86,7 +86,7 @@ function bundleModule(registration: ClientRegistration): ClientModule {
 
 test('the bundle registers its two right-Sidebar types, bodies, titles, and shortcut', async () => {
   const { registration, styleTags } = await loadClientBundle()
-  assert.equal(registration.id, '@local/dsh-git-graph')
+  assert.equal(registration.id, 'dsh-git-sidepanel')
   const module = bundleModule(registration)
   assert.deepEqual(module.inject, ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight'])
 
@@ -97,7 +97,7 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   assert.equal(styleTags.length, 1)
   const styleTag = styleTags[0]
   assert.ok(styleTag)
-  assert.equal(styleTag.getAttribute('data-plugin'), '@local/dsh-git-graph')
+  assert.equal(styleTag.getAttribute('data-plugin'), 'dsh-git-sidepanel')
   const graphStyles = styleTag.textContent
   // The graph's restyled palette: gold, crimson, copper, emerald and violet
   // rotation colors plus blue, purple and orange references, with light and
@@ -274,7 +274,7 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   assert.equal(records.localeDictionaries.length, 1)
   const registrationRecord = records.localeDictionaries[0]
   assert.ok(registrationRecord)
-  assert.equal(registrationRecord.namespace, 'gitGraph')
+  assert.equal(registrationRecord.namespace, 'gitSidepanel')
   assert.ok(registrationRecord.dictionaries.en?.title)
   assert.ok(registrationRecord.dictionaries.zh?.title)
   assert.deepEqual(
@@ -288,7 +288,7 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   )
   const gitType = records.tabTypes[0]
   assert.ok(gitType)
-  assert.equal(gitType.id, '@local/dsh-git-graph/git')
+  assert.equal(gitType.id, 'dsh-git-sidepanel/git')
   assert.equal(gitType.title('x'), 'title')
   assert.ok(gitType.guide)
   assert.equal(gitType.guide.length, 1)
@@ -304,7 +304,7 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   const diffType = records.tabTypes[1]
   assert.ok(diffType)
   assert.deepEqual(diffType, {
-    id: '@local/dsh-git-graph/diff',
+    id: 'dsh-git-sidepanel/diff',
     kind: 'git-diff',
     title: diffType.title,
   })
@@ -312,22 +312,22 @@ test('the bundle registers its two right-Sidebar types, bodies, titles, and shor
   assert.equal(records.slots.length, 4)
   const slotSummary = records.slots.map(({ options }) => `${options.name}:${options.key}`)
   assert.deepEqual(slotSummary, [
-    'sidebar.right.pane.tab:@local/dsh-git-graph/git',
-    'sidebar.right.pane.tab.title:@local/dsh-git-graph/git',
-    'sidebar.right.pane.tab:@local/dsh-git-graph/diff',
-    'sidebar.right.pane.tab.title:@local/dsh-git-graph/diff',
+    'sidebar.right.pane.tab:dsh-git-sidepanel/git',
+    'sidebar.right.pane.tab.title:dsh-git-sidepanel/git',
+    'sidebar.right.pane.tab:dsh-git-sidepanel/diff',
+    'sidebar.right.pane.tab.title:dsh-git-sidepanel/diff',
   ])
-  for (const { options } of records.slots) assert.equal(options.locale, 'gitGraph')
+  for (const { options } of records.slots) assert.equal(options.locale, 'gitSidepanel')
   const gitBody = records.slots.find(
     ({ options }) =>
-      options.name === 'sidebar.right.pane.tab' && options.key === '@local/dsh-git-graph/git',
+      options.name === 'sidebar.right.pane.tab' && options.key === 'dsh-git-sidepanel/git',
   )
   assert.ok(gitBody, 'the Git pane body was not registered')
   assert.equal(typeof gitBody.options.inject, 'function', 'the Git pane injects its Toast face')
   assert.equal(typeof gitBody.options.inject?.().notify, 'function')
   const diffBody = records.slots.find(
     ({ options }) =>
-      options.name === 'sidebar.right.pane.tab' && options.key === '@local/dsh-git-graph/diff',
+      options.name === 'sidebar.right.pane.tab' && options.key === 'dsh-git-sidepanel/diff',
   )
   assert.ok(diffBody, 'the diff pane body was not registered')
   assert.equal(typeof diffBody.options.inject, 'function', 'the diff pane injects its Toast face')
@@ -388,10 +388,10 @@ test('components render without a browser and expose stable markup entry points'
       return [`${options.name}:${options.key}`, injected]
     }),
   )
-  const gitPanel = slotComponent(bySeat, 'sidebar.right.pane.tab:@local/dsh-git-graph/git')
-  const diffPanel = slotComponent(bySeat, 'sidebar.right.pane.tab:@local/dsh-git-graph/diff')
-  const gitTitle = slotComponent(bySeat, 'sidebar.right.pane.tab.title:@local/dsh-git-graph/git')
-  const diffTitle = slotComponent(bySeat, 'sidebar.right.pane.tab.title:@local/dsh-git-graph/diff')
+  const gitPanel = slotComponent(bySeat, 'sidebar.right.pane.tab:dsh-git-sidepanel/git')
+  const diffPanel = slotComponent(bySeat, 'sidebar.right.pane.tab:dsh-git-sidepanel/diff')
+  const gitTitle = slotComponent(bySeat, 'sidebar.right.pane.tab.title:dsh-git-sidepanel/git')
+  const diffTitle = slotComponent(bySeat, 'sidebar.right.pane.tab.title:dsh-git-sidepanel/diff')
   assert.equal(typeof gitPanel, 'function')
   assert.equal(typeof diffPanel, 'function')
 
@@ -422,7 +422,7 @@ test('components render without a browser and expose stable markup entry points'
   )
   assert.equal(panelElement.type, 'div')
   assert.equal(panelElement.props.className, 'dshgg-root')
-  assert.ok(panelElement.props['data-dsh-git-graph'] !== undefined)
+  assert.ok(panelElement.props['data-dsh-git-sidepanel'] !== undefined)
 
   const diffElement = element(diffPanel({ sessionId: 'session-1', t: translate, useTabInfo }))
   assert.equal(diffElement.type, 'div')
@@ -472,12 +472,12 @@ test('the bundle contributes row, group, commit, and diff context-menu actions',
   assert.equal(contributions.length, 1)
   const contribution = contributions[0]
   assert.ok(contribution, 'no context-menu contribution was registered')
-  assert.equal(contribution.id, 'git-graph.actions')
-  assert.equal(contribution.target, 'gitGraphItem')
+  assert.equal(contribution.id, 'git-sidepanel.actions')
+  assert.equal(contribution.target, 'gitSidepanelItem')
   assert.equal(typeof contribution.resolve, 'function')
 
   const resolve = (value: CapturedTargetValue): TestMenuActionView[] =>
-    fake.menu.views({ kind: 'gitGraphItem', value })
+    fake.menu.views({ kind: 'gitSidepanelItem', value })
   const ids = (value: CapturedTargetValue): string[] => MENU_IDS(resolve(value))
 
   // The registry hands the contribution the captured value, so an invoked row
@@ -688,7 +688,7 @@ test('menu copy actions write the clipboard and report the result', async () => 
 
   // Each select reopens the menu occurrence, as the real overlay does.
   const runMenuAction = (value: CapturedTargetValue, id: string): Promise<void> =>
-    fake.menu.select({ kind: 'gitGraphItem', value }, menuActionId(id))
+    fake.menu.select({ kind: 'gitSidepanelItem', value }, menuActionId(id))
   const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
   const copied: string[] = []
   try {

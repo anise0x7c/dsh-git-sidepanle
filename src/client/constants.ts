@@ -2,14 +2,14 @@
  * Identifiers and limits shared by the plugin, the panels and the Host route.
  */
 
-export const PACKAGE_ID = '@local/dsh-git-graph'
-export const NS = 'gitGraph'
-export const GIT_ID = '@local/dsh-git-graph/git'
+export const PACKAGE_ID = 'dsh-git-sidepanel'
+export const NS = 'gitSidepanel'
+export const GIT_ID = 'dsh-git-sidepanel/git'
 export const GIT_KIND = 'git'
 export const GIT_SHORTCUT = 'workspace.git'
-export const DIFF_ID = '@local/dsh-git-graph/diff'
+export const DIFF_ID = 'dsh-git-sidepanel/diff'
 export const DIFF_KIND = 'git-diff'
-export const RPC_PATH = 'api/dsh-git-graph/rpc'
+export const RPC_PATH = 'api/dsh-git-sidepanel/rpc'
 export const POLL_INTERVAL_MS = 5000
 /**
  * How often a panel asks the Host whether a watched repository changed. The
@@ -42,8 +42,8 @@ export const SPLIT_MOTION_MS = 200
  * does not flash it for a single frame.
  */
 export const PROGRESS_MIN_VISIBLE_MS = 500
-export const MENU_TARGET = 'gitGraphItem'
-export const MENU_CONTRIBUTION_ID = 'git-graph.actions'
+export const MENU_TARGET = 'gitSidepanelItem'
+export const MENU_CONTRIBUTION_ID = 'git-sidepanel.actions'
 
 let panelSequence = 0
 

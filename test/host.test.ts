@@ -111,7 +111,7 @@ async function request<T>(
 ): Promise<CallResult<T>> {
   const headers = {
     'content-type': 'application/json',
-    ...(trusted ? { 'x-dsh-git-graph': '1' } : {}),
+    ...(trusted ? { 'x-dsh-git-sidepanel': '1' } : {}),
   }
   const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) })
   return { status: response.status, body: (await response.json()) as RpcReply<T> }
@@ -122,7 +122,7 @@ async function callAt<Operation extends GitGraphOperation>(
   op: Operation,
   payload: Record<string, unknown> = {},
 ): Promise<CallResult<GitGraphRpcValues[Operation]>> {
-  return request(`${baseUrl}/api/dsh-git-graph/rpc`, { sessionId: 'session-1', op, ...payload })
+  return request(`${baseUrl}/api/dsh-git-sidepanel/rpc`, { sessionId: 'session-1', op, ...payload })
 }
 
 async function call<Operation extends GitGraphOperation>(
@@ -131,7 +131,7 @@ async function call<Operation extends GitGraphOperation>(
   options: CallOptions = {},
 ): Promise<CallResult<GitGraphRpcValues[Operation]>> {
   return request(
-    `${base}/api/dsh-git-graph/rpc`,
+    `${base}/api/dsh-git-sidepanel/rpc`,
     { sessionId: 'session-1', op, ...payload },
     options.untrusted !== true,
   )
@@ -141,7 +141,7 @@ async function callUnknown(
   op: string,
   payload: Record<string, unknown> = {},
 ): Promise<CallResult<unknown>> {
-  return request(`${base}/api/dsh-git-graph/rpc`, { sessionId: 'session-1', op, ...payload })
+  return request(`${base}/api/dsh-git-sidepanel/rpc`, { sessionId: 'session-1', op, ...payload })
 }
 
 /**
@@ -180,11 +180,11 @@ async function waitForWatch(
 }
 
 before(async () => {
-  tmpRoot = await mkdtemp(join(tmpdir(), 'dsh-git-graph-test-'))
+  tmpRoot = await mkdtemp(join(tmpdir(), 'dsh-git-sidepanel-test-'))
   repo = await mkdtemp(join(tmpRoot, 'repo-'))
   await git(repo, 'init', '-b', 'main')
   await git(repo, 'config', 'user.name', 'Git Graph Test')
-  await git(repo, 'config', 'user.email', 'git-graph@example.test')
+  await git(repo, 'config', 'user.email', 'git-sidepanel@example.test')
   await writeFile(join(repo, 'alpha.txt'), 'one\ntwo\n')
   await git(repo, 'add', '-A')
   await git(repo, 'commit', '-m', 'initial commit')
@@ -208,12 +208,12 @@ after(async () => {
 })
 
 test('health route answers only trusted loopback requests', async () => {
-  const trusted = await fetch(`${base}/api/dsh-git-graph/health`, {
-    headers: { 'x-dsh-git-graph': '1' },
+  const trusted = await fetch(`${base}/api/dsh-git-sidepanel/health`, {
+    headers: { 'x-dsh-git-sidepanel': '1' },
   })
   assert.equal(trusted.status, 200)
-  assert.deepEqual(await trusted.json(), { ok: true, service: '@local/dsh-git-graph' })
-  const untrusted = await fetch(`${base}/api/dsh-git-graph/health`)
+  assert.deepEqual(await trusted.json(), { ok: true, service: 'dsh-git-sidepanel' })
+  const untrusted = await fetch(`${base}/api/dsh-git-sidepanel/health`)
   assert.equal(untrusted.status, 403)
   const rpc = await call('status', {}, { untrusted: true })
   assert.equal(rpc.status, 403)
@@ -246,7 +246,7 @@ test('status reports conflicted files with their paths', async () => {
   const conflictRepo = await mkdtemp(join(tmpRoot, 'conflict-'))
   await git(conflictRepo, 'init', '-b', 'main')
   await git(conflictRepo, 'config', 'user.name', 'Git Graph Test')
-  await git(conflictRepo, 'config', 'user.email', 'git-graph@example.test')
+  await git(conflictRepo, 'config', 'user.email', 'git-sidepanel@example.test')
   await mkdir(join(conflictRepo, 'src'), { recursive: true })
   await writeFile(join(conflictRepo, 'src', 'conflicted.txt'), 'base\n')
   await git(conflictRepo, 'add', '-A')
@@ -350,7 +350,7 @@ test('commit amend replaces the tip commit and is refused without HEAD', async (
   const amendable = await mkdtemp(join(tmpRoot, 'amend-'))
   await git(amendable, 'init', '-q', '-b', 'main')
   await git(amendable, 'config', 'user.name', 'Git Graph Test')
-  await git(amendable, 'config', 'user.email', 'git-graph@example.test')
+  await git(amendable, 'config', 'user.email', 'git-sidepanel@example.test')
   await writeFile(join(amendable, 'base.txt'), 'base\n')
   await git(amendable, 'add', '-A')
   await git(amendable, 'commit', '-q', '-m', 'base commit')
@@ -371,7 +371,7 @@ test('commit amend replaces the tip commit and is refused without HEAD', async (
   const unborn = await mkdtemp(join(tmpRoot, 'amend-unborn-'))
   await git(unborn, 'init', '-q', '-b', 'main')
   await git(unborn, 'config', 'user.name', 'Git Graph Test')
-  await git(unborn, 'config', 'user.email', 'git-graph@example.test')
+  await git(unborn, 'config', 'user.email', 'git-sidepanel@example.test')
   const refused = await withSessionServer(unborn, (baseUrl) =>
     callAt(baseUrl, 'commit', { message: 'nope', amend: true }),
   )
@@ -384,7 +384,7 @@ test('history pages backwards by offset and reports when older commits remain', 
   const pagedRepo = await mkdtemp(join(tmpRoot, 'paged-'))
   await git(pagedRepo, 'init', '-b', 'main')
   await git(pagedRepo, 'config', 'user.name', 'Git Graph Test')
-  await git(pagedRepo, 'config', 'user.email', 'git-graph@example.test')
+  await git(pagedRepo, 'config', 'user.email', 'git-sidepanel@example.test')
   for (let index = 0; index < 61; index += 1) {
     await git(pagedRepo, 'commit', '--allow-empty', '-m', `commit ${index}`)
   }
@@ -487,7 +487,7 @@ test('commit details follow the first parent for renames, deletions, and merges'
   const timeline = await mkdtemp(join(tmpRoot, 'timeline-'))
   await git(timeline, 'init', '-q', '-b', 'main')
   await git(timeline, 'config', 'user.name', 'Git Graph Test')
-  await git(timeline, 'config', 'user.email', 'git-graph@example.test')
+  await git(timeline, 'config', 'user.email', 'git-sidepanel@example.test')
   await mkdir(join(timeline, 'src'), { recursive: true })
   await writeFile(join(timeline, 'src', 'alpha.txt'), 'one\n')
   await writeFile(join(timeline, 'keep.txt'), 'kept\n')
@@ -601,7 +601,7 @@ test('history lists branches topologically and reports the graph references', as
   }
   await git(graphRepo, 'init', '-q', '-b', 'main')
   await git(graphRepo, 'config', 'user.name', 'Git Graph Test')
-  await git(graphRepo, 'config', 'user.email', 'git-graph@example.test')
+  await git(graphRepo, 'config', 'user.email', 'git-sidepanel@example.test')
   const root = await commitAt(1_700_000_000, 'root')
   const mainOne = await commitAt(1_700_000_200, 'main one')
   await git(graphRepo, 'checkout', '-q', '-b', 'fix/side', root)
@@ -921,11 +921,11 @@ test('a directory outside a repository reports no repository', async () => {
   await new Promise<void>((resolve) => {
     other.listen(0, '127.0.0.1', resolve)
   })
-  const endpoint = `http://127.0.0.1:${serverPort(other)}/api/dsh-git-graph/rpc`
+  const endpoint = `http://127.0.0.1:${serverPort(other)}/api/dsh-git-sidepanel/rpc`
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
+      headers: { 'content-type': 'application/json', 'x-dsh-git-sidepanel': '1' },
       body: JSON.stringify({ sessionId: 'session-1', op: 'status' }),
     })
     const body = (await response.json()) as RpcReply<StatusResult>
@@ -933,7 +933,7 @@ test('a directory outside a repository reports no repository', async () => {
     assert.equal(body.value.repo, null)
     const refused = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
+      headers: { 'content-type': 'application/json', 'x-dsh-git-sidepanel': '1' },
       body: JSON.stringify({ sessionId: 'session-1', op: 'history' }),
     })
     const refusedBody = (await refused.json()) as RpcReply<unknown>

@@ -48,7 +48,7 @@ test('right-clicking a change binds its target without calling the Host', async 
   assert.ok(open, 'no context-menu target was bound')
   assert.deepEqual(open.point, { x: 40, y: 60 })
   const target = open.target
-  assert.equal(target.kind, 'gitGraphItem')
+  assert.equal(target.kind, 'gitSidepanelItem')
   assert.equal(target.value.sessionId, 'session-1')
   assert.equal(target.value.kind, 'file')
   assert.equal(target.value.section, 'changes')
@@ -188,7 +188,7 @@ test('a failed ignore refreshes no success Toast and reports its error', async (
 test('an ignored path is notified again when the same message repeats', async () => {
   const mounted = await mountGit()
   const target = {
-    kind: 'gitGraphItem',
+    kind: 'gitSidepanelItem',
     value: {
       sessionId: 'session-1',
       kind: 'file',
@@ -472,7 +472,7 @@ test('the keyboard context-menu gesture binds the focused row', async () => {
 test('a menu command for another session is ignored', async () => {
   const mounted = await mountGit()
   const target = {
-    kind: 'gitGraphItem',
+    kind: 'gitSidepanelItem',
     value: {
       sessionId: 'other-session',
       kind: 'file',
@@ -661,7 +661,7 @@ test('menu copies absolute paths from the repository root, not the Session direc
 test('a menu command for a vanished change reports it instead of doing nothing', async () => {
   const mounted = await mountGit()
   const target = {
-    kind: 'gitGraphItem',
+    kind: 'gitSidepanelItem',
     value: {
       sessionId: 'session-1',
       kind: 'file',
@@ -724,7 +724,10 @@ test('a menu command from another pane of the same Session is ignored', async ()
   mounted.harness.contextmenu(rows[rows.length - 1])
   const target = lastTarget(mounted.menu)
   assert.equal(typeof target.value.panelId, 'string')
-  const foreign = { kind: 'gitGraphItem', value: { ...target.value, panelId: 'git-panel-other' } }
+  const foreign = {
+    kind: 'gitSidepanelItem',
+    value: { ...target.value, panelId: 'git-panel-other' },
+  }
   await runMenuAction(mounted.components, foreign, 'stage')
   await mounted.harness.flush()
   assert.equal(mounted.calls.filter((call) => call.op === 'stage').length, 0)

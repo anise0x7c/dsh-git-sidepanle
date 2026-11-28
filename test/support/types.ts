@@ -104,8 +104,8 @@ export interface TestProps {
   'data-kind'?: string
   'data-section'?: string
   'data-plugin'?: string
-  'data-dsh-git-graph'?: string
-  'data-dsh-git-graph-diff'?: string
+  'data-dsh-git-sidepanel'?: string
+  'data-dsh-git-sidepanel-diff'?: string
 }
 
 /** A rectangle stand-in for `getBoundingClientRect` in tests. */

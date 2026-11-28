@@ -92,7 +92,7 @@ export function bindMenuTrigger(useContextMenu: unknown): MenuTriggerFactory | n
   try {
     bindings = (useContextMenu as () => unknown)()
   } catch (error) {
-    console.warn('[git-graph] context menus are unavailable', error)
+    console.warn('[git-sidepanel] context menus are unavailable', error)
     return null
   }
   if (!isContextMenuBindings(bindings)) return null

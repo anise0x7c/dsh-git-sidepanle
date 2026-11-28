@@ -126,11 +126,11 @@ export function apply(ctx: ClientContext): void {
     try {
       sharedToast?.notify(text, success)
     } catch (error) {
-      console.warn('[git-graph] shared toast failed', error)
+      console.warn('[git-sidepanel] shared toast failed', error)
     }
   }
-  ctx.effect(() => installStyles(), 'git-graph: styles')
-  ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'git-graph: dictionaries')
+  ctx.effect(() => installStyles(), 'git-sidepanel: styles')
+  ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'git-sidepanel: dictionaries')
   if (hostToast !== undefined) {
     ctx.effect(
       () =>
@@ -138,14 +138,14 @@ export function apply(ctx: ClientContext): void {
           ctx.slots.register(
             {
               name: 'shell.overlay',
-              id: 'git-graph.toast',
+              id: 'git-sidepanel.toast',
               locale: NS,
               inject: () => ({ store: toasts }),
             },
             ToastHost,
           ),
         ),
-      'git-graph: native toast host',
+      'git-sidepanel: native toast host',
     )
   }
 
@@ -165,7 +165,7 @@ export function apply(ctx: ClientContext): void {
       },
     ],
   }
-  ctx.effect(() => ctx.sidebarRightTabs.register(gitTab), 'git-graph: git tab type')
+  ctx.effect(() => ctx.sidebarRightTabs.register(gitTab), 'git-sidepanel: git tab type')
 
   ctx.effect(
     () =>
@@ -174,7 +174,7 @@ export function apply(ctx: ClientContext): void {
         kind: DIFF_KIND,
         title: () => t('diff.title'),
       }),
-    'git-graph: diff tab type',
+    'git-sidepanel: diff tab type',
   )
 
   registerPaneSlot(
@@ -182,7 +182,7 @@ export function apply(ctx: ClientContext): void {
     'sidebar.right.pane.tab',
     GIT_ID,
     GitPanel,
-    'git-graph: git tab body',
+    'git-sidepanel: git tab body',
     () => ({ notify }),
   )
   registerPaneSlot(
@@ -190,14 +190,14 @@ export function apply(ctx: ClientContext): void {
     'sidebar.right.pane.tab.title',
     GIT_ID,
     GitTabTitle,
-    'git-graph: git tab title',
+    'git-sidepanel: git tab title',
   )
   registerPaneSlot(
     ctx,
     'sidebar.right.pane.tab',
     DIFF_ID,
     DiffPanel,
-    'git-graph: diff tab body',
+    'git-sidepanel: diff tab body',
     () => ({
       notify,
     }),
@@ -207,15 +207,15 @@ export function apply(ctx: ClientContext): void {
     'sidebar.right.pane.tab.title',
     DIFF_ID,
     DiffTabTitle,
-    'git-graph: diff tab title',
+    'git-sidepanel: diff tab title',
   )
 
   withOptionalService(
     ctx,
     'shortcuts',
     {
-      bind: '[git-graph] shortcut registration failed',
-      register: '[git-graph] shortcut registration failed',
+      bind: '[git-sidepanel] shortcut registration failed',
+      register: '[git-sidepanel] shortcut registration failed',
     },
     (shortcutCtx) => {
       shortcutCtx.effect(
@@ -245,7 +245,7 @@ export function apply(ctx: ClientContext): void {
               }
             },
           }),
-        'git-graph: toggle shortcut',
+        'git-sidepanel: toggle shortcut',
       )
     },
   )
@@ -254,8 +254,8 @@ export function apply(ctx: ClientContext): void {
     ctx,
     'contextMenus',
     {
-      bind: '[git-graph] context menu binding failed',
-      register: '[git-graph] context menu registration failed',
+      bind: '[git-sidepanel] context menu binding failed',
+      register: '[git-sidepanel] context menu registration failed',
     },
     (menuCtx) => {
       // Bind the current shared notification service for the fallback
@@ -266,7 +266,7 @@ export function apply(ctx: ClientContext): void {
         return () => {
           if (sharedToast === service) sharedToast = undefined
         }
-      }, 'git-graph: shared toast')
+      }, 'git-sidepanel: shared toast')
       // The shared registry calls a contribution with the value captured
       // by the trigger, not with the { kind, value } target the trigger
       // received. Unwrapping again here leaves every menu empty.
@@ -278,7 +278,7 @@ export function apply(ctx: ClientContext): void {
             order: 10,
             resolve: (value) => resolveMenuActions(value, t, notify),
           }),
-        'git-graph: context menu actions',
+        'git-sidepanel: context menu actions',
       )
     },
   )

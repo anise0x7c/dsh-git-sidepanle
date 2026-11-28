@@ -1,6 +1,6 @@
 # AGENTS.md
 
-`@local/dsh-git-graph` adds a Code OSS-style Git source-control sidebar to
+`dsh-git-sidepanel` adds a Code OSS-style Git source-control sidebar to
 the DeepSeek Harness (DSH) Web GUI. This file covers the contributor workflow;
 use the linked docs for behavior and implementation details.
 
@@ -63,7 +63,7 @@ use the linked docs for behavior and implementation details.
 
 - Use two-space indentation, single quotes, no semicolons or tabs, and English
   comments. Keep functions small and give exported helpers concise JSDoc.
-- Bind visible strings through `ctx.locale.bind('gitGraph')`; keep keys and
+- Bind visible strings through `ctx.locale.bind('gitSidepanel')`; keep keys and
   interpolation placeholders in sync across both UI dictionaries.
 - Use `--dsw-*` for Host theme tokens. Keep the shared `.dshgg-row` responsible
   for height, padding, hover surface and focus ring; row-specific styles add

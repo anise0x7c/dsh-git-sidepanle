@@ -43,7 +43,7 @@ export function isLoopbackHostname(hostname: string): boolean {
  * @returns whether the request may enter.
  */
 export function isTrustedRequest(request: IncomingMessage): boolean {
-  if (request.headers['x-dsh-git-graph'] !== '1') return false
+  if (request.headers['x-dsh-git-sidepanel'] !== '1') return false
   if (
     request.headers['x-forwarded-for'] !== undefined ||
     request.headers['cf-connecting-ip'] !== undefined

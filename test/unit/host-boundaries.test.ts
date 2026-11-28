@@ -57,7 +57,7 @@ function requestWith(options: RequestOptions = {}): IncomingMessage {
 
 const TRUSTED_HEADERS: Record<string, string> = {
   host: AUTHORITY,
-  'x-dsh-git-graph': '1',
+  'x-dsh-git-sidepanel': '1',
   'sec-fetch-site': 'same-origin',
   origin: `http://${AUTHORITY}`,
 }
@@ -203,8 +203,8 @@ describe('isTrustedRequest', () => {
   })
 
   test('requires the bundle request header', () => {
-    assert.equal(isTrustedRequest(trustRequest({ 'x-dsh-git-graph': undefined })), false)
-    assert.equal(isTrustedRequest(trustRequest({ 'x-dsh-git-graph': '0' })), false)
+    assert.equal(isTrustedRequest(trustRequest({ 'x-dsh-git-sidepanel': undefined })), false)
+    assert.equal(isTrustedRequest(trustRequest({ 'x-dsh-git-sidepanel': '0' })), false)
   })
 
   test('refuses either proxy header', () => {

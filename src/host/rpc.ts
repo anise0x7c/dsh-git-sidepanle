@@ -57,8 +57,8 @@ import {
 import type { RepositoryWatchRegistry } from './watch/registry.ts'
 
 /** Route paths of the guarded family. */
-export const RPC_PATH = '/api/dsh-git-graph/rpc'
-export const HEALTH_PATH = '/api/dsh-git-graph/health'
+export const RPC_PATH = '/api/dsh-git-sidepanel/rpc'
+export const HEALTH_PATH = '/api/dsh-git-sidepanel/health'
 
 /**
  * Dispatch one operation inside the repository containing a Session's directory.

@@ -27,7 +27,7 @@ interface StyleLease {
  * must see the same hold count or one of them would remove a tag the other is
  * still using.
  */
-const STYLE_REGISTRY = Symbol.for('@local/dsh-git-graph/styles')
+const STYLE_REGISTRY = Symbol.for('dsh-git-sidepanel/styles')
 
 /** Host object carrying the shared lease table across module instances. */
 type StyleRegistryHost = typeof globalThis & { [key: symbol]: unknown }

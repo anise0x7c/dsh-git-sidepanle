@@ -71,7 +71,7 @@ export function createCaller(sessionId: string): RpcCall {
       response = await fetch(RPC_PATH, {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
+        headers: { 'content-type': 'application/json', 'x-dsh-git-sidepanel': '1' },
         body: JSON.stringify({ sessionId, op, ...(payload ?? {}) }),
       })
     } catch (cause) {

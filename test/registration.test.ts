@@ -52,7 +52,7 @@ test('styles are shared while applied and removed only after the last owner disp
 test('an adopted stylesheet is refreshed but never removed by the adopting lifetime', () => {
   const before = styleTags.length
   const tag = document.createElement('style')
-  tag.setAttribute('data-plugin', '@local/dsh-git-graph')
+  tag.setAttribute('data-plugin', 'dsh-git-sidepanel')
   tag.textContent = '/* previous module stylesheet */'
   document.head.appendChild(tag)
   const dispose = applyWithCleanup()
@@ -89,8 +89,8 @@ for (const service of ['shortcuts', 'contextMenus'] as const) {
     assert.equal(
       warning.mock.calls[0]?.arguments[0],
       service === 'shortcuts'
-        ? '[git-graph] shortcut registration failed'
-        : '[git-graph] context menu binding failed',
+        ? '[git-sidepanel] shortcut registration failed'
+        : '[git-sidepanel] context menu binding failed',
     )
   })
 
@@ -119,8 +119,8 @@ for (const service of ['shortcuts', 'contextMenus'] as const) {
     assert.equal(
       warning.mock.calls[0]?.arguments[0],
       service === 'shortcuts'
-        ? '[git-graph] shortcut registration failed'
-        : '[git-graph] context menu registration failed',
+        ? '[git-sidepanel] shortcut registration failed'
+        : '[git-sidepanel] context menu registration failed',
     )
   })
 }

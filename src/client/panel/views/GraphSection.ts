@@ -109,7 +109,7 @@ export function GraphSection(props: GraphSectionProps): React.ReactElement {
       ),
     [commits, references],
   )
-  const graphId = props.graphId ?? 'git-graph'
+  const graphId = props.graphId ?? 'git-sidepanel'
   const expanded = props.expanded ?? null
   // The rows each expanded commit inserts below itself; the line layer and the
   // rendered rows both read this one list.

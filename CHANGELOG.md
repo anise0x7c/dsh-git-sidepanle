@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@local/dsh-git-graph`. The DSH compatibility statement
+All notable changes to `dsh-git-sidepanel`. The DSH compatibility statement
 is the `engines.dsh` range in `package.json`.
 
 ## 1.0.0

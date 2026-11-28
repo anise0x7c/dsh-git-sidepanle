@@ -776,7 +776,7 @@ export function GitPanel(props: GitPanelProps): React.ReactElement {
 
   return h(
     'div',
-    { className: 'dshgg-root', 'data-dsh-git-graph': '', ref: rootPane },
+    { className: 'dshgg-root', 'data-dsh-git-sidepanel': '', ref: rootPane },
     h(BranchHeader, {
       t,
       wrapRef: refs.wrap,

@@ -1,8 +1,19 @@
 {
-  "name": "@local/dsh-git-graph",
+  "name": "dsh-git-sidepanel",
   "version": "1.0.0",
-  "private": true,
   "description": "A VS Code(Code OSS) style Git source-control sidebar for the DeepSeek Harness",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anise0x7c/dsh-git-sidepanel.git"
+  },
+  "homepage": "https://github.com/anise0x7c/dsh-git-sidepanel",
+  "bugs": "https://github.com/anise0x7c/dsh-git-sidepanel/issues",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "git",
+    "source-control"
+  ],
   "type": "module",
   "icon": "icon.svg",
   "exports": {

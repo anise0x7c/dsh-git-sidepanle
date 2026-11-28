@@ -217,7 +217,7 @@ export function DiffPanel(props: DiffPanelProps): React.ReactElement {
 
   return h(
     'div',
-    { className: 'dshgg-diffRoot', 'data-dsh-git-graph-diff': '' },
+    { className: 'dshgg-diffRoot', 'data-dsh-git-sidepanel-diff': '' },
     header,
     h('div', { className: 'dshgg-diffBody' }, content),
   )

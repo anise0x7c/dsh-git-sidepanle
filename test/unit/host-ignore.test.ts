@@ -11,7 +11,7 @@ import { appendGitignoreRule, gitignoreRule } from '../../src/host/git/ignore.ts
  * @param run - test body.
  */
 async function withRepository(run: (root: string) => Promise<void>): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-git-graph-ignore-'))
+  const root = await mkdtemp(join(tmpdir(), 'dsh-git-sidepanel-ignore-'))
   try {
     await run(root)
   } finally {
@@ -127,7 +127,7 @@ describe('appendGitignoreRule', () => {
   })
 
   test('rejects a linked .gitignore without touching its outside target', async () => {
-    const outside = await mkdtemp(join(tmpdir(), 'dsh-git-graph-ignore-outside-'))
+    const outside = await mkdtemp(join(tmpdir(), 'dsh-git-sidepanel-ignore-outside-'))
     try {
       const target = join(outside, 'unrelated.txt')
       await writeFile(target, 'must stay unchanged\n', 'utf8')

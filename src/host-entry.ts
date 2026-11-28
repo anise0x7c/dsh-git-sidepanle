@@ -2,7 +2,7 @@
  * Host half of the Git graph bundle: entry and route assembly.
  *
  * The browser half is a pure renderer: it asks this half for structured
- * repository state and operations over one guarded `/api/dsh-git-graph` route
+ * repository state and operations over one guarded `/api/dsh-git-sidepanel` route
  * family. Every Git command runs in the Session's working directory, with the
  * workspace filesystem's permissions, and never through a shell.
  *
@@ -37,7 +37,7 @@ export function apply(ctx: HostContext): () => void {
   // One registry per plugin instance: every panel of every Session shares the
   // watchers of a repository, and unloading the plugin closes all of them.
   const registry = createRepositoryWatchRegistry()
-  const disposeWatch = ctx.effect(() => () => registry.dispose(), 'git-graph: repository watch')
+  const disposeWatch = ctx.effect(() => () => registry.dispose(), 'git-sidepanel: repository watch')
 
   const disposeHealth = ctx.effect(
     () =>
@@ -51,10 +51,10 @@ export function apply(ctx: HostContext): () => void {
             response.end()
             return
           }
-          sendJson(response, 200, { ok: true, service: '@local/dsh-git-graph' })
+          sendJson(response, 200, { ok: true, service: 'dsh-git-sidepanel' })
         },
       }),
-    'git-graph: health route',
+    'git-sidepanel: health route',
   )
 
   const disposeRpc = ctx.effect(
@@ -89,7 +89,7 @@ export function apply(ctx: HostContext): () => void {
           }
         },
       }),
-    'git-graph: rpc route',
+    'git-sidepanel: rpc route',
   )
 
   return () => {

@@ -76,7 +76,7 @@ function isLoopbackHostname(hostname) {
   return hostname === "localhost" || hostname === "[::1]" || isLoopbackAddress(hostname);
 }
 function isTrustedRequest(request) {
-  if (request.headers["x-dsh-git-graph"] !== "1") return false;
+  if (request.headers["x-dsh-git-sidepanel"] !== "1") return false;
   if (request.headers["x-forwarded-for"] !== void 0 || request.headers["cf-connecting-ip"] !== void 0)
     return false;
   if (!isLoopbackAddress(request.socket?.remoteAddress)) return false;
@@ -1393,8 +1393,8 @@ function optionalFilePathOf(value) {
 }
 
 // src/host/rpc.ts
-var RPC_PATH = "/api/dsh-git-graph/rpc";
-var HEALTH_PATH = "/api/dsh-git-graph/health";
+var RPC_PATH = "/api/dsh-git-sidepanel/rpc";
+var HEALTH_PATH = "/api/dsh-git-sidepanel/health";
 async function dispatch(ctx, payload, registry) {
   const op = payload.op;
   if (op === "unwatch") {
@@ -1836,7 +1836,7 @@ function refuseUntrusted(response) {
 }
 function apply(ctx) {
   const registry = createRepositoryWatchRegistry();
-  const disposeWatch = ctx.effect(() => () => registry.dispose(), "git-graph: repository watch");
+  const disposeWatch = ctx.effect(() => () => registry.dispose(), "git-sidepanel: repository watch");
   const disposeHealth = ctx.effect(
     () => ctx.webServer.register({
       kind: "exact",
@@ -1848,10 +1848,10 @@ function apply(ctx) {
           response.end();
           return;
         }
-        sendJson(response, 200, { ok: true, service: "@local/dsh-git-graph" });
+        sendJson(response, 200, { ok: true, service: "dsh-git-sidepanel" });
       }
     }),
-    "git-graph: health route"
+    "git-sidepanel: health route"
   );
   const disposeRpc = ctx.effect(
     () => ctx.webServer.register({
@@ -1884,7 +1884,7 @@ function apply(ctx) {
         }
       }
     }),
-    "git-graph: rpc route"
+    "git-sidepanel: rpc route"
   );
   return () => {
     disposeRpc();

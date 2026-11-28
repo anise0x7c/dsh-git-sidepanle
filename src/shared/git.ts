@@ -2,7 +2,7 @@
  * Wire contract between the Host RPC half and the browser half.
  *
  * These declarations are the single source of truth for the JSON values that
- * cross `/api/dsh-git-graph/rpc`. They are type-only: importing this module
+ * cross `/api/dsh-git-sidepanel/rpc`. They are type-only: importing this module
  * emits no JavaScript, so the Host bundle and the browser bundle both stay
  * unchanged.
  */

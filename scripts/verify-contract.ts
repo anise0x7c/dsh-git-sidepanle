@@ -356,12 +356,12 @@ async function main(): Promise<void> {
   let total = 0
   const failures: string[] = []
   for (const scenario of scenarios()) {
-    const resolution = contextMenus.resolve({ kind: 'gitGraphItem', value: scenario.value })
+    const resolution = contextMenus.resolve({ kind: 'gitSidepanelItem', value: scenario.value })
     try {
       await resolution.ready
       const views = resolution.source.getSnapshot()
       const ids = views.map((view) => view.id)
-      const expected = scenario.expected.map((action) => `git-graph.actions/${action}`)
+      const expected = scenario.expected.map((action) => `git-sidepanel.actions/${action}`)
       for (const id of expected)
         if (!ids.includes(id)) failures.push(`${scenario.name}: missing ${id}`)
       const flattened = views.flatMap(function flatten(view): MenuView[] {
@@ -369,7 +369,7 @@ async function main(): Promise<void> {
       })
       for (const [parent, children] of Object.entries(scenario.nested ?? {})) {
         for (const child of children) {
-          const nested = `git-graph.actions/${parent}/${encodeURIComponent(child)}`
+          const nested = `git-sidepanel.actions/${parent}/${encodeURIComponent(child)}`
           if (!flattened.some((view) => view.id === nested))
             failures.push(`${scenario.name}: missing nested action ${nested}`)
         }
@@ -384,9 +384,7 @@ async function main(): Promise<void> {
       resolution.dispose()
     }
   }
-  const face = pluginContext.slotInjections.get(
-    'sidebar.right.pane.tab:@local/dsh-git-graph/git',
-  )?.()
+  const face = pluginContext.slotInjections.get('sidebar.right.pane.tab:dsh-git-sidepanel/git')?.()
   if (typeof face?.notify !== 'function') {
     failures.push('Git pane has no injected host notification callback')
   } else {

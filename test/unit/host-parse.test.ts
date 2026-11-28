@@ -33,7 +33,7 @@ const OID_A = 'a'.repeat(40)
 const OID_B = 'b'.repeat(40)
 const OID_C = 'c'.repeat(40)
 /** A root that is absolute on every platform without touching the filesystem. */
-const ROOT = resolve('/tmp', 'git-graph-unit-repo')
+const ROOT = resolve('/tmp', 'git-sidepanel-unit-repo')
 
 /**
  * Build one NUL-terminated porcelain payload from text records.

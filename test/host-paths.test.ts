@@ -44,9 +44,9 @@ async function callAt<Operation extends GitGraphOperation>(
   op: Operation,
   payload: Record<string, unknown> = {},
 ): Promise<CallResult<GitGraphRpcValues[Operation]>> {
-  const response = await fetch(`${baseUrl}/api/dsh-git-graph/rpc`, {
+  const response = await fetch(`${baseUrl}/api/dsh-git-sidepanel/rpc`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-dsh-git-graph': '1' },
+    headers: { 'content-type': 'application/json', 'x-dsh-git-sidepanel': '1' },
     body: JSON.stringify({ sessionId: 'session-1', op, ...payload }),
   })
   return { status: response.status, body: (await response.json()) as RpcReply<never> }
@@ -63,12 +63,12 @@ function entry(
 }
 
 before(async () => {
-  tmpRoot = await mkdtemp(join(tmpdir(), 'dsh-git-graph-paths-'))
+  tmpRoot = await mkdtemp(join(tmpdir(), 'dsh-git-sidepanel-paths-'))
 })
 
 after(async () => {
   assert.equal(dirname(tmpRoot), tmpdir())
-  assert.ok(basename(tmpRoot).startsWith('dsh-git-graph-paths-'))
+  assert.ok(basename(tmpRoot).startsWith('dsh-git-sidepanel-paths-'))
   await rm(tmpRoot, { recursive: true, force: true })
 })
 

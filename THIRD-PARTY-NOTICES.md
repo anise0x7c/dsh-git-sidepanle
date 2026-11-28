@@ -1,6 +1,6 @@
 # Third-party notices
 
-`@local/dsh-git-graph` is released under the MIT license in
+`dsh-git-sidepanel` is released under the MIT license in
 [LICENSE](<LICENSE>). This file records the third-party material the plugin
 contains, or is derived from, together with each component's license and
 copyright holder. It ships with the plugin so an installed copy always carries

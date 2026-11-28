@@ -49,7 +49,7 @@ const t = (key: string): string => key
 describe('constants', () => {
   test('the package id matches the manifest name and namespaces both tabs', () => {
     assert.equal(PACKAGE_ID, manifest.name)
-    assert.equal(PACKAGE_ID, '@local/dsh-git-graph')
+    assert.equal(PACKAGE_ID, 'dsh-git-sidepanel')
     assert.equal(GIT_ID, `${PACKAGE_ID}/git`)
     assert.equal(DIFF_ID, `${PACKAGE_ID}/diff`)
   })
@@ -57,22 +57,22 @@ describe('constants', () => {
   test('tab kinds, the locale namespace, and the shortcut id stay stable', () => {
     assert.equal(GIT_KIND, 'git')
     assert.equal(DIFF_KIND, 'git-diff')
-    assert.equal(NS, 'gitGraph')
+    assert.equal(NS, 'gitSidepanel')
     assert.equal(GIT_SHORTCUT, 'workspace.git')
   })
 
   test('the client RPC path is the Host route without the leading slash', () => {
-    assert.equal(RPC_PATH, 'api/dsh-git-graph/rpc')
+    assert.equal(RPC_PATH, 'api/dsh-git-sidepanel/rpc')
     assert.equal(RPC_PATH.startsWith('/'), false)
     assert.equal(`/${RPC_PATH}`, HOST_RPC_PATH)
-    assert.equal(HOST_RPC_PATH, '/api/dsh-git-graph/rpc')
-    assert.equal(HEALTH_PATH, '/api/dsh-git-graph/health')
+    assert.equal(HOST_RPC_PATH, '/api/dsh-git-sidepanel/rpc')
+    assert.equal(HEALTH_PATH, '/api/dsh-git-sidepanel/health')
     assert.notEqual(HEALTH_PATH, HOST_RPC_PATH)
   })
 
   test('menu ids and rendering limits stay stable', () => {
-    assert.equal(MENU_TARGET, 'gitGraphItem')
-    assert.equal(MENU_CONTRIBUTION_ID, 'git-graph.actions')
+    assert.equal(MENU_TARGET, 'gitSidepanelItem')
+    assert.equal(MENU_CONTRIBUTION_ID, 'git-sidepanel.actions')
     assert.equal(POLL_INTERVAL_MS, 5000)
     assert.equal(MAX_RENDERED_DIFF_LINES, 4000)
   })
@@ -103,7 +103,7 @@ describe('menuTarget', () => {
     assert.deepEqual(
       menuTarget('session-1', 'file', { section: 'changes', path: 'src/app.js', cwd: '/repo' }),
       {
-        kind: 'gitGraphItem',
+        kind: 'gitSidepanelItem',
         value: {
           sessionId: 'session-1',
           kind: 'file',
@@ -189,7 +189,7 @@ describe('bindMenuTrigger', () => {
     assert.equal(warnings.length, 1)
     const firstWarning = warnings[0]
     assert.ok(firstWarning, 'the unavailable menu hook should warn once')
-    assert.equal(firstWarning[0], '[git-graph] context menus are unavailable')
+    assert.equal(firstWarning[0], '[git-sidepanel] context menus are unavailable')
   })
 
   test('calls the hook once and passes the target and handlers through', () => {

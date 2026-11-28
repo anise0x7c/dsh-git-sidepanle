@@ -435,10 +435,10 @@ export function loadComponents(
     }),
   )
   return {
-    git: slotComponent(bySeat, 'sidebar.right.pane.tab:@local/dsh-git-graph/git'),
-    diff: slotComponent(bySeat, 'sidebar.right.pane.tab:@local/dsh-git-graph/diff'),
-    gitTitle: slotComponent(bySeat, 'sidebar.right.pane.tab.title:@local/dsh-git-graph/git'),
-    diffTitle: slotComponent(bySeat, 'sidebar.right.pane.tab.title:@local/dsh-git-graph/diff'),
+    git: slotComponent(bySeat, 'sidebar.right.pane.tab:dsh-git-sidepanel/git'),
+    diff: slotComponent(bySeat, 'sidebar.right.pane.tab:dsh-git-sidepanel/diff'),
+    gitTitle: slotComponent(bySeat, 'sidebar.right.pane.tab.title:dsh-git-sidepanel/git'),
+    diffTitle: slotComponent(bySeat, 'sidebar.right.pane.tab.title:dsh-git-sidepanel/diff'),
     contextMenus: fake.menu.contextMenus,
     contributions: fake.menu.contributions,
     notifications: fake.menu.notifications,
@@ -451,7 +451,7 @@ export function loadComponents(
 export function slotNotify(components: LoadedComponents): ContextMenusService['notify'] {
   const gitBody = components.slots.find(
     ({ options }) =>
-      options.name === 'sidebar.right.pane.tab' && options.key === '@local/dsh-git-graph/git',
+      options.name === 'sidebar.right.pane.tab' && options.key === 'dsh-git-sidepanel/git',
   )
   assert.ok(gitBody, 'the Git pane body was not registered')
   const notify = gitBody.options.inject?.().notify
@@ -802,7 +802,7 @@ export async function openCommitDetails(mounted: MountedGit, index = 0): Promise
 }
 
 /** Contribution id of the bundle's context-menu provider. */
-export const MENU_ID = 'git-graph.actions'
+export const MENU_ID = 'git-sidepanel.actions'
 
 /** A resolved action id as the shared registry publishes it. */
 export const menuActionId = (id: string): string => `${MENU_ID}/${id}`

@@ -432,12 +432,12 @@ describe('resolveMenuActions for commit and diff targets', () => {
     }
     const actions = actionsFor(value)
     assert.deepEqual(publishedIds(actions), [
-      'git-graph.actions/view-details',
-      'git-graph.actions/checkout-detached',
-      'git-graph.actions/create-branch',
-      'git-graph.actions/create-tag',
-      'git-graph.actions/copy-id',
-      'git-graph.actions/copy-message',
+      'git-sidepanel.actions/view-details',
+      'git-sidepanel.actions/checkout-detached',
+      'git-sidepanel.actions/create-branch',
+      'git-sidepanel.actions/create-tag',
+      'git-sidepanel.actions/copy-id',
+      'git-sidepanel.actions/copy-message',
     ])
     assert.deepEqual(labelsOf(actions), [
       t('menu.viewDetails'),
@@ -466,14 +466,14 @@ describe('resolveMenuActions for commit and diff targets', () => {
       ],
     })
     assert.deepEqual(publishedIds(actions), [
-      'git-graph.actions/view-details',
-      'git-graph.actions/checkout',
-      'git-graph.actions/checkout-detached',
-      'git-graph.actions/create-branch',
-      'git-graph.actions/delete-branch',
-      'git-graph.actions/create-tag',
-      'git-graph.actions/copy-id',
-      'git-graph.actions/copy-message',
+      'git-sidepanel.actions/view-details',
+      'git-sidepanel.actions/checkout',
+      'git-sidepanel.actions/checkout-detached',
+      'git-sidepanel.actions/create-branch',
+      'git-sidepanel.actions/delete-branch',
+      'git-sidepanel.actions/create-tag',
+      'git-sidepanel.actions/copy-id',
+      'git-sidepanel.actions/copy-message',
     ])
     const checkout = actions.find((action) => action.id === 'checkout')
     const removal = actions.find((action) => action.id === 'delete-branch')

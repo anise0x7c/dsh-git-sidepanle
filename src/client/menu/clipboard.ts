@@ -72,6 +72,6 @@ export async function copyAndReport(
   try {
     notify(copied ? t(successKey) : t('menu.copyFailed'), copied)
   } catch (error) {
-    console.warn('[git-graph] copy feedback failed', error)
+    console.warn('[git-sidepanel] copy feedback failed', error)
   }
 }
